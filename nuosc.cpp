@@ -1,14 +1,20 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <cmath>
+
+//#define MUINT_OFF
+#define BC_PERI
 
 using std::cout;
 using std::endl;
 using std::cin;
 
-typedef double       real;
+typedef double real;
+
+inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 
 typedef struct Vars {
     real* ee;
@@ -35,6 +41,7 @@ typedef struct Vars {
         delete[] bex_im;
     }
 } FieldVar;
+
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
 
 
@@ -56,9 +63,14 @@ class NuOsc {
         const real st = sin(theta);
         const real mu = 100;
 
+        std::ofstream anafile;
+
+
         inline unsigned int idx(const int i, const int j) { return i*(nz+2*gz) + (j+gz); }
 
-        NuOsc(const int nz_, const int nvz_, const int gz_ = 2) : phy_time(0.) {
+
+
+        NuOsc(const int nz_, const int nvz_, const int gz_ = 2) : phy_time(0.)  {
 
             nz  = nz_;
             gz  = gz_;
@@ -71,26 +83,31 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
             
-            const real CFL = 0.01;
+            //const real CFL = 0.01;
+            const real CFL = 0.1;
             dz = real(1.0)/nz;       // cell-center
 	    dv = 1.0/(nvz-1.0);  // vertex-center
 	    dt = CFL*dz;
 	    
-	    printf("Initializing simulation:\n\n");
+	    printf("Initializing simulation NuOsc :\n\n");
 	    printf("   (Nvz, Nz) = (%d, %d) with z-buffer zone %d.\n", nz, nvz, gz);
 	    printf("   dz = %g\n", dz);
 	    printf("   dt = %g\n\n", dt);
 	    printf("========================\n\n");
 
+	    anafile.open("rate.dat", std::ofstream::out | std::ofstream::trunc);
+	    if(!anafile) cout << "*** Open fails: " << "./rate.dat" << endl;
         }
 
-        NuOsc(const NuOsc &v) {  // To be checked.
-            NuOsc(v.nz, v.nvz);
-        }
+        //NuOsc(const NuOsc &v) {  // To be checked.
+        //    NuOsc(v.nz, v.nvz);
+        //}
 
         ~NuOsc() {
             delete[] vz;
             delete v_stat, v_rhs, v_pre, v_cor;
+            
+            anafile.close();
         }
 
         void fillInitValue(real f0, real alpha, real beta);
@@ -101,7 +118,9 @@ class NuOsc {
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
         void analysis();
-        void dumpv(const real *v);
+	void _analysis_v(real res[], const real var[]);
+	void _analysis_c(real res[], const real vr[], const real vi[]);
+        void dumpv(const real v[]);
         void write_bin(const char* fn);
 };
 
@@ -111,12 +130,12 @@ void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
         for (int j=0;j<nz; j++) {
             vz[i] = real(i)/nvz;   // only vz is vertex-center
 
-            v_stat->ee    [idx(i,j)] = f0; // + (real) rand() / (10000*RAND_MAX);
-            v_stat->ex_re [idx(i,j)] = 0.;
-            v_stat->ex_im [idx(i,j)] = 0.;
-            v_stat->bee   [idx(i,j)] = f0; // + (real) rand() / (10000*RAND_MAX);
-            v_stat->bex_re[idx(i,j)] = 0.;
-            v_stat->bex_im[idx(i,j)] = 0.;
+            v_stat->ee    [idx(i,j)] = f0;
+            v_stat->ex_re [idx(i,j)] = random_amp(0.001);
+            v_stat->ex_im [idx(i,j)] = random_amp(0.001);
+            v_stat->bee   [idx(i,j)] = f0;
+            v_stat->bex_re[idx(i,j)] = random_amp(0.001);
+            v_stat->bex_im[idx(i,j)] = random_amp(0.001);
         }
 
     int nvz_b = int(beta*nvz);
@@ -127,12 +146,14 @@ void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
         }
 
     // Init boundary
-    //updatePeriodicBufferZone(v_stat);
+    #ifdef BC_PERI
+    updatePeriodicBufferZone(v_stat);
+    #else
     updateInjetOpenBoundary(v_stat);
+    #endif
 }
 
 void NuOsc::write_bin(const char* filename) {
-
     std::ofstream outfile;
     outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
     if(!outfile) {
@@ -192,7 +213,7 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * in) {
             in->bee   [idx(i,-j-1)] = in->bee   [idx(i,0)];
             in->bex_re[idx(i,-j-1)] = in->bex_re[idx(i,0)];
             in->bex_im[idx(i,-j-1)] = in->bex_im[idx(i,0)];
-            //upper side
+            //upper side, estimated simply by extrapolation
             in->ee    [idx(i,nz+j)] = in->ee    [idx(i,nz+j-1)]*2 - in->ee    [idx(i,nz+j-2)];
             in->ex_re [idx(i,nz+j)] = in->ex_re [idx(i,nz+j-1)]*2 - in->ex_re [idx(i,nz+j-2)];
             in->ex_im [idx(i,nz+j)] = in->ex_im [idx(i,nz+j-1)]*2 - in->ex_im [idx(i,nz+j-2)];
@@ -216,26 +237,26 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             real *bexr  = &(in->bex_re[idx(i,j)]);
             real *bexi  = &(in->bex_im[idx(i,j)]);
 
-            // 1) prepare term for -i [H0, rho]
-            out->ee    [idx(i,j)] = -2*st*exi [0];
-            out->ex_re [idx(i,j)] = -2*ct*exi [0];
-            out->ex_im [idx(i,j)] =  2*ct*exr [0] + st*( 2*ee[0] -1 );
-            out->bee   [idx(i,j)] = -2*st*bexi[0];
-            out->bex_re[idx(i,j)] = -2*ct*bexi[0];
-            out->bex_im[idx(i,j)] =  2*ct*bexr[0] + st*( 2*bee[0]-1 );
-
-#if 1
-            // 2) advection term:
+            // 1) advection term:
             //   4-th order FD for 2nd-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
             real factor = -vz[i]/(12*dz);
-            out->ee    [idx(i,j)] += factor * ((   ee[-2]-  ee[2]) - 8.0*(  ee[-1]-  ee[1]) );
-            out->ex_re [idx(i,j)] += factor * ((  exr[-2]- exr[2]) - 8.0*( exr[-1]- exr[1]) );
-            out->ex_im [idx(i,j)] += factor * ((  exi[-2]- exi[2]) - 8.0*( exi[-1]- exi[1]) );
-            out->bee   [idx(i,j)] += factor * ((  bee[-2]- bee[2]) - 8.0*( bee[-1]- bee[1]) );
-            out->bex_re[idx(i,j)] += factor * (( bexr[-2]-bexr[2]) - 8.0*(bexr[-1]-bexr[1]) );
-            out->bex_im[idx(i,j)] += factor * (( bexi[-2]-bexi[2]) - 8.0*(bexi[-1]-bexi[1]) );
+            out->ee    [idx(i,j)] = factor * ((   ee[-2]-  ee[2]) - 8.0*(  ee[-1]-  ee[1]) );
+            out->ex_re [idx(i,j)] = factor * ((  exr[-2]- exr[2]) - 8.0*( exr[-1]- exr[1]) );
+            out->ex_im [idx(i,j)] = factor * ((  exi[-2]- exi[2]) - 8.0*( exi[-1]- exi[1]) );
+            out->bee   [idx(i,j)] = factor * ((  bee[-2]- bee[2]) - 8.0*( bee[-1]- bee[1]) );
+            out->bex_re[idx(i,j)] = factor * (( bexr[-2]-bexr[2]) - 8.0*(bexr[-1]-bexr[1]) );
+            out->bex_im[idx(i,j)] = factor * (( bexi[-2]-bexi[2]) - 8.0*(bexi[-1]-bexi[1]) );
 
-            // 3) interaction term:H integral with simple trapezoidal rule
+            // 2) prepare terms for -i [H0, rho]
+            out->ee    [idx(i,j)] += -2*st*exi [0];
+            out->ex_re [idx(i,j)] += -2*ct*exi [0];
+            out->ex_im [idx(i,j)] +=  2*ct*exr [0] + st*( 2*ee[0] -1 );
+            out->bee   [idx(i,j)] += -2*st*bexi[0];
+            out->bex_re[idx(i,j)] += -2*ct*bexi[0];
+            out->bex_im[idx(i,j)] +=  2*ct*bexr[0] + st*( 2*bee[0]-1 );
+
+#ifndef MUINT_OFF
+            // 3) interaction terms: vz-integral with a simple trapezoidal rule
             real Iee    = 0;
             real Iexr   = 0;
             real Iexi   = 0;
@@ -249,11 +270,12 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
                 real beep   = (in->bee   [idx(k,j)]);
                 real bexpr  = (in->bex_re[idx(k,j)]);
                 real bexpi  = (in->bex_im[idx(k,j)]);
-
-                Iee   += 2*mu* (1-vz[i]*vz[k])*  (        exr[0]*(expi - bexpi) -    exi[0]*(expr- bexpr) );
+		
+		// terms for -i* mu * [rho'-rho_bar', rho]
+		Iee   += 2*mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi - bexpi) -    exi[0]*(expr- bexpr) );
                 Iexr  +=   mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi - bexpi) +  2*exi[0]*(eep - beep ) );
                 Iexi  +=   mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  += 2*mu* (1-vz[i]*vz[k])*  (      -bexr[0]*(expi - bexpi) +   bexi[0]*(expr- bexpr) );
+                Ibee  += 2*mu* (1-vz[i]*vz[k])*  (     -bexr[0] *(expi - bexpi) +   bexi[0]*(expr- bexpr) );
                 Ibexr +=   mu* (1-vz[i]*vz[k])*  ( -(1-2*bee[0])*(expi - bexpi) - 2*bexi[0]*(eep - beep ) );
                 Ibexi +=   mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
             }
@@ -300,30 +322,42 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
 void NuOsc::step_rk4() {
 
     //Step-1
-    //updatePeriodicBufferZone(v_stat);
+    #ifdef BC_PERI
+    updatePeriodicBufferZone(v_stat);
+    #else
     updateInjetOpenBoundary(v_stat);
+    #endif
     calRHS(v_rhs, v_stat);
     vectorize(v_pre, v_stat, 0.5*dt, v_rhs);
 
     //Step-2
-    //updatePeriodicBufferZone(v_pre);
+    #ifdef BC_PERI
+    updatePeriodicBufferZone(v_pre);
+    #else
     updateInjetOpenBoundary(v_pre);
+    #endif
     calRHS(v_cor, v_pre);
     vectorize(v_rhs, v_rhs, 2.0, v_cor);
     vectorize(v_cor, v_stat, 0.5*dt, v_cor);
     swap(&v_pre, &v_cor);
 
     //Step-3
-    //updatePeriodicBufferZone(v_pre);
+    #ifdef BC_PERI
+    updatePeriodicBufferZone(v_pre);
+    #else
     updateInjetOpenBoundary(v_pre);
+    #endif
     calRHS(v_cor, v_pre);
     vectorize(v_rhs, v_rhs, 2.0, v_cor);
     vectorize(v_cor, v_stat, dt, v_cor);
     swap(&v_pre, &v_cor);
 
     //Step-4
-    //updatePeriodicBufferZone(v_pre);
+    #ifdef BC_PERI
+    updatePeriodicBufferZone(v_pre);
+    #else
     updateInjetOpenBoundary(v_pre);
+    #endif
     calRHS(v_cor, v_pre);
     vectorize(v_pre, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
     swap(&v_pre, &v_stat);
@@ -331,39 +365,70 @@ void NuOsc::step_rk4() {
     phy_time += dt;
 }
 
+void NuOsc::_analysis_v(real res[], const real var[]) {
+
+    real vmin =  1.e32;
+    real vmax = -1.e32;
+    real sum  = 0;
+    real sum2 = 0;
+
+    #pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
+    for (int i=0;i<nvz; i++)
+        for (int j=0;j<nz; j++) {
+    	    real val = var[idx(i,j)];
+            if (val>vmax) vmax = val;
+            if (val<vmin) vmin = val;
+            sum  += val;
+            sum2 += val*val;
+        }
+
+    // avg, std, min, max
+    res[0] = vmin;
+    res[1] = vmax;
+    res[2] = sum/(nz*nvz);
+    res[3] = sqrt( sum2/(nz*nvz) - res[2]*res[2]  );
+}
+
+void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
+
+    real vmin =  1.e32;
+    real vmax = -1.e32;
+    real sum  = 0;
+    real sum2 = 0;
+
+    #pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
+    for (int i=0;i<nvz; i++)
+        for (int j=0;j<nz; j++) {
+    	    int ij = idx(i,j);
+    	    real val = vr[ij]*vr[ij]+vi[ij]*vi[ij];
+            if (val>vmax) vmax = val;
+            if (val<vmin) vmin = val;
+            sum  += val;
+            sum2 += val*val;
+        }
+
+    // avg, std, min, max
+    res[0] = vmin;
+    res[1] = vmax;
+    res[2] = sum/(nz*nvz);
+    res[3] = sqrt( sum2/(nz*nvz) - res[2]*res[2]  );
+}
 
 void NuOsc::analysis() {
 
-    real *v  = v_stat->ee;
-    real *v1 = v_pre->ee;
+    real statis1[4], statis2[4];
+    _analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
+    _analysis_c(statis2, v_stat->bex_re, v_stat->bex_im);
 
-    real vmin = std::abs(v[0]);
-    real vmax = std::abs(v[0]);
-    real sum = 0;
-    //#pragma omp parallel for reduction(max : vmax)
-    for (int i=0;i<nvz; i++)
-        for (int j=0;j<nz; j++) {
-            if (std::abs(v[idx(i,j)])>vmax) vmax = std::abs(v[idx(i,j)]);
-        }
-
-    //#pragma omp parallel for reduction(min : vmin)
-    for (int i=0;i<nvz; i++)
-        for (int j=0;j<nz; j++) {
-            if (std::abs(v[idx(i,j)])<vmin) vmin = std::abs(v[idx(i,j)]);
-        }
-
-    //#pragma omp parallel for reduction(+ : sum)
-    for (int i=0;i<nvz; i++)
-        for (int j=0;j<nz; j++) {
-            sum += (v[idx(i,j)] - v1[idx(i,j)]);
-            //sum += v[idx(i,j)];
-    }
-
-    printf("	Time: %10f - ee in [ %10f , %10f ]  Sum: %10.2e\n", phy_time, vmin, vmax, sum/nz/nvz);
-
+    printf("Time: %10f exr:( %10g %10g %10g ) exi:( %10g %10g %10g)\n", phy_time, 
+			statis1[0], statis1[1], statis1[3],
+			statis2[0], statis2[1], statis2[3]);
+			
+    anafile << phy_time <<" "<< statis1[0]<< " " << statis1[1] << " "<< statis1[3] <<" "
+                             << statis2[0]<< " " << statis2[1] << " "<< statis2[3] << endl;
 }
 
-void NuOsc::dumpv(const real *v) {
+void NuOsc::dumpv(const real v[]) {
 
     cout << "		=== ee component ===" << endl;
     for (int i=0;i<nvz; i++) {
@@ -377,17 +442,31 @@ void NuOsc::dumpv(const real *v) {
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
 
-    const int END_TIME   = 10;
-    const int DUMP_EVERY = 1;
+    int END_TIME   = 5000;
+    int DUMP_EVERY = 50000;
+    int ANAL_EVERY = 100;
     
-    int nz  = 800;
-    int nvz = 1001;
+    int nz  = 256;
+    int nvz = 128 + 1;
 
-
+    for (int t = 1; argv[t] != 0; t++) {
+    //	if (strcmp(argv[t], "--noint") == 0 )  state.nu_interaction = atoi(argv[t+1]);
+	if (strcmp(argv[t], "--dim") == 0 )  {
+	    nz  = atoi(argv[t+1]);
+	    nvz = atoi(argv[t+2]);     t+=2;
+	} else if (strcmp(argv[t], "--time") == 0 )  {
+	    END_TIME   = atoi(argv[t+1]); t+=1;
+	} else if (strcmp(argv[t], "--ana") == 0 )  {
+	    DUMP_EVERY = atoi(argv[t+1]); t+=1;
+	} else {
+	    printf("Unreconganized parameters %s!\n", argv[t]);
+	    exit(0);
+	}
+    }
+    
     char fn[32];
-
     // Initialize simuation
     NuOsc state(nz, nvz);
     
@@ -395,14 +474,15 @@ int main() {
     state.fillInitValue();
     state.write_bin("stat_init.bin");
 
-    for (int t=0; t<END_TIME; t++) {
+    for (int t=1; t<END_TIME; t++) {
 
         state.step_rk4();
 
-        if ( (t+1)%DUMP_EVERY==0) {
+        if ( t%ANAL_EVERY==0) {
             state.analysis();
-            //state.dumpv(state.v_stat->ee);
-            
+        }
+        if ( t%DUMP_EVERY==0) {
+            state.analysis();
             sprintf(fn,"stat_%04d.bin", t);
             state.write_bin(fn);
         }

@@ -1,0 +1,9 @@
+source /pkg/ENV/pycbc_py2/init
+
+python plot_rate.py
+
+for (( i=1000; i<=5000; i+=1000 )); do
+    python plot_cmap.py $(printf "../stat_%04d.bin\n" $i)
+done
+
+#python plot_cmap.py ../stat_init.bin ../stat_0499.bin

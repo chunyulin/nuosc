@@ -1,0 +1,7 @@
+Use "make" to compile.
+
+Run with "./nuosc"
+
+Plot time snapshot with "go_cmap"
+Plot history with "go_rate"
+--
