@@ -16,15 +16,15 @@ if len(sys.argv) == 1:
 
 def plotmap(fname):
     with open(fname, 'rb') as f:
-	time = np.fromfile(f, dtype=np.double, count=1)
+	time, vz0, vz1, z0, z1 = np.fromfile(f, dtype=np.double, count=5)
         #f.seek(8, os.SEEK_SET)
         nz,nvz,gz = np.fromfile(f, dtype=np.intc, count=3)
 
         data   = np.fromfile(f, dtype=np.double, count=6*(nz+2*gz)*nvz).reshape([6, nvz, nz+2*gz])
 
     dz = 1.0/nz
-    z_grid = np.linspace(-1.5*dz, 1+1.5*dz, nz+2*gz)
-    v_grid = np.linspace(0,1,nvz)
+    z_grid = np.linspace(z0-1.5*dz, z1+1.5*dz, nz+2*gz)
+    v_grid = np.linspace(vz0,vz1,nvz)
     z, v = np.meshgrid(z_grid, v_grid)
 
     #print (z.shape)
@@ -54,7 +54,5 @@ def plotmap(fname):
     plt.close()
 
 for fn in sys.argv[1:]:
-    
-
     print("Plotting {}".format(fn))
     plotmap(fn)
