@@ -6,7 +6,7 @@
 
 #define ADVEC_OFF
 //#define MUINT_OFF
-//#define BC_PERI
+#define BC_PERI
 
 using std::cout;
 using std::endl;
@@ -62,7 +62,7 @@ class NuOsc {
         const real theta = 0.01;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
-        const real mu = 10;
+        const real mu = 100;
 
 	const float RND = 1.e-7;
         
@@ -75,8 +75,10 @@ class NuOsc {
 
         NuOsc(const int nz_, const int nvz_, const int gz_ = 2) : phy_time(0.)  {
 
-	    vz0 = -1.0;  vz1 =  1.0;
-	    z0 = -1.0;   z1 =  1.0;
+	    //vz0 = -1.0;  vz1 =  1.0;
+	    //z0 = -1.0;   z1 =  1.0;
+	    vz0 = .0;  vz1 =  1.0;
+	    z0 = .0;   z1 =  1.0;
             nz  = nz_;
             gz  = gz_;
             nvz = nvz_;
@@ -136,6 +138,13 @@ class NuOsc {
         void dumpv(const real v[]);
         void write_z_at_vz();
         void write_bin(const int t);
+
+    inline void _out_tmp(real res[], const real v[]) {
+        res[0] = v[idx(0, 1)];
+        res[1] = v[idx(50, 1)];
+        res[2] = v[idx(100, 1)];
+    }
+
 };
 
 void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
@@ -144,14 +153,27 @@ void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
     #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
-            v_stat->ee    [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);    // Initialize with Gaussian shape
-            v_stat->ex_re [idx(i,j)] = random_amp(RND);
-            v_stat->ex_im [idx(i,j)] = random_amp(RND);
-            v_stat->bee   [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);
-            v_stat->bex_re[idx(i,j)] = random_amp(RND);
-            v_stat->bex_im[idx(i,j)] = random_amp(RND);
+            //v_stat->ee    [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);    // Initialize with Gaussian shape
+            v_stat->ee    [idx(i,j)] = f0;    // Initialize with Gaussian shape
+            v_stat->ex_re [idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->ex_im [idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bee   [idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bex_re[idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bex_im[idx(i,j)] = 0.0;//random_amp(RND);
           }
     }
+
+    int nvz_b = int(beta*nvz);
+    #pragma omp parallel for
+    for (int i=nvz_b;i<nvz; i++) {
+          for (int j=0;j<nz; j++) {
+            v_stat->bee   [idx(i,j)] = alpha;
+            v_stat->bex_re[idx(i,j)] = 0.0;
+            v_stat->bex_im[idx(i,j)] = 0.0;
+          }
+    }
+
+
 
     // Init boundary
     #ifdef BC_PERI
@@ -475,19 +497,30 @@ void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
 
 void NuOsc::analysis() {
 
-    real statis1[4], statis2[4];
-    _analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
-    _analysis_v(statis2, v_stat->bee);
 
-    real probe0 = 1 - v_stat->ee[idx(nvz/2, nz/2)];
+    //real statis1[4], statis2[4];
+    //_analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
+    //_analysis_v(statis2, v_stat->bee);
+
+    //printf("Time: %.5f  min/max/std of |ex|:( %9.2g %9.2g %9.2g ) |bee|:( %9.2g %9.2g %9.2g)\n", phy_time,
+    //			statis1[0], statis1[1], statis1[3],
+    //			statis2[0], statis2[1], statis2[3]);
+    //anafile << phy_time <<" "<< statis1[0]<< " " << statis1[1] << " " << statis1[3] << " "
+    //                         << statis2[0]<< " " << statis2[1] << " " << statis2[3] << " "
+    //                         << probe0 << endl;
+
+    real pee [4];  _out_tmp(pee, v_stat->ee);
+    real pexr[4];  _out_tmp(pee, v_stat->ex_re);
+    real pexi[4];  _out_tmp(pee, v_stat->ex_im);
     
-    printf("Time: %.5f  min/max/std of |ex|:( %9.2g %9.2g %9.2g ) |bee|:( %9.2g %9.2g %9.2g) |xx(z=0)|=%9.2g\n", phy_time, 
-			statis1[0], statis1[1], statis1[3],
-			statis2[0], statis2[1], statis2[3], probe0);
+    printf("Time: %.5f  |ee|: %9.2g %9.2g %9.2g  |exr|: %9.2g %9.2g %9.2g   |exi|: %9.2g %9.2g %9.2g\n", phy_time,
+			pee[0],  pee[1],  pee[2],
+			pexr[0], pexr[1], pexr[2],
+			pexi[0], pexi[1], pexi[2] );
+    anafile << phy_time <<" "<< pee[0]<<  " " << pee[1] <<  " " << pee[2] << " "
+                             << pexr[0]<< " " << pexr[1] << " " << pexr[2] << " "
+                             << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << endl;
 			
-    anafile << phy_time <<" "<< statis1[0]<< " " << statis1[1] << " " << statis1[3] << " "
-                             << statis2[0]<< " " << statis2[1] << " " << statis2[3] << " "
-                             << probe0 << endl;
 }
 
 void NuOsc::dumpv(const real v[]) {
@@ -503,23 +536,23 @@ void NuOsc::dumpv(const real v[]) {
 }
 
 void NuOsc::write_z_at_vz() {
-
     FieldVar *v = v_stat;
-    
     outfile << phy_time << " ";
     for (int i=0;i<nz; i++) outfile << v->ee[idx(nvz/2+10, i)] << " ";
     outfile << endl;
 }
 
-
 int main(int argc, char *argv[]) {
 
-    int END_TIME   = 1800;
-    int DUMP_EVERY = 200;
-    int ANAL_EVERY = 10;
+    int END_TIME   = 9000;
+    int DUMP_EVERY = 1000;
+    int ANAL_EVERY = 50;
     
-    int nz  = 128;
-    int nvz = 128 + 1;
+    int nz  = 4;
+    int nvz = 256 + 1;
+    
+    real f0    = 1.0;
+    real alpha = 2.0;
 
     // TODO: Parse input argument
     for (int t = 1; argv[t] != 0; t++) {
@@ -530,6 +563,10 @@ int main(int argc, char *argv[]) {
 	    END_TIME   = atoi(argv[t+1]); t+=1;
 	} else if (strcmp(argv[t], "--ana") == 0 )  {
 	    DUMP_EVERY = atoi(argv[t+1]); t+=1;
+	} else if (strcmp(argv[t], "--f0") == 0 )  {
+	    f0 = atof(argv[t+1]); t+=1;
+	} else if (strcmp(argv[t], "--alpha") == 0 )  {
+	    alpha = atof(argv[t+1]); t+=1;
 	} else {
 	    printf("Unreconganized parameters %s!\n", argv[t]);
 	    exit(0);
@@ -540,7 +577,7 @@ int main(int argc, char *argv[]) {
     NuOsc state(nz, nvz);
 
     // initial value
-    state.fillInitValue();
+    state.fillInitValue(f0, alpha);
     state.write_bin(0);
 
     for (int t=1; t<=END_TIME; t++) {

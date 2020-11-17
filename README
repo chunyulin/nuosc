@@ -2,6 +2,7 @@ Use "make" to compile.
 
 Run with "./nuosc"
 
-Plot time snapshot with "go_cmap"
-Plot history with "go_rate"
+In plot/,
+plot snapshot with "./go_cmap"
+plot history with "./go_rate"
 ---

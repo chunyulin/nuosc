@@ -28,4 +28,4 @@ def plotrate(fname):
     plt.savefig("rhoxx.jpg")
 
 
-plotrate("../rate.dat")
+plotrate(sys.argv[1])
