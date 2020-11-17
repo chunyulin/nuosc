@@ -59,10 +59,10 @@ class NuOsc {
         real vz0, vz1;
         real  z0,  z1;
 
+        real mu = 100;
         const real theta = 0.01;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
-        const real mu = 100;
 
 	const float RND = 1.e-7;
         
@@ -91,7 +91,7 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 
-            real CFL = 0.1;
+            real CFL = 0.05;
             dz = (z1-z0)/nz;       // cell-center
 	    dt = CFL*dz/vz1;
 	    
@@ -125,6 +125,8 @@ class NuOsc {
             outfile.close();
         }
 
+        void set_mu(real mu_) { mu = mu_; }
+        
         void fillInitValue(real f0, real alpha, real beta);
         void updatePeriodicBufferZone(FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
@@ -135,6 +137,7 @@ class NuOsc {
         void analysis();
 	void _analysis_v(real res[], const real var[]);
 	void _analysis_c(real res[], const real vr[], const real vi[]);
+	void angle_integrated(real &res, const real vr[], const real vi[]);
         void dumpv(const real v[]);
         void write_z_at_vz();
         void write_bin(const int t);
@@ -154,12 +157,12 @@ void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
             //v_stat->ee    [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);    // Initialize with Gaussian shape
-            v_stat->ee    [idx(i,j)] = f0;    // Initialize with Gaussian shape
-            v_stat->ex_re [idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->ex_im [idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bee   [idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bex_re[idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bex_im[idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->ee    [idx(i,j)] = 0.99;    // Initialize with Gaussian shape
+            v_stat->ex_re [idx(i,j)] = random_amp(RND);
+            v_stat->ex_im [idx(i,j)] = random_amp(RND);
+            v_stat->bee   [idx(i,j)] = random_amp(RND);
+            v_stat->bex_re[idx(i,j)] = random_amp(RND);
+            v_stat->bex_im[idx(i,j)] = random_amp(RND);
           }
     }
 
@@ -495,8 +498,20 @@ void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
     res[3] = sqrt( sum2/(nz*nvz) - res[2]*res[2]  );
 }
 
-void NuOsc::analysis() {
+/* return the angle-integrated |v| == sqrt(vr**2+vi**2) */
+void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
+    int loc = nz/2;
+    real Iee    = 0.5*sqrt(vr[idx(loc,0)]*vr[idx(loc,0)]+vi[idx(loc,0)]*vi[idx(loc,0)]);
+    Iee        += 0.5*sqrt(vr[idx(loc,nvz-1)]*vr[idx(loc,nvz-1)]+vi[idx(loc,nvz-1)]*vi[idx(loc,nvz-1)]);
+    #pragma omp parallel for
+    for (int k=1;k<nvz-1; k++) {   // vz' integral
+	Iee   += sqrt(vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
+    }
 
+    res = dv*Iee;
+}
+
+void NuOsc::analysis() {
 
     //real statis1[4], statis2[4];
     //_analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
@@ -510,16 +525,17 @@ void NuOsc::analysis() {
     //                         << probe0 << endl;
 
     real pee [4];  _out_tmp(pee, v_stat->ee);
-    real pexr[4];  _out_tmp(pee, v_stat->ex_re);
-    real pexi[4];  _out_tmp(pee, v_stat->ex_im);
-    
-    printf("Time: %.5f  |ee|: %9.2g %9.2g %9.2g  |exr|: %9.2g %9.2g %9.2g   |exi|: %9.2g %9.2g %9.2g\n", phy_time,
+    real pexr[4];  _out_tmp(pexr, v_stat->ex_re);
+    real pexi[4];  _out_tmp(pexi, v_stat->ex_im);
+    real ai;
+    angle_integrated(ai, v_stat->ex_re,  v_stat->ex_im);
+    printf("Time: %.5f  |ee|: %9.2g %9.2g %9.2g  |exr|: %9.2g %9.2g %9.2g   |exi|: %9.2g %9.2g %9.2g  A= %g\n", phy_time,
 			pee[0],  pee[1],  pee[2],
 			pexr[0], pexr[1], pexr[2],
-			pexi[0], pexi[1], pexi[2] );
+			pexi[0], pexi[1], pexi[2], ai );
     anafile << phy_time <<" "<< pee[0]<<  " " << pee[1] <<  " " << pee[2] << " "
                              << pexr[0]<< " " << pexr[1] << " " << pexr[2] << " "
-                             << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << endl;
+                             << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << ai << endl;
 			
 }
 
@@ -544,15 +560,16 @@ void NuOsc::write_z_at_vz() {
 
 int main(int argc, char *argv[]) {
 
-    int END_TIME   = 9000;
+    int END_TIME   = 500;
     int DUMP_EVERY = 1000;
-    int ANAL_EVERY = 50;
+    int ANAL_EVERY = 1;
     
-    int nz  = 4;
+    int nz  = 8;
     int nvz = 256 + 1;
     
     real f0    = 1.0;
     real alpha = 2.0;
+    real mu = 100;
 
     // TODO: Parse input argument
     for (int t = 1; argv[t] != 0; t++) {
@@ -567,6 +584,8 @@ int main(int argc, char *argv[]) {
 	    f0 = atof(argv[t+1]); t+=1;
 	} else if (strcmp(argv[t], "--alpha") == 0 )  {
 	    alpha = atof(argv[t+1]); t+=1;
+	} else if (strcmp(argv[t], "--mu") == 0 )  {
+	    mu = atof(argv[t+1]); t+=1;
 	} else {
 	    printf("Unreconganized parameters %s!\n", argv[t]);
 	    exit(0);
@@ -575,7 +594,8 @@ int main(int argc, char *argv[]) {
 
     // Initialize simuation
     NuOsc state(nz, nvz);
-
+    state.set_mu(mu);
+    
     // initial value
     state.fillInitValue(f0, alpha);
     state.write_bin(0);
