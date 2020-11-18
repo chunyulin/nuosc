@@ -77,8 +77,8 @@ class NuOsc {
 
 	    //vz0 = -1.0;  vz1 =  1.0;
 	    //z0 = -1.0;   z1 =  1.0;
-	    vz0 = .0;  vz1 =  1.0;
-	    z0 = .0;   z1 =  1.0;
+	    vz0 = -1.0;  vz1 =  1.0;
+	    z0 = .0;     z1 =  1.0;
             nz  = nz_;
             gz  = gz_;
             nvz = nvz_;
@@ -96,9 +96,11 @@ class NuOsc {
 	    dt = CFL*dz/vz1;
 	    
 	    dv = (vz1-vz0)/(nvz-1.0);      // we let v as vertex-center
+	    //dv = (vz1-vz0)/nvz;      // we let v as cell-center
 
-	    for (int i=0;i<nz;  i++)	Z[i]  = z0 + (i+0.5)*dz;
-	    for (int i=0;i<nvz; i++)	vz[i] = vz0 + i*dv;
+	    for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
+	    for (int i=0;i<nvz; i++)	vz[i] = vz0 + i*dv;   // vertex-center
+	    //for (int i=0;i<nvz; i++)	vz[i] = vz0 + (i+0.5)*dv;
 	    
 	    printf("Initializing simulation NuOsc :\n\n");
 	    printf("   Domain: z:(0 1)[fixd] vz:(%f %f)\n", vz[0], vz[nvz-1]);
@@ -157,20 +159,21 @@ void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
             //v_stat->ee    [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);    // Initialize with Gaussian shape
-            v_stat->ee    [idx(i,j)] = 0.99;    // Initialize with Gaussian shape
-            v_stat->ex_re [idx(i,j)] = random_amp(RND);
-            v_stat->ex_im [idx(i,j)] = random_amp(RND);
-            v_stat->bee   [idx(i,j)] = random_amp(RND);
-            v_stat->bex_re[idx(i,j)] = random_amp(RND);
-            v_stat->bex_im[idx(i,j)] = random_amp(RND);
+            v_stat->ee    [idx(i,j)] = f0;
+            v_stat->ex_re [idx(i,j)] = 0.0;
+            v_stat->ex_im [idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bee   [idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bex_re[idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->bex_im[idx(i,j)] = 0.0;//random_amp(RND);
           }
     }
 
-    int nvz_b = int(beta*nvz);
+    //int nvz_b = int(beta*nvz);
     #pragma omp parallel for
-    for (int i=nvz_b;i<nvz; i++) {
+    for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
-            v_stat->bee   [idx(i,j)] = alpha;
+            real th = acos(vz[i]);
+            v_stat->bee   [idx(i,j)] = (1-0.05)+2*0.05*exp(-0.5*th*th);
             v_stat->bex_re[idx(i,j)] = 0.0;
             v_stat->bex_im[idx(i,j)] = 0.0;
           }
@@ -333,37 +336,38 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
                 Ibexi +=   mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
             }
             {   int k=0;  // Deal with end point for integral in vertex-center grid
-                real eep    = (in->ee    [idx(k,j)]);
-                real expr   = (in->ex_re [idx(k,j)]);
-                real expi   = (in->ex_im [idx(k,j)]);
-                real beep   = (in->bee   [idx(k,j)]);
-                real bexpr  = (in->bex_re[idx(k,j)]);
-                real bexpi  = (in->bex_im[idx(k,j)]);
-
-		// terms for -i* mu * [rho'-rho_bar', rho]
-		Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
-                Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
-                Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
-                Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
-                Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
-            }
-            {   int k=nvz-1;  // Deal with end point for integral in vertex-center grid
-                real eep    = (in->ee    [idx(k,j)]);
-                real expr   = (in->ex_re [idx(k,j)]);
-                real expi   = (in->ex_im [idx(k,j)]);
-                real beep   = (in->bee   [idx(k,j)]);
-                real bexpr  = (in->bex_re[idx(k,j)]);
-                real bexpi  = (in->bex_im[idx(k,j)]);
-
-		// terms for -i* mu * [rho'-rho_bar', rho]
-		Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
-                Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
-                Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
-                Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
-                Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
-            }
+                             real eep    = (in->ee    [idx(k,j)]);
+                             real expr   = (in->ex_re [idx(k,j)]);
+                             real expi   = (in->ex_im [idx(k,j)]);
+                             real beep   = (in->bee   [idx(k,j)]);
+                             real bexpr  = (in->bex_re[idx(k,j)]);
+                             real bexpi  = (in->bex_im[idx(k,j)]);
+            
+                     // terms for -i* mu * [rho'-rho_bar', rho]
+                     Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
+                             Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
+                             Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
+                             Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
+                             Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
+                             Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
+                         }
+                         {   int k=nvz-1;  // Deal with end point for integral in vertex-center grid
+                             real eep    = (in->ee    [idx(k,j)]);
+                             real expr   = (in->ex_re [idx(k,j)]);
+                             real expi   = (in->ex_im [idx(k,j)]);
+                             real beep   = (in->bee   [idx(k,j)]);
+                             real bexpr  = (in->bex_re[idx(k,j)]);
+                             real bexpi  = (in->bex_im[idx(k,j)]);
+            
+                     // terms for -i* mu * [rho'-rho_bar', rho]
+        	             Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
+                             Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
+                             Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
+                             Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
+                             Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
+                             Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
+                         }
+            
 
             // 3.1) calculate integral with simple trapezoidal rule
             out->ee    [idx(i,j)] += dv*Iee;
@@ -501,15 +505,26 @@ void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
 /* return the angle-integrated |v| == sqrt(vr**2+vi**2) */
 void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
     int loc = nz/2;
-    real Iee    = 0.5*sqrt(vr[idx(loc,0)]*vr[idx(loc,0)]+vi[idx(loc,0)]*vi[idx(loc,0)]);
-    Iee        += 0.5*sqrt(vr[idx(loc,nvz-1)]*vr[idx(loc,nvz-1)]+vi[idx(loc,nvz-1)]*vi[idx(loc,nvz-1)]);
-    #pragma omp parallel for
+    real sum = 0.0;
+    #pragma omp parallel for reduction(+: sum)
     for (int k=1;k<nvz-1; k++) {   // vz' integral
-	Iee   += sqrt(vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
+	sum   += (vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
     }
-
-    res = dv*Iee;
+    sum += 0.5*(vr[idx(loc,0)]*vr[idx(loc,0)]+vi[idx(loc,0)]*vi[idx(loc,0)]) +
+           0.5*(vr[idx(loc,nvz-1)]*vr[idx(loc,nvz-1)]+vi[idx(loc,nvz-1)]*vi[idx(loc,nvz-1)]);
+    res = dv*sum;
 }
+
+/* return the angle-integrated |v| == sqrt(vr**2+vi**2) */
+//void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
+//    int loc = nz/2;
+//    real sum = 0;
+//    #pragma omp parallel for reduction(+: sum)
+//    for (int k=0;k<nvz; k++) {   // vz' integral
+//	sum   += dv*sqrt(vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
+//    }
+//    res = sum;
+//}/
 
 void NuOsc::analysis() {
 
