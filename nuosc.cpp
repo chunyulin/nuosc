@@ -4,7 +4,7 @@
 #include <fstream>
 #include <cmath>
 
-#define ADVEC_OFF
+//#define ADVEC_OFF
 //#define MUINT_OFF
 #define BC_PERI
 
@@ -13,8 +13,6 @@ using std::endl;
 using std::cin;
 
 typedef double real;
-
-inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 
 typedef struct Vars {
     real* ee;
@@ -43,6 +41,14 @@ typedef struct Vars {
 } FieldVar;
 
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
+inline real random_amp(real a) { return a * rand() / RAND_MAX; }
+
+double g(double v, double v0, double sigma, double N){
+    double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
+    return exp(-exponant)/N;
+}
+inline real eps (real z, real z0) {return 0.1*exp( -(z-z0)*(z-z0) / 50.);}
+inline real eps_(real z, real z0) {real e = eps(z, z0); return sqrt(1.0 - e*e);}
 
 class NuOsc {
     public:
@@ -50,6 +56,7 @@ class NuOsc {
 
         // all field variables...
         real     *Z, *vz;
+        real* con1;
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
 
         int nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
@@ -59,10 +66,11 @@ class NuOsc {
         real vz0, vz1;
         real  z0,  z1;
 
-        real mu = 100;
-        const real theta = 0.01;
+        real mu = 33.0;//1e5/0.318*2.0*M_PI;//1000.0;
+        const real theta = 1e-6;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
+        const real pmo = 0.0; // 1.0 (-1.0) for normal (inverted) mass ordering, 0.0 for no vacuum term
 
 	const float RND = 1.e-7;
         
@@ -78,20 +86,21 @@ class NuOsc {
 	    //vz0 = -1.0;  vz1 =  1.0;
 	    //z0 = -1.0;   z1 =  1.0;
 	    vz0 = -1.0;  vz1 =  1.0;
-	    z0 = .0;     z1 =  1.0;
+	    z0 = -3.0;     z1 =  3.0;
             nz  = nz_;
             gz  = gz_;
             nvz = nvz_;
             int size = (nz+2*gz)*(nvz);
             Z      = new real[nz];
             vz     = new real[nvz];
+            con1   = new real[size];
 
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 
-            real CFL = 0.05;
+            real CFL = 0.1;
             dz = (z1-z0)/nz;       // cell-center
 	    dt = CFL*dz/vz1;
 	    
@@ -103,7 +112,7 @@ class NuOsc {
 	    //for (int i=0;i<nvz; i++)	vz[i] = vz0 + (i+0.5)*dv;
 	    
 	    printf("Initializing simulation NuOsc :\n\n");
-	    printf("   Domain: z:(0 1)[fixd] vz:(%f %f)\n", vz[0], vz[nvz-1]);
+	    printf("   Domain: z:(%f %f)  vz:(%f %f)\n", z0,z1, vz0,vz1);
 	    printf("   (Nvz, Nz) = (%d, %d) with z-buffer zone %d.\n", nz, nvz, gz);
 	    printf("   dz = %g\n", dz);
 	    printf("   dt = %g\n\n", dt);
@@ -120,7 +129,9 @@ class NuOsc {
         //}
 
         ~NuOsc() {
+            delete[] Z;
             delete[] vz;
+            delete[] con1;
             delete v_stat, v_rhs, v_pre, v_cor;
             
             anafile.close();
@@ -142,44 +153,51 @@ class NuOsc {
 	void angle_integrated(real &res, const real vr[], const real vi[]);
         void dumpv(const real v[]);
         void write_z_at_vz();
+        void eval_conserved();
         void write_bin(const int t);
 
     inline void _out_tmp(real res[], const real v[]) {
-        res[0] = v[idx(0, 1)];
-        res[1] = v[idx(50, 1)];
-        res[2] = v[idx(100, 1)];
+        res[0] = v[idx(0,             nz/2)];
+        res[1] = v[idx(int(nvz*0.75), nz/2)];
+        res[2] = v[idx(nvz-1,         nz/2)];
     }
 
 };
 
-void NuOsc::fillInitValue(real f0 = 1.0, real alpha=2.0, real beta=0.5) {
+void NuOsc::eval_conserved() {
+    
+    real p1, p2, p3;
+    for (int i=0;i<nvz; i++) {
+          for (int j=0;j<nz; j++) {
+          
+            p1 = 2*v_stat->ex_re[idx(i,j)];
+            p2 = 2*v_stat->ex_im[idx(i,j)];
+            p3 = 0.5*( v_stat->ee[idx(i,j)]-v_stat->ee[idx(i,j)] );
+            con1[idx(i,j)] = p1*p1 + p2*p2 + p3*p3;
+          }
+    }
+}
 
-    // Init value
+void NuOsc::fillInitValue(real f0, real alpha, real beta = 0.0) {
+
     #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
-            //v_stat->ee    [idx(i,j)] = 1.0*exp(-Z[j]*Z[j]*100);    // Initialize with Gaussian shape
-            v_stat->ee    [idx(i,j)] = f0;
-            v_stat->ex_re [idx(i,j)] = 0.0;
-            v_stat->ex_im [idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bee   [idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bex_re[idx(i,j)] = 0.0;//random_amp(RND);
-            v_stat->bex_im[idx(i,j)] = 0.0;//random_amp(RND);
+            v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 * (1.0+eps_(dz*j, dz*nz/2));
+            v_stat->ex_re[idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 *      eps(dz*j, dz*nz/2);         //1e-6;
+    	    v_stat->ex_im[idx(i,j)] = 0.0;
           }
     }
 
-    //int nvz_b = int(beta*nvz);
     #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
-            real th = acos(vz[i]);
-            v_stat->bee   [idx(i,j)] = (1-0.05)+2*0.05*exp(-0.5*th*th);
-            v_stat->bex_re[idx(i,j)] = 0.0;
-            v_stat->bex_im[idx(i,j)] = 0.0;
+
+            v_stat->bee   [idx(i,j)] = 0.97*g(vz[i], 1.0, 0.53, 6.736495e-01)*0.5*(1.0+eps_(dz*j, dz*nz/2));
+            v_stat->bex_re[idx(i,j)] = 0.97*g(vz[i], 1.0, 0.53, 6.736495e-01)*0.5*eps(dz*j, dz*nz/2);//1e-6;
+    	    v_stat->bex_im[idx(i,j)] = 0.0;  //random_amp(0.001);
           }
     }
-
-
 
     // Init boundary
     #ifdef BC_PERI
@@ -292,12 +310,12 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             real *bexi  = &(in->bex_im[idx(i,j)]);
 
             // 1) prepare terms for -i [H0, rho]
-            out->ee    [idx(i,j)] = -2*st*exi [0];
-            out->ex_re [idx(i,j)] = -2*ct*exi [0];
-            out->ex_im [idx(i,j)] =  2*ct*exr [0] + st*( 2*ee[0] -1 );
-            out->bee   [idx(i,j)] = -2*st*bexi[0];
-            out->bex_re[idx(i,j)] = -2*ct*bexi[0];
-            out->bex_im[idx(i,j)] =  2*ct*bexr[0] + st*( 2*bee[0]-1 );
+            out->ee    [idx(i,j)] = -2*st*exi [0] *pmo;
+            out->ex_re [idx(i,j)] = -2*ct*exi [0] *pmo;
+            out->ex_im [idx(i,j)] =  (2*ct*exr [0] + st*( 2*ee[0] -1 ) )*pmo;
+            out->bee   [idx(i,j)] = -2*st*bexi[0] *pmo;
+            out->bex_re[idx(i,j)] = -2*ct*bexi[0] *pmo;
+            out->bex_im[idx(i,j)] =  (2*ct*bexr[0] + st*( 2*bee[0]-1 ) )*pmo;
 
 #ifndef ADVEC_OFF
             // 2) advection term:
@@ -528,6 +546,8 @@ void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
 
 void NuOsc::analysis() {
 
+    eval_conserved();
+
     //real statis1[4], statis2[4];
     //_analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
     //_analysis_v(statis2, v_stat->bee);
@@ -539,6 +559,7 @@ void NuOsc::analysis() {
     //                         << statis2[0]<< " " << statis2[1] << " " << statis2[3] << " "
     //                         << probe0 << endl;
 
+/*
     real pee [4];  _out_tmp(pee, v_stat->ee);
     real pexr[4];  _out_tmp(pexr, v_stat->ex_re);
     real pexi[4];  _out_tmp(pexi, v_stat->ex_im);
@@ -551,7 +572,12 @@ void NuOsc::analysis() {
     anafile << phy_time <<" "<< pee[0]<<  " " << pee[1] <<  " " << pee[2] << " "
                              << pexr[0]<< " " << pexr[1] << " " << pexr[2] << " "
                              << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << ai << endl;
-			
+*/
+
+    real st[4];
+    _analysis_v(st, con1);
+                
+    printf("Time: %.5f  min/max/std of |sum p_i^2|: %9.2g %9.2g %9.2g\n", phy_time, st[0], st[1], st[3]);
 }
 
 void NuOsc::dumpv(const real v[]) {
@@ -569,22 +595,23 @@ void NuOsc::dumpv(const real v[]) {
 void NuOsc::write_z_at_vz() {
     FieldVar *v = v_stat;
     outfile << phy_time << " ";
-    for (int i=0;i<nz; i++) outfile << v->ee[idx(nvz/2+10, i)] << " ";
+    int ivz = int(nvz*0.75);
+    for (int i=0;i<nz; i++) outfile << v->ee[idx(ivz, i)] << " ";
     outfile << endl;
 }
 
 int main(int argc, char *argv[]) {
 
-    int END_TIME   = 500;
-    int DUMP_EVERY = 1000;
+    int END_TIME   = 1000;
+    int DUMP_EVERY = 200;
     int ANAL_EVERY = 1;
     
-    int nz  = 8;
-    int nvz = 256 + 1;
+    int nz  = 4096;
+    int nvz = 128 + 1;
     
     real f0    = 1.0;
-    real alpha = 2.0;
-    real mu = 100;
+    real alpha = 0.2;
+    real mu = 33;
 
     // TODO: Parse input argument
     for (int t = 1; argv[t] != 0; t++) {
@@ -620,7 +647,7 @@ int main(int argc, char *argv[]) {
 
         if ( t%ANAL_EVERY==0)  {
     	    state.analysis();
-    	    //state.write_z_at_vz();
+    	    state.write_z_at_vz();
     	}
         if ( t%DUMP_EVERY==0)  state.write_bin(t);
     }

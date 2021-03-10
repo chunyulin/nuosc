@@ -14,12 +14,12 @@ if len(sys.argv) == 1:
 
 
 def plotmap(fname):
-    data = np.loadtxt(fname)
+    data = np.flip(np.loadtxt(fname), 1)
 
     plt.figure(figsize=(8, 6))
-    im = plt.imshow(data[:,1:], extent=[-1,1, data[-1,0], data[0,0]], aspect='auto')
-    plt.xlabel("Z")
-    plt.ylabel("Phy time")
+    im = plt.imshow(np.transpose(data[:,:-1]), extent=[data[0,-1], data[-1,-1], -3,3], aspect='auto')   ## extent=[t0, tn, z0, z1]
+    plt.ylabel("Z")
+    plt.xlabel("Phy time")
     plt.colorbar(im)
 
     plt.savefig("writez.jpg")
