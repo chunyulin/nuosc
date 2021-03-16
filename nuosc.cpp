@@ -170,10 +170,10 @@ void NuOsc::eval_conserved() {
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
           
-            p1 = 2*v_stat->ex_re[idx(i,j)];
-            p2 = 2*v_stat->ex_im[idx(i,j)];
-            p3 = 0.5*( v_stat->ee[idx(i,j)]-v_stat->ee[idx(i,j)] );
-            con1[idx(i,j)] = p1*p1 + p2*p2 + p3*p3;
+            p1 = v_stat->ex_re[idx(i,j)];
+            p2 = v_stat->ex_im[idx(i,j)];
+            p3 = 2*v_stat->ee[idx(i,j)] - 1.0;
+            con1[idx(i,j)] = p1*p1 + p2*p2 + 0.25*p3*p3;
           }
     }
 }
