@@ -25,7 +25,46 @@ def plotmap(fname):
     plt.savefig("writez.jpg")
     plt.close()
 
+def plotmap1d(fname):
+    data = np.loadtxt(fname)
+    d = np.shape(data)[0]
+    
+    
+    plt.figure(figsize=(8, 6))
+    
+    for i in range(0,d):
+	plt.plot(data[i,1:], label=data[i,0], linewidth=1.0)
+	
+    #plt.ylim(-0.1, 0.1)
+    
+    plt.xlabel("Z")
+    plt.legend()
+
+    plt.savefig("writez1d.jpg")
+    plt.close()
+
+def plotmap1d_diff(fname):
+    data = np.loadtxt(fname)
+    d = np.shape(data)[0]
+    
+    
+    plt.figure(figsize=(8, 6))
+    
+    for i in range(0,d):
+	plt.plot(data[i,1:]-data[0,1:], label=data[i,0], linewidth=1.0)
+	
+    #plt.ylim(-0.1, 0.1)
+    
+    plt.xlabel("Z")
+    plt.ylabel("ee(t) - ee(0)")
+    plt.legend()
+
+    plt.savefig("writez1d_diff.jpg")
+    plt.close()
+
 for fn in sys.argv[1:]:
 
     print("Plotting {}".format(fn))
-    plotmap(fn)
+    #plotmap(fn)
+    plotmap1d(fn)
+    plotmap1d_diff(fn)

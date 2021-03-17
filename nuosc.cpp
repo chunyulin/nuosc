@@ -5,7 +5,7 @@
 #include <cmath>
 
 //#define ADVEC_OFF
-//#define MUINT_OFF
+#define MUINT_OFF
 #define BC_PERI
 
 using std::cout;
@@ -83,14 +83,13 @@ class NuOsc {
 
         NuOsc(const int nz_, const int nvz_, const int gz_ = 2) : phy_time(0.)  {
 
-	    //vz0 = -1.0;  vz1 =  1.0;
-	    //z0 = -1.0;   z1 =  1.0;
 	    vz0 = -1.0;  vz1 =  1.0;
-	    z0 = -3.0;     z1 =  3.0;
+	    z0  = -1.0;   z1 =  1.0;
             nz  = nz_;
             gz  = gz_;
             nvz = nvz_;
             int size = (nz+2*gz)*(nvz);
+
             Z      = new real[nz];
             vz     = new real[nvz];
             con1   = new real[size];
@@ -100,7 +99,7 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 
-            real CFL = 0.1;
+            real CFL = 0.25;
             dz = (z1-z0)/nz;       // cell-center
 	    dt = CFL*dz/vz1;
 	    
@@ -183,7 +182,8 @@ void NuOsc::fillInitValue(real f0, real alpha, real beta = 0.0) {
     #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
           for (int j=0;j<nz; j++) {
-            v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 * (1.0+eps_(dz*j, dz*nz/2));
+            v_stat->ee   [idx(i,j)] = exp(-Z[j]*Z[j]*50);
+            //v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 * (1.0+eps_(dz*j, dz*nz/2));
             v_stat->ex_re[idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 *      eps(dz*j, dz*nz/2);         //1e-6;
     	    v_stat->ex_im[idx(i,j)] = 0.0;
           }
@@ -595,44 +595,20 @@ void NuOsc::dumpv(const real v[]) {
 void NuOsc::write_z_at_vz() {
     FieldVar *v = v_stat;
     outfile << phy_time << " ";
-    int ivz = int(nvz*0.75);
+    int ivz = int(nvz-1);
     for (int i=0;i<nz; i++) outfile << v->ee[idx(ivz, i)] << " ";
     outfile << endl;
 }
 
 int main(int argc, char *argv[]) {
 
-    int END_TIME   = 1000;
-    int DUMP_EVERY = 200;
-    int ANAL_EVERY = 1;
-    
-    int nz  = 4096;
-    int nvz = 128 + 1;
+    int nz  = 256;
+    int nvz = 4 + 1;
     
     real f0    = 1.0;
     real alpha = 0.2;
     real mu = 33;
 
-    // TODO: Parse input argument
-    for (int t = 1; argv[t] != 0; t++) {
-	if (strcmp(argv[t], "--dim") == 0 )  {
-	    nz  = atoi(argv[t+1]);
-	    nvz = atoi(argv[t+2]);     t+=2;
-	} else if (strcmp(argv[t], "--time") == 0 )  {
-	    END_TIME   = atoi(argv[t+1]); t+=1;
-	} else if (strcmp(argv[t], "--ana") == 0 )  {
-	    DUMP_EVERY = atoi(argv[t+1]); t+=1;
-	} else if (strcmp(argv[t], "--f0") == 0 )  {
-	    f0 = atof(argv[t+1]); t+=1;
-	} else if (strcmp(argv[t], "--alpha") == 0 )  {
-	    alpha = atof(argv[t+1]); t+=1;
-	} else if (strcmp(argv[t], "--mu") == 0 )  {
-	    mu = atof(argv[t+1]); t+=1;
-	} else {
-	    printf("Unreconganized parameters %s!\n", argv[t]);
-	    exit(0);
-	}
-    }
 
     // Initialize simuation
     NuOsc state(nz, nvz);
@@ -640,16 +616,21 @@ int main(int argc, char *argv[]) {
     
     // initial value
     state.fillInitValue(f0, alpha);
-    state.write_bin(0);
+    state.write_z_at_vz();
+    state.analysis();
 
-    for (int t=1; t<=END_TIME; t++) {
+    int ANAL_EVERY = int(10.0/state.dt);
+    int END_TIME   = ANAL_EVERY*20;
+    int DUMP_EVERY = 100000*END_TIME;
+
+    for (int it=1; it<=END_TIME; it++) {
         state.step_rk4();
 
-        if ( t%ANAL_EVERY==0)  {
+        if ( it%ANAL_EVERY==0)  {
     	    state.analysis();
     	    state.write_z_at_vz();
     	}
-        if ( t%DUMP_EVERY==0)  state.write_bin(t);
+        if ( it%DUMP_EVERY==0)  state.write_bin(it);
     }
 
     printf("Completed.\n");
