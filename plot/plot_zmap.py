@@ -7,25 +7,63 @@ import numpy as np
 import os
 import sys
 
-
 if len(sys.argv) == 1:
     print("Usage ./plot_cmap.py [data file].\n")
     sys.exit(1)
 
-
 def plotmap(fname):
-    data = np.flip(np.loadtxt(fname), 1)
+    basename = os.path.basename(fname).split('.')[0]
+    with open(fname) as f:
+	nz, z0, z1 = np.array( f.readline().split(' ')).astype(np.float)
+
+    print("Plotting {} in z [{}:{}] ({})".format(fn, z0, z1, nz))
 
     plt.figure(figsize=(8, 6))
-    im = plt.imshow(np.transpose(data[:,:-1]), extent=[data[0,-1], data[-1,-1], -3,3], aspect='auto')   ## extent=[t0, tn, z0, z1]
-    plt.ylabel("Z")
-    plt.xlabel("Phy time")
+
+    data = np.loadtxt(fname, skiprows=1)
+    im = plt.imshow(data[:,1:], extent=[float(z0), float(z1), data[0,0], data[-1,0]], origin='lower', aspect='auto', interpolation='none')
+    plt.xlabel("Z")
+    plt.ylabel("Phy time")
     plt.colorbar(im)
 
-    plt.savefig("writez.jpg")
+    plt.plot([z0,0,z1],[np.abs(z0), 0, np.abs(z1)], 'r--')
+
+
+    plt.savefig("{}.jpg".format(basename))
     plt.close()
+    
+def plot1dmap(fname):
+    basename = os.path.basename(fname).split('.')[0]
+    with open(fname) as f:
+	nz, z0, z1 = np.array( f.readline().split(' ')).astype(np.float)
+    dz=(z1-z0)/nz
+    Z = np.linspace(z0+0.5*dz,z1-0.5*dz,nz)
 
+    print("Plotting {} in z [{}:{}] ({})".format(fn, z0, z1, nz))
+    data = np.loadtxt(fname, skiprows=1)
+    nt = np.shape(data)[0]
+
+    ## 1d
+    plt.figure(figsize=(8, 6))
+    for i in range(nt):
+        plt.plot(Z, data[i,1:], label=data[i,0], linewidth=0.9)
+    plt.xlabel("Z")
+    plt.ylabel("")
+    plt.legend()
+    plt.savefig("{}_1d.jpg".format(basename))
+    plt.close()
+    
+    ## 1d diff
+    plt.figure(figsize=(8, 6))
+    for i in range(1,nt):
+        plt.plot(Z, data[i,1:]-data[i-1,1:], label=data[i,0], linewidth=.9)
+    plt.xlabel("Z")
+    plt.ylabel("")
+    plt.legend()
+    plt.savefig("{}_1d_diff.jpg".format(basename))
+    plt.close()
+    
+    
 for fn in sys.argv[1:]:
-
-    print("Plotting {}".format(fn))
     plotmap(fn)
+    plot1dmap(fn)

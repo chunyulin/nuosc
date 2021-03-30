@@ -1,3 +1,4 @@
 source /pkg/ENV/pycbc_py2/init
 
-python plot_zmap.py ../writez.dat
+python plot_zmap.py ../z_at0.dat
+python plot_zmap.py ../z_at1.dat
