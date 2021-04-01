@@ -13,7 +13,7 @@ echo "========================================"
 module purge
 module load ThunderX2CN99/RHEL/7/gcc-9.3.0/armpl
 
-srun --cpu-bind=v,cores ../nuosc --dz ${DZ} --zmax ${ZMAX} --cfl ${CFL} --nvz ${NVZ} --ko ${KO}
+srun --cpu-bind=v,cores ../nuosc --dz ${DZ} --zmax ${ZMAX} --cfl ${CFL} --nvz ${NVZ} --ko ${KO} --mu ${MU}
 echo "--- Walltime: $${SECONDS} sec."
                 
 bash ./go_zmap

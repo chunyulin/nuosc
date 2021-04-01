@@ -24,6 +24,7 @@ def plotmap(fname):
     im = plt.imshow(data[:,1:], extent=[float(z0), float(z1), data[0,0], data[-1,0]], origin='lower', aspect='auto', interpolation='none')
     plt.xlabel("Z")
     plt.ylabel("Phy time")
+    plt.title(basename)
     plt.colorbar(im)
 
     plt.plot([z0,0,z1],[np.abs(z0), 0, np.abs(z1)], 'r--')
@@ -41,26 +42,27 @@ def plot1dmap(fname):
 
     print("Plotting {} in z [{}:{}] ({})".format(fn, z0, z1, nz))
     data = np.loadtxt(fname, skiprows=1)
-    nt = np.shape(data)[0]
-
+    nt    = np.shape(data)[0]
+    pltnt = range(1,nt, nt//10)
+    
     ## 1d
     plt.figure(figsize=(8, 6))
-    for i in range(nt):
+    for i in [0]+pltnt:
         plt.plot(Z, data[i,1:], label=data[i,0], linewidth=0.9)
     plt.xlabel("Z")
-    plt.ylabel("")
-    plt.legend()
-    plt.savefig("{}_1d.jpg".format(basename))
+    plt.ylabel(basename)
+    lg=plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.savefig("{}_1d.jpg".format(basename), bbox_inches='tight', bbox_extra_artists=(lg,))
     plt.close()
-    
+
     ## 1d diff
     plt.figure(figsize=(8, 6))
-    for i in range(1,nt):
+    for i in pltnt:
         plt.plot(Z, data[i,1:]-data[i-1,1:], label=data[i,0], linewidth=.9)
     plt.xlabel("Z")
-    plt.ylabel("")
-    plt.legend()
-    plt.savefig("{}_1d_diff.jpg".format(basename))
+    plt.ylabel("{}, diff from the last time".format(basename))
+    lg=plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.savefig("{}_1d_diff.jpg".format(basename), bbox_inches='tight', bbox_extra_artists=(lg,))
     plt.close()
     
     

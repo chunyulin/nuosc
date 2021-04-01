@@ -1,9 +1,13 @@
 source /pkg/ENV/pycbc_py2/init
 
-python plot_rate.py
+DFINAL=2040
+DSTEP=204
 
-for (( i=0; i<=1000; i+=200 )); do
+for (( i=0; i<=${DFINAL}; i+=${DSTEP} )); do
     python plot_cmap.py $(printf "../stat_%04d.bin\n" $i) &
 done
+
+#python plot_rate.py
+
 
 wait

@@ -5,6 +5,8 @@ import subprocess
 
 tpl = Template( open( 'sub.slurm.tpl', 'r').read() )
 
+mu = 1.0
+
 ZMAX = {512.0}
 CFL = {0.25}
 DZ = {0.25}
@@ -30,7 +32,7 @@ for zmax in ZMAX:
 	    pass
 
         fo = open(fullsub, "w")
-	fo.write( tpl.substitute(DZ=dz, NVZ=nvz, CFL=cfl, ZMAX=zmax, KO=ko, JNAME=dirname) )
+	fo.write( tpl.substitute(DZ=dz, NVZ=nvz, CFL=cfl, ZMAX=zmax, KO=ko, JNAME=dirname, MU=mu) )
 	fo.close()
 	
 	#os.system("sbatch "+ subname )
