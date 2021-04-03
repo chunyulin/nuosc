@@ -2,7 +2,8 @@ Use "make" to compile.
 
 Run with "./nuosc"
 
-In plot/,
+after that, "cd plot", and
+plot z-evolution with "./go_zmap"
 plot snapshot with "./go_cmap"
 plot history with "./go_rate"
 ---

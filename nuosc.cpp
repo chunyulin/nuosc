@@ -7,9 +7,9 @@
 #include <cmath>
 #include <omp.h>
 
-//#define ADVEC_OFF
 #define BC_PERI
-//#define KO_ORD_3
+//#define ADVEC_OFF
+#define KO_ORD_3
 
 using std::cout;
 using std::endl;
@@ -47,21 +47,23 @@ inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b =
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
+// for init data
+inline real eps (real z, real z0) { return 0.1*exp( -(z-z0)*(z-z0) / 50.); }
+inline real eps_(real z, real z0) { real e = eps(z, z0); return sqrt(1.0 - e*e); }
 double g(double v, double v0, double sigma, double N){
     double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
     return exp(-exponant)/N;
 }
-inline real eps (real z, real z0) {return 0.1*exp( -(z-z0)*(z-z0) / 50.);}
-inline real eps_(real z, real z0) {real e = eps(z, z0); return sqrt(1.0 - e*e);}
 
 class NuOsc {
     public:
         real phy_time, dt;
 
-        // all field variables...
+        // all coordinates
         real  *vz, *Z;
-        real* con1;
+        // all field variables
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
+        real* con1;
 
         int nvz; // Dim of vz (Vertex-center grid used.)
         int nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
@@ -89,7 +91,6 @@ class NuOsc {
         inline unsigned int idx(const int i, const int j) { return i*(nz+2*gz) + (j+gz); }    // i:vz   j:z (last index)
         inline unsigned int idz(const int j) { return j; }
 
-
         NuOsc(const int  nvz_, const int   nz_,
               const real vz0_, const real vz1_,
               const real  z0_, const real  z1_,
@@ -112,8 +113,8 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 
-            dv = (vz1-vz0)/(nvz-1);      // we let v as vertex-center
-            //dv = (vz1-vz0)/nvz;      // we let v as cell-center
+            dv = (vz1-vz0)/(nvz-1);      // for v as vertex-center
+            //dv = (vz1-vz0)/nvz;      // for v as cell-center
             dz = (z1-z0)/nz;       // cell-center
             dt = dz*CFL;
 
@@ -122,10 +123,9 @@ class NuOsc {
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
 
             printf("\n\nNuOsc with max OpenMP core: %d\n\n", omp_get_max_threads() );
-            printf("   Domain: vz:( %12f %12f )  nvz = %5d                   dv = %g\n", vz0,vz1, nvz, dv);
-            printf("            z:( %12f %12f )  nz  = %5d  buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
-            printf("   dt     = %g        CFL = %g\n", dt, CFL);
-            printf("   KO eps = %g\n", ko);
+            printf("   Domain: vz:( %12f %12f )  nvz = %5d                     dv = %g\n", vz0,vz1, nvz, dv);
+            printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
+            printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
             printf("   Use Periodic boundary\n");
 #else
@@ -136,11 +136,11 @@ class NuOsc {
 #else
             printf("   Use 5-th order KO dissipation\n");
 #endif
-
+            printf("   KO eps = %g\n", ko);
 
             //anafile.open("rate.dat", std::ofstream::out | std::ofstream::trunc);
             //if(!anafile) cout << "*** Open fails: " << "./rate.dat" << endl;
-            
+
             // dump at highest/lowest v-mode
             ee_vl.open("ee_vl.dat", std::ofstream::out | std::ofstream::trunc);
             ee_vl << nz << " " << z0 << " " << z1 << endl;
@@ -175,7 +175,7 @@ class NuOsc {
             delete v_stat, v_rhs, v_pre, v_cor;
 
             anafile.close();
-            
+
             ee_vl.close();    ee_vh.close();    ee_vm.close();
             exr_vl.close();  exr_vh.close();
             exi_vl.close();  exi_vh.close();
@@ -183,9 +183,9 @@ class NuOsc {
         }
 
         void set_mu(real mu_) { 
-    	    mu = mu_;
+            mu = mu_;
             printf("   Setting mu = %f\n\n", mu);
-    	}
+        }
 
         void fillInitValue(real f0, real alpha, real beta);
         void updatePeriodicBoundary(FieldVar * in);
@@ -308,21 +308,10 @@ void NuOsc::updatePeriodicBoundary(FieldVar * in) {
 
 void NuOsc::updateInjetOpenBoundary(FieldVar * in) {
     // Cell-center for z:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
-
-    /*  Constant injection at z~0.
+    // Open boundary at two ends
 #pragma omp parallel for
-for (int i=0;i<nvz; i++) {
-in->ee    [idx(i,nz/2)]    = 0.8;
-in->ee    [idx(i,nz/2+1)]  = 0.8;
-in->bee   [idx(i,nz/2)]    = 0.4;
-in->bee   [idx(i,nz/2+1)]  = 0.4;
-}
-*/
-
-// Open boundary at two ends
-#pragma omp parallel for
-for (int i=0;i<nvz; i++) {
-    for (int j=0;j<gz; j++) {
+    for (int i=0;i<nvz; i++)
+	for (int j=0;j<gz; j++) {
         //lower open side, estimated simply by extrapolation
         in->ee    [idx(i,-j-1)] = in->ee    [idx(i,-j)]*2 - in->ee    [idx(i,-j+1)];
         in->ex_re [idx(i,-j-1)] = in->ex_re [idx(i,-j)]*2 - in->ex_re [idx(i,-j+1)];
@@ -338,12 +327,10 @@ for (int i=0;i<nvz; i++) {
         in->bee   [idx(i,nz+j)] = in->bee   [idx(i,nz+j-1)]*2 - in->bee   [idx(i,nz+j-2)];
         in->bex_re[idx(i,nz+j)] = in->bex_re[idx(i,nz+j-1)]*2 - in->bex_re[idx(i,nz+j-2)];
         in->bex_im[idx(i,nz+j)] = in->bex_im[idx(i,nz+j-1)]*2 - in->bex_im[idx(i,nz+j-2)];
-    }
-}
+	}
 }
 
 void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
-
 #pragma omp parallel for
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
@@ -364,11 +351,11 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             out->bex_im[idx(i,j)] =  pmo * ( 2*ct*bexr[0] + st*( 2*bee[0]-1 ) );
 
 #ifndef ADVEC_OFF
-#if 0
-            // advection term: (lopsided finite differencing)   !!! Blow-up !!!!
+#if 1
+            // advection term: (lopsided finite differencing)
             int sv = sgn(vz[i]);
             real factor = sv*vz[i]/(12*dz);
-            #define ADV_FD(x)  ( x[sv*3] - 6*x[sv*2] + 18*x[sv] - 10*x[0] - 3*x[-sv] )
+            #define ADV_FD(x)  ( x[-3*sv] - 6*x[-2*sv] + 18*x[-sv] - 10*x[0] - 3*x[sv] )
 #else
             // 2) advection term: (central FD)
             //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
@@ -384,7 +371,7 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
 	    #undef ADV_FD
 #endif
 
-if (mu>0.0) {
+    if (mu>0.0) {
             // 3) interaction terms: vz-integral with a simple trapezoidal rule (can be optimized later)
             real Iee    = 0;
             real Iexr   = 0;
@@ -448,16 +435,15 @@ if (mu>0.0) {
             out->bee   [idx(i,j)] += dv*Ibee;
             out->bex_re[idx(i,j)] += dv*Ibexr;
             out->bex_im[idx(i,j)] += dv*Ibexi;
-}
-
+    } // end of mu-part
 
 #ifdef KO_ORD_3
             // Kreiss-Oliger dissipation (3-nd order)
-            real ko_eps = -ko/(dz*dz*dz)/16.0;
+            real ko_eps = -ko/dz/16.0;
             #define KO_FD(x)  ( x[-2] + x[2] - 4*(x[-1]+x[1]) + 6*x[0] )
 #else
-            // Kreiss-Oliger dissipation (5-th order). Need smaller ko
-            real ko_eps = -ko/(dz*dz*dz*dz*dz)/64.0;
+            // Kreiss-Oliger dissipation (5-th order)
+            real ko_eps = -ko/dz/64.0;
             #define KO_FD(x)  ( x[-3] + x[3] - 6*(x[-2]+x[2]) + 15*(x[-1]+x[1]) - 20*x[0] )
 #endif
             out->ee    [idx(i,j)] += ko_eps * KO_FD(ee);
@@ -470,6 +456,7 @@ if (mu>0.0) {
         }
 }
 
+// v0 = v1 + a * v2
 void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2) {
 #pragma omp parallel for
     for (int i=0;i<nvz; i++)
@@ -484,6 +471,7 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
         }
 }
 
+// v0 = v1 + a * ( v2 + v3 )
 void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3) {
 #pragma omp parallel for
     for (int i=0;i<nvz; i++)
@@ -644,16 +632,14 @@ void NuOsc::analysis() {
        anafile << phy_time <<" "<< pee[0]<<  " " << pee[1] <<  " " << pee[2] << " "
        << pexr[0]<< " " << pexr[1] << " " << pexr[2] << " "
        << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << ai << endl;
-       */
+    */
 
-    real st[4];
-    _analysis_v(st, con1);
+    real st[4];  _analysis_v(st, con1);
 
     printf("Phy time: %.5f  min/max/std of |sum p_i^2|: %9.2g %9.2g %9.2g\n", phy_time, st[0], st[1], st[3]);
 }
 
 void NuOsc::dumpv(const real v[]) {
-
     cout << "	=== ee component ===" << endl;
     for (int i=0;i<nvz; i++) {
         for (int j=-gz;j<nz+gz; j++) {
@@ -695,7 +681,7 @@ int main(int argc, char *argv[]) {
     real dz  = 0.125;
     real z0  = -100;      real z1  =  -z0;
     real vz0 = -1;       real vz1 =  -vz0;    int nvz = 8 + 1;
-    real cfl = 0.25;     real ko = 1e-6;
+    real cfl = 0.25;     real ko = 1e-4;
 
     real mu  = 0.0;
 
@@ -734,14 +720,13 @@ int main(int argc, char *argv[]) {
     int DUMP_EVERY = ANAL_EVERY*9999;
 #endif
 
-    real f0    = 1.0;
-    real alpha = 0.97;
-
     // Initialize simuation
     NuOsc state(nvz, nz, vz0, vz1, z0, z1, cfl, ko);
     state.set_mu(mu);
 
     // initial value
+    real f0    = 1.0;
+    real alpha = 0.97;
     state.fillInitValue(f0, alpha);
 
     // analysis for t=0
