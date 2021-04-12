@@ -7,5 +7,4 @@ python plot_zmap.py ../exr_vh.dat   &
 python plot_zmap.py ../con_vl.dat   &
 python plot_zmap.py ../con_vh.dat   &
 
-
 wait

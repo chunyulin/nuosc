@@ -5,25 +5,25 @@ import subprocess
 
 tpl = Template( open( 'sub.slurm.tpl', 'r').read() )
 
-CFL = {0.25}
-NVZ ={13}
-ZMAX = {512.0}
-DZ = {0.25}
-KO ={1e-5, 1e-6}
-MU = {0.0, 0.2, 0.5, 1.0}
+CFL = [0.25]
+NVZ = [13]
+ZMAX = [512.0]
+DZ = [0.25]
+MU = [0.0]
+KO =[0.0, 0.01, 0.001, 1e-3, 1e-4]
 
 ###
 ### generate sub script and run in sub folders
 ###
 
-cfl = CFL[0]
 nvz = NVZ[0]
 
-for zmax in ZMAX:
+for cfl in CFL:
+ for zmax in ZMAX:
   for dz in DZ:
      for ko in KO:
       for mu in MU:
-        dirname = "ko3_{}_mu{}".format(ko, mu)
+        dirname = "ko5_{}_mu{}".format(ko, mu)
 	subname = "sub.slurm"
 	fullsub = "{}/{}".format(dirname, subname)
 	

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name ${JNAME}
-#SBATCH --nodes 1 --ntasks-per-node 1 --cpus-per-task 192
+#SBATCH --nodes 1 --ntasks-per-node 1 --cpus-per-task 60
 #SBATCH --mem-bind=verbose,p
 
 echo "SLURM_JOBID        : " $$SLURM_JOBID

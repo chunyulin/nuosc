@@ -8,8 +8,10 @@
 #include <omp.h>
 
 #define BC_PERI
+//#define KO_ORD_3
+#define ADVEC_CENTER_FD
+//#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
-#define KO_ORD_3
 
 using std::cout;
 using std::endl;
@@ -19,25 +21,31 @@ typedef double real;
 
 typedef struct Vars {
     real* ee;
+    real* xx;
     real* ex_re;
     real* ex_im;
     real* bee;
+    real* bxx;
     real* bex_re;
     real* bex_im;
 
     Vars(int size) {
-        ee     = new real[size];
-        ex_re  = new real[size];
-        ex_im  = new real[size];
-        bee    = new real[size];
-        bex_re = new real[size];
-        bex_im = new real[size];
+        ee     = new real[size](); // all init to zero
+        xx     = new real[size]();
+        ex_re  = new real[size]();
+        ex_im  = new real[size]();
+        bee    = new real[size]();
+        bxx    = new real[size]();
+        bex_re = new real[size]();
+        bex_im = new real[size]();
     }
     ~Vars() {
         delete[] ee;
+        delete[] xx;
         delete[] ex_re;
         delete[] ex_im;
         delete[] bee;
+        delete[] bxx;
         delete[] bex_re;
         delete[] bex_im;
     }
@@ -63,6 +71,7 @@ class NuOsc {
         real  *vz, *Z;
         // all field variables
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
+        real* con0;
         real* con1;
 
         int nvz; // Dim of vz (Vertex-center grid used.)
@@ -106,6 +115,7 @@ class NuOsc {
             int size = (nz+2*gz)*(nvz);
             vz     = new real[nvz];
             Z      = new real[nz];
+            con0   = new real[size];
             con1   = new real[size];
 
             v_stat = new FieldVar(size);
@@ -131,12 +141,21 @@ class NuOsc {
 #else
             printf("   Use open boundary\n");
 #endif
-#ifdef KO_ORD_3
-            printf("   Use 3-th order KO dissipation\n");
-#else
+#ifndef KO_ORD_3
             printf("   Use 5-th order KO dissipation\n");
+#else
+            printf("   Use 3-th order KO dissipation\n");
 #endif
             printf("   KO eps = %g\n", ko);
+#if defined(ADVEC_CENTER_FD)
+            printf("   Use center-FD for advaction\n");
+#elif defined(ADVEC_UPWIND)
+            printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
+#else
+            printf("   Use lopsided FD for advaction\n");
+#endif
+
+
 
             //anafile.open("rate.dat", std::ofstream::out | std::ofstream::trunc);
             //if(!anafile) cout << "*** Open fails: " << "./rate.dat" << endl;
@@ -171,6 +190,7 @@ class NuOsc {
         ~NuOsc() {
             delete[] vz;
             delete[] Z;
+            delete[] con0;
             delete[] con1;
             delete v_stat, v_rhs, v_pre, v_cor;
 
@@ -188,6 +208,8 @@ class NuOsc {
         }
 
         void fillInitValue(real f0, real alpha, real beta);
+        void fillInitValue_squared_wave();
+
         void updatePeriodicBoundary(FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
         void step_rk4();
@@ -213,14 +235,15 @@ class NuOsc {
 
 void NuOsc::eval_conserved() {
 
-    real p1, p2, p3;
+#pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
 
-            p1 = v_stat->ex_re[idx(i,j)];
-            p2 = v_stat->ex_im[idx(i,j)];
-            p3 = 2*v_stat->ee[idx(i,j)] - 1.0;
+            real p1 = v_stat->ex_re[idx(i,j)];
+            real p2 = v_stat->ex_im[idx(i,j)];
+            real p3 = 2*v_stat->ee[idx(i,j)] - 1.0;
             con1[idx(i,j)] = p1*p1 + p2*p2 + 0.25*p3*p3;
+            con0[idx(i,j)] = v_stat->ee[idx(i,j)] + v_stat->xx[idx(i,j)];
         }
     }
 }
@@ -230,20 +253,44 @@ void NuOsc::fillInitValue(real f0, real alpha, real beta = 0.0) {
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
-            v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 * (1.0+eps_(Z[j], 0.0));
-            v_stat->ex_re[idx(i,j)] = g(vz[i], 1.0, 0.6, 7.608447e-01)*0.5 *      eps (Z[j], 0.0);
+            v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 0.751343)*2.0*eps_(Z[j], 0.0);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+            v_stat->xx   [idx(i,j)] = 0.0;
+            v_stat->ex_re[idx(i,j)] = g(vz[i], 1.0, 0.6, 0.751343)*eps(Z[j], 0.0);//1e-6;
             v_stat->ex_im[idx(i,j)] = 0.0;
         }
     }
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
-            v_stat->bee   [idx(i,j)] = 0.97*g(vz[i], 1.0, 0.53, 6.736495e-01)*0.5 * (1.0+eps_(Z[j], 0.0));
-            v_stat->bex_re[idx(i,j)] = 0.97*g(vz[i], 1.0, 0.53, 6.736495e-01)*0.5 *      eps (Z[j], 0.0);
+            v_stat->bee   [idx(i,j)] = 0.92*g(vz[i], 1.0, 0.53, 0.664150)*2.0*eps_(Z[j], 0.0);
+            v_stat->bxx   [idx(i,j)] = 0.0;
+            v_stat->bex_re[idx(i,j)] = 0.92*g(vz[i], 1.0, 0.53, 0.664150)*eps(Z[j], 0.0);//1e-6;
             v_stat->bex_im[idx(i,j)] = 0.0;
         }
     }
 
+    // Init boundary
+#ifdef BC_PERI
+    updatePeriodicBoundary(v_stat);
+#else
+    updateInjetOpenBoundary(v_stat);
+#endif
+}
+
+void NuOsc::fillInitValue_squared_wave() {
+#pragma omp parallel for
+    for (int i=0;i<nvz; i++) {
+        for (int j=nz*0.4;j<nz*0.6; j++) {
+            v_stat->ee    [idx(i,j)] = 1.0;
+            v_stat->xx    [idx(i,j)] = 1.0;
+            v_stat->ex_re [idx(i,j)] = 1.0;
+            v_stat->ex_im [idx(i,j)] = 1.0;
+            v_stat->bee   [idx(i,j)] = 1.0;
+            v_stat->bxx   [idx(i,j)] = 1.0;
+            v_stat->bex_re[idx(i,j)] = 1.0;
+            v_stat->bex_im[idx(i,j)] = 1.0;
+        }
+    }
     // Init boundary
 #ifdef BC_PERI
     updatePeriodicBoundary(v_stat);
@@ -291,16 +338,20 @@ void NuOsc::updatePeriodicBoundary(FieldVar * in) {
         for (int j=0;j<gz; j++) {
             //lower side
             in->ee    [idx(i,-j-1)] = in->ee    [idx(i,nz-j-1)];
+            in->xx    [idx(i,-j-1)] = in->xx    [idx(i,nz-j-1)];
             in->ex_re [idx(i,-j-1)] = in->ex_re [idx(i,nz-j-1)];
             in->ex_im [idx(i,-j-1)] = in->ex_im [idx(i,nz-j-1)];
             in->bee   [idx(i,-j-1)] = in->bee   [idx(i,nz-j-1)];
+            in->bxx   [idx(i,-j-1)] = in->bxx   [idx(i,nz-j-1)];
             in->bex_re[idx(i,-j-1)] = in->bex_re[idx(i,nz-j-1)];
             in->bex_im[idx(i,-j-1)] = in->bex_im[idx(i,nz-j-1)];
             //upper side
             in->ee    [idx(i,nz+j)] = in->ee    [idx(i,j)];
+            in->xx    [idx(i,nz+j)] = in->xx    [idx(i,j)];
             in->ex_re [idx(i,nz+j)] = in->ex_re [idx(i,j)];
             in->ex_im [idx(i,nz+j)] = in->ex_im [idx(i,j)];
             in->bee   [idx(i,nz+j)] = in->bee   [idx(i,j)];
+            in->bxx   [idx(i,nz+j)] = in->bxx   [idx(i,j)];
             in->bex_re[idx(i,nz+j)] = in->bex_re[idx(i,j)];
             in->bex_im[idx(i,nz+j)] = in->bex_im[idx(i,j)];
         }
@@ -314,17 +365,21 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * in) {
 	for (int j=0;j<gz; j++) {
         //lower open side, estimated simply by extrapolation
         in->ee    [idx(i,-j-1)] = in->ee    [idx(i,-j)]*2 - in->ee    [idx(i,-j+1)];
+        in->xx    [idx(i,-j-1)] = in->xx    [idx(i,-j)]*2 - in->xx    [idx(i,-j+1)];
         in->ex_re [idx(i,-j-1)] = in->ex_re [idx(i,-j)]*2 - in->ex_re [idx(i,-j+1)];
         in->ex_im [idx(i,-j-1)] = in->ex_im [idx(i,-j)]*2 - in->ex_im [idx(i,-j+1)];
         in->bee   [idx(i,-j-1)] = in->bee   [idx(i,-j)]*2 - in->bee   [idx(i,-j+1)];
+        in->bxx   [idx(i,-j-1)] = in->bxx   [idx(i,-j)]*2 - in->bxx   [idx(i,-j+1)];
         in->bex_re[idx(i,-j-1)] = in->bex_re[idx(i,-j)]*2 - in->bex_re[idx(i,-j+1)];
         in->bex_im[idx(i,-j-1)] = in->bex_im[idx(i,-j)]*2 - in->bex_im[idx(i,-j+1)];
 
         //upper open side, estimated simply by extrapolation
         in->ee    [idx(i,nz+j)] = in->ee    [idx(i,nz+j-1)]*2 - in->ee    [idx(i,nz+j-2)];
+        in->xx    [idx(i,nz+j)] = in->xx    [idx(i,nz+j-1)]*2 - in->xx    [idx(i,nz+j-2)];
         in->ex_re [idx(i,nz+j)] = in->ex_re [idx(i,nz+j-1)]*2 - in->ex_re [idx(i,nz+j-2)];
         in->ex_im [idx(i,nz+j)] = in->ex_im [idx(i,nz+j-1)]*2 - in->ex_im [idx(i,nz+j-2)];
         in->bee   [idx(i,nz+j)] = in->bee   [idx(i,nz+j-1)]*2 - in->bee   [idx(i,nz+j-2)];
+        in->bxx   [idx(i,nz+j)] = in->bxx   [idx(i,nz+j-1)]*2 - in->bxx   [idx(i,nz+j-2)];
         in->bex_re[idx(i,nz+j)] = in->bex_re[idx(i,nz+j-1)]*2 - in->bex_re[idx(i,nz+j-2)];
         in->bex_im[idx(i,nz+j)] = in->bex_im[idx(i,nz+j-1)]*2 - in->bex_im[idx(i,nz+j-2)];
 	}
@@ -336,36 +391,46 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
         for (int j=0;j<nz; j++) {
 
             real *ee    = &(in->ee    [idx(i,j)]);
+            real *xx    = &(in->ee    [idx(i,j)]);
             real *exr   = &(in->ex_re [idx(i,j)]);
             real *exi   = &(in->ex_im [idx(i,j)]);
             real *bee   = &(in->bee   [idx(i,j)]);
+            real *bxx   = &(in->bee   [idx(i,j)]);
             real *bexr  = &(in->bex_re[idx(i,j)]);
             real *bexi  = &(in->bex_im[idx(i,j)]);
 
             // 1) prepare terms for -i [H0, rho]
             out->ee    [idx(i,j)] = -pmo *   2*st*exi [0];
+            out->xx    [idx(i,j)] =  pmo *   2*st*exi [0];
             out->ex_re [idx(i,j)] = -pmo *   2*ct*exi [0];
             out->ex_im [idx(i,j)] =  pmo * ( 2*ct*exr [0] + st*( 2*ee[0] -1 ) );
             out->bee   [idx(i,j)] = -pmo *   2*st*bexi[0];
+            out->bxx   [idx(i,j)] =  pmo *   2*st*bexi[0];
             out->bex_re[idx(i,j)] = -pmo *   2*ct*bexi[0];
             out->bex_im[idx(i,j)] =  pmo * ( 2*ct*bexr[0] + st*( 2*bee[0]-1 ) );
 
 #ifndef ADVEC_OFF
-#if 1
-            // advection term: (lopsided finite differencing)
-            int sv = sgn(vz[i]);
-            real factor = sv*vz[i]/(12*dz);
-            #define ADV_FD(x)  ( x[-3*sv] - 6*x[-2*sv] + 18*x[-sv] - 10*x[0] - 3*x[sv] )
-#else
+#if defined(ADVEC_CENTER_FD)
             // 2) advection term: (central FD)
             //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
             real factor = -vz[i]/(12*dz);
             #define ADV_FD(x)  (  (x[-2]-x[2]) - 8.0*(x[-1]-x[1]) )
+#elif defined(ADVEC_UPWIND)
+            int sv = sgn(vz[i]);
+            real factor = -sv*vz[i]/(12*dz);
+            #define ADV_FD(x)  ( -4*x[-3*sv] + 18*x[-2*sv] - 36*x[-sv] + 22*x[0] )
+#else
+            // advection term: (4-th order lopsided finite differencing)
+            int sv = sgn(vz[i]);
+            real factor = sv*vz[i]/(12*dz);
+            #define ADV_FD(x)  ( x[-3*sv] - 6*x[-2*sv] + 18*x[-sv] - 10*x[0] - 3*x[sv] )
 #endif
             out->ee    [idx(i,j)] += factor * ADV_FD(ee);
+            out->xx    [idx(i,j)] += factor * ADV_FD(xx);
             out->ex_re [idx(i,j)] += factor * ADV_FD(exr);
             out->ex_im [idx(i,j)] += factor * ADV_FD(exi);
             out->bee   [idx(i,j)] += factor * ADV_FD(bee);
+            out->bxx   [idx(i,j)] += factor * ADV_FD(bxx);
             out->bex_re[idx(i,j)] += factor * ADV_FD(bexr);
             out->bex_im[idx(i,j)] += factor * ADV_FD(bexi);
 	    #undef ADV_FD
@@ -374,82 +439,100 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
     if (mu>0.0) {
             // 3) interaction terms: vz-integral with a simple trapezoidal rule (can be optimized later)
             real Iee    = 0;
+            real Ixx    = 0;
             real Iexr   = 0;
             real Iexi   = 0;
             real Ibee   = 0;
+            real Ibxx   = 0;
             real Ibexr  = 0;
             real Ibexi  = 0;
             for (int k=1;k<nvz-1; k++) {   // vz' integral
                 real eep    = (in->ee    [idx(k,j)]);
+                real xxp    = (in->xx    [idx(k,j)]);
                 real expr   = (in->ex_re [idx(k,j)]);
                 real expi   = (in->ex_im [idx(k,j)]);
                 real beep   = (in->bee   [idx(k,j)]);
+                real bxxp   = (in->bxx   [idx(k,j)]);
                 real bexpr  = (in->bex_re[idx(k,j)]);
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   += 2*mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
-                Iexr  +=   mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
-                Iexi  +=   mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  += 2*mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
-                Ibexr +=   mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
-                Ibexi +=   mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
+                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
             {   int k=0;  // Deal with end point for integral in vertex-center grid
                 real eep    = (in->ee    [idx(k,j)]);
+                real xxp    = (in->xx    [idx(k,j)]);
                 real expr   = (in->ex_re [idx(k,j)]);
                 real expi   = (in->ex_im [idx(k,j)]);
                 real beep   = (in->bee   [idx(k,j)]);
+                real bxxp   = (in->bxx   [idx(k,j)]);
                 real bexpr  = (in->bex_re[idx(k,j)]);
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
-                Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
-                Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
-                Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
-                Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
+                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
             {   int k=nvz-1;  // Deal with end point for integral in vertex-center grid
                 real eep    = (in->ee    [idx(k,j)]);
+                real xxp    = (in->xx    [idx(k,j)]);
                 real expr   = (in->ex_re [idx(k,j)]);
                 real expi   = (in->ex_im [idx(k,j)]);
                 real beep   = (in->bee   [idx(k,j)]);
+                real bxxp   = (in->bxx   [idx(k,j)]);
                 real bexpr  = (in->bex_re[idx(k,j)]);
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=     mu* (1-vz[i]*vz[k])*  (       exr[0] *(expi + bexpi) -    exi[0]*(expr- bexpr) );
-                Iexr  += 0.5*mu* (1-vz[i]*vz[k])*  (   (1-2*ee[0])*(expi + bexpi) +  2*exi[0]*(eep - beep ) );
-                Iexi  += 0.5*mu* (1-vz[i]*vz[k])*  (  -(1-2*ee[0])*(expr - bexpr) -  2*exr[0]*(eep - beep ) );
-                Ibee  +=     mu* (1-vz[i]*vz[k])*  (      bexr[0] *(expi + bexpi) +   bexi[0]*(expr- bexpr) );
-                Ibexr += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expi + bexpi) - 2*bexi[0]*(eep - beep ) );
-                Ibexi += 0.5*mu* (1-vz[i]*vz[k])*  (  (1-2*bee[0])*(expr - bexpr) + 2*bexr[0]*(eep - beep ) );
+                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
 
             // 3.1) calculate integral with simple trapezoidal rule
             out->ee    [idx(i,j)] += dv*Iee;
+            out->xx    [idx(i,j)] += dv*Ixx;
             out->ex_re [idx(i,j)] += dv*Iexr;
             out->ex_im [idx(i,j)] += dv*Iexi;
             out->bee   [idx(i,j)] += dv*Ibee;
+            out->bxx   [idx(i,j)] += dv*Ibxx;
             out->bex_re[idx(i,j)] += dv*Ibexr;
             out->bex_im[idx(i,j)] += dv*Ibexi;
     } // end of mu-part
 
-#ifdef KO_ORD_3
-            // Kreiss-Oliger dissipation (3-nd order)
-            real ko_eps = -ko/dz/16.0;
-            #define KO_FD(x)  ( x[-2] + x[2] - 4*(x[-1]+x[1]) + 6*x[0] )
-#else
+#ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
             real ko_eps = -ko/dz/64.0;
             #define KO_FD(x)  ( x[-3] + x[3] - 6*(x[-2]+x[2]) + 15*(x[-1]+x[1]) - 20*x[0] )
+#else
+            // Kreiss-Oliger dissipation (3-nd order)
+            real ko_eps = -ko/dz/16.0;
+            #define KO_FD(x)  ( x[-2] + x[2] - 4*(x[-1]+x[1]) + 6*x[0] )
 #endif
             out->ee    [idx(i,j)] += ko_eps * KO_FD(ee);
+            out->xx    [idx(i,j)] += ko_eps * KO_FD(xx);
             out->ex_re [idx(i,j)] += ko_eps * KO_FD(exr);
             out->ex_im [idx(i,j)] += ko_eps * KO_FD(exi);
             out->bee   [idx(i,j)] += ko_eps * KO_FD(bee);
+            out->bxx   [idx(i,j)] += ko_eps * KO_FD(bxx);
             out->bex_re[idx(i,j)] += ko_eps * KO_FD(bexr);
             out->bex_im[idx(i,j)] += ko_eps * KO_FD(bexi);
             #undef KO_FD
@@ -463,9 +546,11 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
         for (int j=0;j<nz; j++) {
             int k = idx(i,j);
             v0->ee    [k] = v1->ee    [k] + a * v2->ee    [k];
+            v0->xx    [k] = v1->xx    [k] + a * v2->xx    [k];
             v0->ex_re [k] = v1->ex_re [k] + a * v2->ex_re [k];
             v0->ex_im [k] = v1->ex_im [k] + a * v2->ex_im [k];
             v0->bee   [k] = v1->bee   [k] + a * v2->bee   [k];
+            v0->bxx   [k] = v1->bxx   [k] + a * v2->bxx   [k];
             v0->bex_re[k] = v1->bex_re[k] + a * v2->bex_re[k];
             v0->bex_im[k] = v1->bex_im[k] + a * v2->bex_im[k];
         }
@@ -478,9 +563,11 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
         for (int j=0;j<nz; j++) {
             int k = idx(i,j);
             v0->ee    [k] = v1->ee    [k] + a * (v2->ee    [k] + v3->ee    [k]);
+            v0->xx    [k] = v1->xx    [k] + a * (v2->xx    [k] + v3->xx    [k]);
             v0->ex_re [k] = v1->ex_re [k] + a * (v2->ex_re [k] + v3->ex_re [k]);
             v0->ex_im [k] = v1->ex_im [k] + a * (v2->ex_im [k] + v3->ex_im [k]);
             v0->bee   [k] = v1->bee   [k] + a * (v2->bee   [k] + v3->bee   [k]);
+            v0->bxx   [k] = v1->bxx   [k] + a * (v2->bxx   [k] + v3->bxx   [k]);
             v0->bex_re[k] = v1->bex_re[k] + a * (v2->bex_re[k] + v3->bex_re[k]);
             v0->bex_im[k] = v1->bex_im[k] + a * (v2->bex_im[k] + v3->bex_im[k]);
         }
@@ -634,9 +721,10 @@ void NuOsc::analysis() {
        << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << ai << endl;
     */
 
+    real tr[4];  _analysis_v(tr, con0);
     real st[4];  _analysis_v(st, con1);
 
-    printf("Phy time: %.5f  min/max/std of |sum p_i^2|: %9.2g %9.2g %9.2g\n", phy_time, st[0], st[1], st[3]);
+    printf("Phy time: %.5f  min/max/std |p^2|: %7.2g %7.2g %7.2g  |tr|: %7.2g %7.2g %7.2g\n", phy_time, st[0], st[1], st[3], tr[0], tr[1], tr[3]);
 }
 
 void NuOsc::dumpv(const real v[]) {
@@ -678,10 +766,10 @@ void NuOsc::write_z_at_vz() {
 
 int main(int argc, char *argv[]) {
 
-    real dz  = 0.125;
-    real z0  = -100;      real z1  =  -z0;
+    real dz  = 0.25;
+    real z0  = -64;      real z1  =  -z0;
     real vz0 = -1;       real vz1 =  -vz0;    int nvz = 8 + 1;
-    real cfl = 0.25;     real ko = 1e-4;
+    real cfl = 0.25;     real ko = 0.0;
 
     real mu  = 0.0;
 
@@ -711,25 +799,26 @@ int main(int argc, char *argv[]) {
 #if 0
     // check ~10 advection cycle to see if return to original state (for PBC)
     int ANAL_EVERY = nz/cfl * 1 ;
-    int END_STEP   = ANAL_EVERY * 10;
+    int END_STEP   = ANAL_EVERY * 5;
     int DUMP_EVERY = 99999999;
 #else
-    // check every 50-step before hitting boundary
+    // check every 20-step before hitting boundary
     int END_STEP   = int(nz/cfl*0.55);
-    int ANAL_EVERY = END_STEP / 50;
-    int DUMP_EVERY = ANAL_EVERY*9999;
+    int ANAL_EVERY = END_STEP / 20;
+    int DUMP_EVERY = ANAL_EVERY*99999;
 #endif
 
-    // Initialize simuation
+    // === Initialize simuation
     NuOsc state(nvz, nz, vz0, vz1, z0, z1, cfl, ko);
     state.set_mu(mu);
 
-    // initial value
+    // === initial value
     real f0    = 1.0;
     real alpha = 0.97;
-    state.fillInitValue(f0, alpha);
+    //state.fillInitValue(f0, alpha);
+    state.fillInitValue_squared_wave();
 
-    // analysis for t=0
+    // === analysis for t=0
     state.analysis();
     state.write_z_at_vz();
     //state.write_bin(0);

@@ -43,7 +43,7 @@ def plot1dmap(fname):
     print("Plotting {} in z [{}:{}] ({})".format(fn, z0, z1, nz))
     data = np.loadtxt(fname, skiprows=1)
     nt    = np.shape(data)[0]
-    pltnt = range(1,nt, nt//10)
+    pltnt = range(1,nt, nt//5)
     
     ## 1d
     plt.figure(figsize=(8, 6))
