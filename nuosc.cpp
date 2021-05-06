@@ -6,18 +6,31 @@
 #include <iomanip>
 #include <cmath>
 #include <omp.h>
+#ifdef PAPI
+#include <papi.h>
+#endif
 
 #define BC_PERI
-//#define KO_ORD_3
+#define KO_ORD_3
 #define ADVEC_CENTER_FD
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
+
+
 
 using std::cout;
 using std::endl;
 using std::cin;
 
 typedef double real;
+
+typedef struct stat {
+    real min;
+    real max;
+    real sum;
+    real avg;
+    real std;
+} FieldStat;
 
 typedef struct Vars {
     real* ee;
@@ -56,12 +69,21 @@ inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
 // for init data
-inline real eps (real z, real z0) { return 0.1*exp( -(z-z0)*(z-z0) / 50.); }
-inline real eps_(real z, real z0) { real e = eps(z, z0); return sqrt(1.0 - e*e); }
-double g(double v, double v0, double sigma, double N){
+inline real eps_c(real z, real z0, real eps0, real lzpt){return eps0*exp(-(z-z0)*(z-z0)/lzpt);}
+inline real eps_r(real z, real z0, real eps0) {return eps0*rand()/RAND_MAX;}
+double g(double v, double v0, double sigma){
     double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
+    double N = sigma*sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/sqrt(2.0))+erf((1.0-v0)/sigma/sqrt(2.0)));
     return exp(-exponant)/N;
 }
+
+//inline real eps (real z, real z0) { return 0.1*exp( -(z-z0)*(z-z0) / 50.); }
+//inline real eps_(real z, real z0) { real e = eps(z, z0); return sqrt(1.0 - e*e); }
+//double g(double v, double v0, double sigma, double N){
+//    double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
+//    return exp(-exponant)/N;
+//}
+
 
 class NuOsc {
     public:
@@ -71,8 +93,9 @@ class NuOsc {
         real  *vz, *Z;
         // all field variables
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
-        real* con0;
-        real* con1;
+        real *G0,*G0b;
+        real *P1,  *P2,  *P3,  *relN,  *relP;
+        real *P1b, *P2b, *P3b, *relNb, *relPb;
 
         int nvz; // Dim of vz (Vertex-center grid used.)
         int nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
@@ -87,7 +110,8 @@ class NuOsc {
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
         const int  pmo = 0; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
-        real mu = 0.0;        // can be set by set_mu()
+        real mu = 1.0;      // can be set by set_mu()
+        bool renorm = false;  // can be set by set_renorm()
 
         std::ofstream anafile;
 
@@ -95,7 +119,7 @@ class NuOsc {
         std::ofstream ee_vl,  ee_vh, ee_vm;
         std::ofstream exr_vl, exr_vh;
         std::ofstream exi_vl, exi_vh;
-        std::ofstream con_vl, con_vh, con_vm;
+        std::ofstream p1_v, p2_v, p3_v;
 
         inline unsigned int idx(const int i, const int j) { return i*(nz+2*gz) + (j+gz); }    // i:vz   j:z (last index)
         inline unsigned int idz(const int j) { return j; }
@@ -103,7 +127,7 @@ class NuOsc {
         NuOsc(const int  nvz_, const int   nz_,
               const real vz0_, const real vz1_,
               const real  z0_, const real  z1_,
-              const real CFL_, const real  ko_, const int gz_ = 3) : phy_time(0.), ko(ko_)  {
+              const real CFL_, const real  ko_, const int gz_ = 2) : phy_time(0.), ko(ko_)  {
 
             vz0 = vz0_;  vz1 = vz1_;
             z0  = z0_;    z1 = z1_;
@@ -115,22 +139,34 @@ class NuOsc {
             int size = (nz+2*gz)*(nvz);
             vz     = new real[nvz];
             Z      = new real[nz];
-            con0   = new real[size];
-            con1   = new real[size];
+            G0     = new real[size];
+            G0b    = new real[size];
+            P1    = new real[size];
+            P2    = new real[size];
+            P3    = new real[size];
+            P1b   = new real[size];
+            P2b   = new real[size];
+            P3b   = new real[size];
+            relP  = new real[size];
+            relN  = new real[size];
+            relPb = new real[size];
+            relNb = new real[size];
 
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 
-            dv = (vz1-vz0)/(nvz-1);      // for v as vertex-center
-            //dv = (vz1-vz0)/nvz;      // for v as cell-center
             dz = (z1-z0)/nz;       // cell-center
             dt = dz*CFL;
-
-            //for (int i=0;i<nvz; i++)	vz[i] = vz0 + (i+0.5)*dv;   // cell-center
-            for (int i=0;i<nvz; i++)	vz[i] = vz0 + i*dv;   // vertex-center
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
+#ifdef CELL_CENTER_V
+            dv = (vz1-vz0)/nvz;      // for v as cell-center
+            for (int i=0;i<nvz; i++)	vz[i] = vz0 + (i+0.5)*dv;   // cell-center
+#else
+            dv = (vz1-vz0)/(nvz-1);      // for v as vertex-center
+            for (int i=0;i<nvz; i++)	vz[i] = vz0 + i*dv;   // vertex-center
+#endif
 
             printf("\n\nNuOsc with max OpenMP core: %d\n\n", omp_get_max_threads() );
             printf("   Domain: vz:( %12f %12f )  nvz = %5d                     dv = %g\n", vz0,vz1, nvz, dv);
@@ -147,6 +183,8 @@ class NuOsc {
             printf("   Use 3-th order KO dissipation\n");
 #endif
             printf("   KO eps = %g\n", ko);
+
+#ifndef ADVEC_OFF
 #if defined(ADVEC_CENTER_FD)
             printf("   Use center-FD for advaction\n");
 #elif defined(ADVEC_UPWIND)
@@ -154,11 +192,10 @@ class NuOsc {
 #else
             printf("   Use lopsided FD for advaction\n");
 #endif
+#endif
 
-
-
-            //anafile.open("rate.dat", std::ofstream::out | std::ofstream::trunc);
-            //if(!anafile) cout << "*** Open fails: " << "./rate.dat" << endl;
+            anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
+            if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
 
             // dump at highest/lowest v-mode
             ee_vl.open("ee_vl.dat", std::ofstream::out | std::ofstream::trunc);
@@ -169,18 +206,18 @@ class NuOsc {
             exr_vl << nz << " " << z0 << " " << z1 << endl;
             exr_vh.open("exr_vh.dat", std::ofstream::out | std::ofstream::trunc);
             exr_vh << nz << " " << z0 << " " << z1 << endl;
-            //exi_vl.open("exi_vl.dat", std::ofstream::out | std::ofstream::trunc);
-            //exi_vl << nz << " " << z0 << " " << z1 << endl;
-            //exi_vh.open("exi_vh.dat", std::ofstream::out | std::ofstream::trunc);
-            //exi_vh << nz << " " << z0 << " " << z1 << endl;
-            ee_vm.open("ee_vm.dat", std::ofstream::out | std::ofstream::trunc);
-            ee_vm << nz << " " << z0 << " " << z1 << endl;
-            con_vl.open("con_vl.dat", std::ofstream::out | std::ofstream::trunc);
-            con_vl << nz << " " << z0 << " " << z1 << endl;
-            con_vh.open("con_vh.dat", std::ofstream::out | std::ofstream::trunc);
-            con_vh << nz << " " << z0 << " " << z1 << endl;
-            con_vm.open("con_vm.dat", std::ofstream::out | std::ofstream::trunc);
-            con_vm << nz << " " << z0 << " " << z1 << endl;
+            exi_vh.open("exi_vh.dat", std::ofstream::out | std::ofstream::trunc);
+            exi_vh << nz << " " << z0 << " " << z1 << endl;
+            
+            p1_v.open("p1_v.dat", std::ofstream::out | std::ofstream::trunc);
+            p1_v << nz << " " << z0 << " " << z1 << endl;
+            p2_v.open("p2_v.dat", std::ofstream::out | std::ofstream::trunc);
+            p2_v << nz << " " << z0 << " " << z1 << endl;
+            p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
+            p3_v << nz << " " << z0 << " " << z1 << endl;
+            //p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
+            //for (int i=0;i<nz; i+=nz/1000)  p3_v << Z[i] << " ";
+            //p3_v << endl;
         }
 
         //NuOsc(const NuOsc &v) {  // Copy constructor to be checked.
@@ -188,10 +225,11 @@ class NuOsc {
         //}
 
         ~NuOsc() {
-            delete[] vz;
-            delete[] Z;
-            delete[] con0;
-            delete[] con1;
+            delete[] vz;  delete[] Z;
+            delete[] G0;
+            delete[] G0b;
+            delete[] P1;  delete[] P2;  delete[] P3;  delete[] relP;  delete[] relN;
+            delete[] P1b; delete[] P2b; delete[] P3b; delete[] relPb; delete[] relNb;
             delete v_stat, v_rhs, v_pre, v_cor;
 
             anafile.close();
@@ -199,15 +237,22 @@ class NuOsc {
             ee_vl.close();    ee_vh.close();    ee_vm.close();
             exr_vl.close();  exr_vh.close();
             exi_vl.close();  exi_vh.close();
-            con_vl.close();  con_vh.close();  con_vm.close();
+            p1_v.close();
+            p2_v.close();
+            p3_v.close();
         }
 
-        void set_mu(real mu_) { 
+        void set_mu(real mu_) {
             mu = mu_;
-            printf("   Setting mu = %f\n\n", mu);
+            printf("   Setting mu = %f\n", mu);
         }
 
-        void fillInitValue(real f0, real alpha, real beta);
+        void set_renorm(bool renorm_) {
+            renorm = renorm_;
+            printf("   Setting renorm = %d\n", renorm);
+        }
+
+        void fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt);
         void fillInitValue_squared_wave();
 
         void updatePeriodicBoundary(FieldVar * in);
@@ -217,55 +262,45 @@ class NuOsc {
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
         void analysis();
-        void _analysis_v(real res[], const real var[]);
-        void _analysis_c(real res[], const real vr[], const real vi[]);
+        FieldStat _analysis_v(const real var[]);
+        FieldStat _analysis_c(const real vr[], const real vi[]);
         void angle_integrated(real &res, const real vr[], const real vi[]);
-        void dumpv(const real v[]);
+        void eval_conserved(const FieldVar* v0);
+        void renormalize(FieldVar* v0);
+
         void write_z_at_vz();
-        void eval_conserved();
         void write_bin(const int t);
-
-        inline void _out_tmp(real res[], const real v[]) {
-            res[0] = v[idx(0,             nz/2)];
-            res[1] = v[idx(int(nvz*0.75), nz/2)];
-            res[2] = v[idx(nvz-1,         nz/2)];
-        }
-
+        void output_detail(const char* fn);
 };
 
-void NuOsc::eval_conserved() {
+void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt) {
+
+    printf("   Init data: eps = %g  alpha = %f\n", eps0, alpha);
 
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
-
-            real p1 = v_stat->ex_re[idx(i,j)];
-            real p2 = v_stat->ex_im[idx(i,j)];
-            real p3 = 2*v_stat->ee[idx(i,j)] - 1.0;
-            con1[idx(i,j)] = p1*p1 + p2*p2 + 0.25*p3*p3;
-            con0[idx(i,j)] = v_stat->ee[idx(i,j)] + v_stat->xx[idx(i,j)];
+            G0 [idx(i,j)] =         g(vz[i], 1.0, lnue )/2.0;
+            G0b[idx(i,j)] = alpha * g(vz[i], 1.0, lnueb)/2.0;
         }
     }
-}
-
-void NuOsc::fillInitValue(real f0, real alpha, real beta = 0.0) {
 
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
-            v_stat->ee   [idx(i,j)] = g(vz[i], 1.0, 0.6, 0.751343)*2.0*eps_(Z[j], 0.0);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-            v_stat->xx   [idx(i,j)] = 0.0;
-            v_stat->ex_re[idx(i,j)] = g(vz[i], 1.0, 0.6, 0.751343)*eps(Z[j], 0.0);//1e-6;
-            v_stat->ex_im[idx(i,j)] = 0.0;
-        }
-    }
-#pragma omp parallel for
-    for (int i=0;i<nvz; i++) {
-        for (int j=0;j<nz; j++) {
-            v_stat->bee   [idx(i,j)] = 0.92*g(vz[i], 1.0, 0.53, 0.664150)*2.0*eps_(Z[j], 0.0);
-            v_stat->bxx   [idx(i,j)] = 0.0;
-            v_stat->bex_re[idx(i,j)] = 0.92*g(vz[i], 1.0, 0.53, 0.664150)*eps(Z[j], 0.0);//1e-6;
-            v_stat->bex_im[idx(i,j)] = 0.0;
+
+    	    real tmp;
+            if(ipt==0) { tmp = eps_c(Z[j],0.0,eps0,lzpt); }
+            if(ipt==1) { tmp = eps_r(Z[j],0.0,eps0); }
+            real tmp2 = sqrt(1.0-tmp*tmp);
+            v_stat->ee    [idx(i,j)] = G0[idx(i,j)]*(1.0+tmp2); //sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+            v_stat->xx    [idx(i,j)] = G0[idx(i,j)]*(1.0-tmp2);
+            v_stat->ex_re [idx(i,j)] = G0[idx(i,j)]*tmp;
+            v_stat->ex_im [idx(i,j)] = 0.0; //random_amp(0.001);
+            v_stat->bee   [idx(i,j)] = G0b[idx(i,j)]*(1.0+tmp2);
+            v_stat->bxx   [idx(i,j)] = G0b[idx(i,j)]*(1.0-tmp2);
+            v_stat->bex_re[idx(i,j)] = G0b[idx(i,j)]*tmp;
+            v_stat->bex_im[idx(i,j)] = 0.0; //random_amp(0.001);
         }
     }
 
@@ -320,9 +355,11 @@ void NuOsc::write_bin(const int t) {
     outfile.write((char *) &nvz, sizeof(int));
     outfile.write((char *) &gz,  sizeof(int));
     outfile.write((char *) v->ee,     (nz+2*gz)*nvz*sizeof(real));
+    outfile.write((char *) v->xx,     (nz+2*gz)*nvz*sizeof(real));
     outfile.write((char *) v->ex_re,  (nz+2*gz)*nvz*sizeof(real));
     outfile.write((char *) v->ex_im,  (nz+2*gz)*nvz*sizeof(real));
     outfile.write((char *) v->bee,    (nz+2*gz)*nvz*sizeof(real));
+    outfile.write((char *) v->bxx,    (nz+2*gz)*nvz*sizeof(real));
     outfile.write((char *) v->bex_re, (nz+2*gz)*nvz*sizeof(real));
     outfile.write((char *) v->bex_im, (nz+2*gz)*nvz*sizeof(real));
     outfile.close();
@@ -391,11 +428,11 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
         for (int j=0;j<nz; j++) {
 
             real *ee    = &(in->ee    [idx(i,j)]);
-            real *xx    = &(in->ee    [idx(i,j)]);
+            real *xx    = &(in->xx    [idx(i,j)]);
             real *exr   = &(in->ex_re [idx(i,j)]);
             real *exi   = &(in->ex_im [idx(i,j)]);
             real *bee   = &(in->bee   [idx(i,j)]);
-            real *bxx   = &(in->bee   [idx(i,j)]);
+            real *bxx   = &(in->bxx   [idx(i,j)]);
             real *bexr  = &(in->bex_re[idx(i,j)]);
             real *bexi  = &(in->bex_im[idx(i,j)]);
 
@@ -403,11 +440,11 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             out->ee    [idx(i,j)] = -pmo *   2*st*exi [0];
             out->xx    [idx(i,j)] =  pmo *   2*st*exi [0];
             out->ex_re [idx(i,j)] = -pmo *   2*ct*exi [0];
-            out->ex_im [idx(i,j)] =  pmo * ( 2*ct*exr [0] + st*( 2*ee[0] -1 ) );
+            out->ex_im [idx(i,j)] =  pmo * ( 2*ct*exr [0] + st*( ee[0] - xx[0] ) );
             out->bee   [idx(i,j)] = -pmo *   2*st*bexi[0];
             out->bxx   [idx(i,j)] =  pmo *   2*st*bexi[0];
             out->bex_re[idx(i,j)] = -pmo *   2*ct*bexi[0];
-            out->bex_im[idx(i,j)] =  pmo * ( 2*ct*bexr[0] + st*( 2*bee[0]-1 ) );
+            out->bex_im[idx(i,j)] =  pmo * ( 2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
 
 #ifndef ADVEC_OFF
 #if defined(ADVEC_CENTER_FD)
@@ -446,6 +483,28 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             real Ibxx   = 0;
             real Ibexr  = 0;
             real Ibexi  = 0;
+#ifdef CELL_CENTER_V
+            for (int k=1;k<nvz; k++) {   // vz' integral
+                real eep    = (in->ee    [idx(k,j)]);
+                real xxp    = (in->xx    [idx(k,j)]);
+                real expr   = (in->ex_re [idx(k,j)]);
+                real expi   = (in->ex_im [idx(k,j)]);
+                real beep   = (in->bee   [idx(k,j)]);
+                real bxxp   = (in->bxx   [idx(k,j)]);
+                real bexpr  = (in->bex_re[idx(k,j)]);
+                real bexpi  = (in->bex_im[idx(k,j)]);
+
+                // terms for -i* mu * [rho'-rho_bar', rho]
+                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
+            }
+#else
             for (int k=1;k<nvz-1; k++) {   // vz' integral
                 real eep    = (in->ee    [idx(k,j)]);
                 real xxp    = (in->xx    [idx(k,j)]);
@@ -477,14 +536,14 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
+                Iee   +=  mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=  0.5*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=  0.5* mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
             {   int k=nvz-1;  // Deal with end point for integral in vertex-center grid
                 real eep    = (in->ee    [idx(k,j)]);
@@ -497,16 +556,16 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
+                Iee   +=  mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=  0.5*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=  0.5*mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
-
+#endif
             // 3.1) calculate integral with simple trapezoidal rule
             out->ee    [idx(i,j)] += dv*Iee;
             out->xx    [idx(i,j)] += dv*Ixx;
@@ -539,7 +598,7 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
         }
 }
 
-// v0 = v1 + a * v2
+/* v0 = v1 + a * v2 */
 void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2) {
 #pragma omp parallel for
     for (int i=0;i<nvz; i++)
@@ -551,7 +610,7 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
             v0->ex_im [k] = v1->ex_im [k] + a * v2->ex_im [k];
             v0->bee   [k] = v1->bee   [k] + a * v2->bee   [k];
             v0->bxx   [k] = v1->bxx   [k] + a * v2->bxx   [k];
-            v0->bex_re[k] = v1->bex_re[k] + a * v2->bex_re[k];
+    	    v0->bex_re[k] = v1->bex_re[k] + a * v2->bex_re[k];
             v0->bex_im[k] = v1->bex_im[k] + a * v2->bex_im[k];
         }
 }
@@ -571,6 +630,53 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
             v0->bex_re[k] = v1->bex_re[k] + a * (v2->bex_re[k] + v3->bex_re[k]);
             v0->bex_im[k] = v1->bex_im[k] + a * (v2->bex_im[k] + v3->bex_im[k]);
         }
+}
+
+void NuOsc::eval_conserved(const FieldVar* v) {
+
+    #pragma omp parallel for
+    for (int i=0;i<nvz; i++) {
+        for (int j=0;j<nz; j++) {
+
+            int ij=idx(i,j);
+            P1   [ij] = v->ex_re[ij]/G0[ij];
+	    P2   [ij] = v->ex_im[ij]/G0[ij];
+	    P3   [ij] = (v->ee[ij] - v->xx[ij])/2.0/G0[ij];
+	    P1b  [ij] = v->bex_re[ij]/G0b[ij];
+            P2b  [ij] = v->bex_im[ij]/G0b[ij];
+	    P3b  [ij] = (v->bee[ij] - v->bxx[ij])/2.0/G0b[ij];
+	    relN [ij] = ((v->ee [ij] + v->xx [ij]) / (2.0*G0 [ij])) - 1.0;
+	    relNb[ij] = ((v->bee[ij] + v->bxx[ij]) / (2.0*G0b[ij])) - 1.0;
+	    relP [ij] = sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) - 1.0;
+	    relPb[ij] = sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) - 1.0;
+        }
+    }
+}
+
+void NuOsc::renormalize(FieldVar* v0) {
+    #pragma omp parallel for
+    for(int i=0; i<nvz; i++)
+    for(int j=0; j<nz; j++) {
+	int ij=idx(i,j);
+	real P1  = v0->ex_re[ij] / G0[ij];
+        real P2  = v0->ex_im[ij] / G0[ij];
+        real P3  = (v0->ee[ij] - v0->xx[ij])/2.0/G0[ij];
+        real P1b = v0->bex_re[ij] / G0b[ij];
+        real P2b = v0->bex_im[ij] / G0b[ij];
+        real P3b = (v0->bee[ij] - v0->bxx[ij])/2.0/G0b[ij];
+        real iP   = 1.0/sqrt(P1*P1+P2*P2+P3*P3);
+        real iPb  = 1.0/sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
+        real tmp  = iP *(P3) *G0 [ij];
+        real tmpb = iPb*(P3b)*G0b[ij];
+        v0->ee    [ij]  = G0[ij] + tmp;
+        v0->xx    [ij]  = G0[ij] - tmp;
+        v0->ex_re [ij] *= iP;
+        v0->ex_im [ij] *= iP;
+        v0->bee   [ij]  = G0b[ij]+tmpb;
+        v0->bxx   [ij]  = G0b[ij]-tmpb;
+        v0->bex_re[ij] *= iPb;
+        v0->bex_im[ij] *= iPb;
+    }
 }
 
 void NuOsc::step_rk4() {
@@ -615,11 +721,15 @@ void NuOsc::step_rk4() {
     vectorize(v_pre, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
     swap(&v_pre, &v_stat);
 
+    if(renorm) renormalize(v_stat);
+
     phy_time += dt;
 }
 
-void NuOsc::_analysis_v(real res[], const real var[]) {
+FieldStat NuOsc::_analysis_v(const real var[]) {
 
+    FieldStat res;
+    
     real vmin =  1.e32;
     real vmax = -1.e32;
     real sum  = 0;
@@ -636,14 +746,18 @@ void NuOsc::_analysis_v(real res[], const real var[]) {
         }
 
     // min, max, avg, std
-    res[0] = vmin;
-    res[1] = vmax;
-    res[2] = sum/(nz*nvz);
-    res[3] = sqrt( sum2/(nz*nvz) - res[2]*res[2]  );
+    res.min = vmin;
+    res.max = vmax;
+    res.sum = sum;
+    res.avg = sum/(nz*nvz);
+    res.std = sqrt( sum2/(nz*nvz) - res.avg*res.avg  );
+
+    return res;
 }
 
-void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
+FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
 
+    FieldStat res;
     real vmin =  1.e32;
     real vmax = -1.e32;
     real sum  = 0;
@@ -661,10 +775,13 @@ void NuOsc::_analysis_c(real res[], const real vr[], const real vi[]) {
         }
 
     // min, max, avg, std
-    res[0] = vmin;
-    res[1] = vmax;
-    res[2] = sum/(nz*nvz);
-    res[3] = sqrt( sum2/(nz*nvz) - res[2]*res[2]  );
+    res.min = vmin;
+    res.max = vmax;
+    res.sum = sum;
+    res.avg = sum/(nz*nvz);
+    res.std = sqrt( sum2/(nz*nvz) - res.avg*res.avg  );
+
+    return res;
 }
 
 /* return the angle-integrated |v| == sqrt(vr**2+vi**2) */
@@ -680,62 +797,67 @@ void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
     res = dv*sum;
 }
 
-/* return the angle-integrated |v| == sqrt(vr**2+vi**2) */
-//void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
-//    int loc = nz/2;
-//    real sum = 0;
-//    #pragma omp parallel for reduction(+: sum)
-//    for (int k=0;k<nvz; k++) {   // vz' integral
-//	sum   += dv*sqrt(vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
-//    }
-//    res = sum;
-//}/
+void NuOsc::output_detail(const char* filename) {
+    std::ofstream outfile;
+    outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
+    if(!outfile) {
+        cout << "*** Open fails: " << filename << endl;
+    }
+    outfile << "#phy_time=" << phy_time << endl;
+    int iskip=nz/100;
+    for(int i=0;i<nvz;i++){
+    for(int j=0;j<nz;j=j+iskip){
+    int ij=idx(i,j);
+    outfile << vz[i] << " " << Z[j] << " " << P1 << " " << P2 << " " << P3 << endl;
+     //        outfile << vz[i] << " " << Z[j] << " " << v_stat->ee[ij] << " " << v_stat->ex_re[ij] << " " << v_stat->ex_im[ij] << endl;
+    }
+    outfile << endl;
+    }
+}
 
 void NuOsc::analysis() {
 
-    eval_conserved();
+    eval_conserved(v_stat);
 
-    //real statis1[4], statis2[4];
-    //_analysis_c(statis1, v_stat-> ex_re, v_stat-> ex_im);
-    //_analysis_v(statis2, v_stat->bee);
+    real maxrelP = 0.0;
+    real maxrelN = 0.0;
+    real avgP  = 0.0;
+    real avgPb = 0.0;
+    real norP  = 0.0;
+    real norPb = 0.0;
+    real aM11 = 0.0, aM12 = 0.0, aM13 = 0.0;
+    real aM01 = 0.0, aM02 = 0.0, aM03 = 0.0;
+    real nor=0.0;
+    //int maxi,maxj;
 
-    //printf("Time: %.5f  min/max/std of |ex|:( %9.2g %9.2g %9.2g ) |bee|:( %9.2g %9.2g %9.2g)\n", phy_time,
-    //			statis1[0], statis1[1], statis1[3],
-    //			statis2[0], statis2[1], statis2[3]);
-    //anafile << phy_time <<" "<< statis1[0]<< " " << statis1[1] << " " << statis1[3] << " "
-    //                         << statis2[0]<< " " << statis2[1] << " " << statis2[3] << " "
-    //                         << probe0 << endl;
-
-    /*
-       real pee [4];  _out_tmp(pee, v_stat->ee);
-       real pexr[4];  _out_tmp(pexr, v_stat->ex_re);
-       real pexi[4];  _out_tmp(pexi, v_stat->ex_im);
-       real ai;
-       angle_integrated(ai, v_stat->ex_re,  v_stat->ex_im);
-       printf("Time: %.5f  |ee|: %9.2g %9.2g %9.2g  |exr|: %9.2g %9.2g %9.2g   |exi|: %9.2g %9.2g %9.2g  A= %g\n", phy_time,
-       pee[0],  pee[1],  pee[2],
-       pexr[0], pexr[1], pexr[2],
-       pexi[0], pexi[1], pexi[2], ai );
-       anafile << phy_time <<" "<< pee[0]<<  " " << pee[1] <<  " " << pee[2] << " "
-       << pexr[0]<< " " << pexr[1] << " " << pexr[2] << " "
-       << pexi[0]<< " " << pexi[1] << " " << pexi[2] << " " << ai << endl;
-    */
-
-    real tr[4];  _analysis_v(tr, con0);
-    real st[4];  _analysis_v(st, con1);
-
-    printf("Phy time: %.5f  min/max/std |p^2|: %7.2g %7.2g %7.2g  |tr|: %7.2g %7.2g %7.2g\n", phy_time, st[0], st[1], st[3], tr[0], tr[1], tr[3]);
-}
-
-void NuOsc::dumpv(const real v[]) {
-    cout << "	=== ee component ===" << endl;
-    for (int i=0;i<nvz; i++) {
-        for (int j=-gz;j<nz+gz; j++) {
-            printf("%10.2e ", v[idx(i,j)]);
-        }
-        cout << endl;
+    #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,aM11,aM12,aM13,norP,norPb,nor) reduction(max:maxrelP,maxrelN)
+    for(int i=0;i<nvz;i++)
+    for(int j=0;j<nz;j++)  {
+	int ij = idx(i,j);
+        //if (relP>maxrelP || relPb>maxrelP) {maxi=i;maxj=j;}
+        maxrelP = std::max( std::max(maxrelP,relP[ij]), relPb[ij]);
+        maxrelN = std::max( std::max(maxrelN,relN[ij]), relNb[ij]);
+        
+        avgP  += v_stat->ee [ij];
+        avgPb += v_stat->bee[ij];
+        aM01  +=        P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
+        aM02  +=        P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
+        aM03  +=        P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
+        aM11  += vz[i]*(P1[ij]*G0[ij] - P1b[ij]*G0b[ij]);
+        aM12  += vz[i]*(P2[ij]*G0[ij] - P2b[ij]*G0b[ij]);
+        aM13  += vz[i]*(P3[ij]*G0[ij] - P3b[ij]*G0b[ij]);
+        norP  += 2.0*G0 [ij];
+        norPb += 2.0*G0b[ij];
+        nor   += 2.0*(G0[ij]-G0b[ij]);
     }
-    cout << endl;
+    avgP  /= norP;
+    avgPb /= norPb;
+    real aM0    = sqrt(aM01*aM01+aM02*aM02+aM03*aM03)/nor;
+    real aM1    = sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
+    printf("T= %15f ", phy_time);
+    printf("%6.5e %6.5e %6.5e %6.5e %6.5e %6.5e\n",avgP,avgPb,maxrelP,maxrelN,aM0, aM1);
+    
+    anafile << phy_time << " " << avgP << " " << avgPb << " " << maxrelP << " " << maxrelN << " " << aM0 << " " << aM1 << endl;
 }
 
 void NuOsc::write_z_at_vz() {
@@ -743,35 +865,52 @@ void NuOsc::write_z_at_vz() {
 
 #define WRITE_Z_AT(HANDLE, VAR, V_IDX) \
         HANDLE << phy_time << " "; \
-        for (int i=0;i<nz; i++) HANDLE << std::setprecision(14) << VAR[idx(V_IDX, i)] << " "; \
+        for (int i=0;i<nz; i++) HANDLE << std::setprecision(8) << VAR[idx(V_IDX, i)] << " "; \
         HANDLE << endl;
     // f(z) at the lowest  v-mode
-    WRITE_Z_AT(ee_vl,  v->ee,    0)
-    WRITE_Z_AT(exr_vl, v->ex_re, 0)
+    //WRITE_Z_AT(ee_vl,  v->ee,    0)
+    //WRITE_Z_AT(exr_vl, v->ex_re, 0)
     //WRITE_Z_AT(exi_vl, v->ex_im, 0)
     // f(z) at the highest v-mode
     WRITE_Z_AT(ee_vh,  v->ee,    nvz-1)
     WRITE_Z_AT(exr_vh, v->ex_re, nvz-1)
-    //WRITE_Z_AT(exi_vh, v->ex_im, nvz-1)
+    WRITE_Z_AT(exi_vh, v->ex_im, nvz-1)
 
-    // f(z) at the v=0
-    WRITE_Z_AT(ee_vm,  v->ee,    int((nvz-1)/2))
-
-    WRITE_Z_AT(con_vl, con1,    0)
-    WRITE_Z_AT(con_vm, con1,    int((nvz-1)/2))
-    WRITE_Z_AT(con_vh, con1,    nvz-1)
+    // Pn at u ~= -0.5
+    WRITE_Z_AT(p1_v,   P1,  int(nvz*0.25))
+    WRITE_Z_AT(p2_v,   P2,  int(nvz*0.25))
+    WRITE_Z_AT(p3_v,   P3,  int(nvz-1))
 #undef WRITE_Z_AT
 
 }
 
 int main(int argc, char *argv[]) {
 
-    real dz  = 0.25;
-    real z0  = -64;      real z1  =  -z0;
-    real vz0 = -1;       real vz1 =  -vz0;    int nvz = 8 + 1;
-    real cfl = 0.25;     real ko = 0.0;
+#ifdef PAPI
+    if ( PAPI_hl_region_begin("computation") != PAPI_OK )
+       cout << "PAPI error!" << endl;
+#endif
+
+    real dz  = 0.2;
+    real z0  = -600;     real z1  =  -z0;
+    real vz0 = -1;       real vz1 =  -vz0;    int nvz = 16 + 1;
+    real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 0.0;
+    bool renorm = false;
+
+    // === initial value
+    real alpha = 0.9;     //0.92 for G4b  // nuebar/nue_asymmetric_parameter
+    real lnue  = 0.6;     // width_nue
+    real lnueb = 0.53;    // width_nuebar
+    real ipt   = 0;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
+    real eps0  = 0.1;     // 1e-7 for G4b    // eps0
+    real lzpt  = 50.0;    // width_pert_for_0
+
+    int ANAL_EVERY = 10.0   / (cfl*dz) + 1;
+    int END_STEP   = 900.0 / (cfl*dz) + 1;
+    int DUMP_EVERY = 99999999;
+
 
     // Parse input argument
     for (int t = 1; argv[t] != 0; t++) {
@@ -784,40 +923,37 @@ int main(int argc, char *argv[]) {
             cfl   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--nvz") == 0 )  {
             nvz   = atoi(argv[t+1]);    t+=1;
+	    #ifdef CELL_CENTER_V
+            assert(nvz%2==0);
+            #else
             assert(nvz%2==1);
+            #endif
         } else if (strcmp(argv[t], "--ko") == 0 )  {
             ko    = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--mu") == 0 )  {
             mu    = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--renorm") == 0 )  {
+            renorm = bool(atoi(argv[t+1]));    t+=1;
+        } else if (strcmp(argv[t], "--eps0") == 0 )  {
+            eps0 = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--ana_per") == 0 )  {
+            ANAL_EVERY = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--endstep") == 0 )  {
+            END_STEP = atoi(argv[t+1]);    t+=1;
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
         }
     }
     int nz  = int((z1-z0)/dz);
-    
-#if 0
-    // check ~10 advection cycle to see if return to original state (for PBC)
-    int ANAL_EVERY = nz/cfl * 1 ;
-    int END_STEP   = ANAL_EVERY * 5;
-    int DUMP_EVERY = 99999999;
-#else
-    // check every 20-step before hitting boundary
-    int END_STEP   = int(nz/cfl*0.55);
-    int ANAL_EVERY = END_STEP / 20;
-    int DUMP_EVERY = ANAL_EVERY*99999;
-#endif
 
     // === Initialize simuation
     NuOsc state(nvz, nz, vz0, vz1, z0, z1, cfl, ko);
     state.set_mu(mu);
+    state.set_renorm(renorm);
 
-    // === initial value
-    real f0    = 1.0;
-    real alpha = 0.97;
-    //state.fillInitValue(f0, alpha);
-    state.fillInitValue_squared_wave();
-
+    state.fillInitValue(1.0, alpha, lnue, lnueb, ipt, eps0, lzpt);
+    
     // === analysis for t=0
     state.analysis();
     state.write_z_at_vz();
@@ -835,6 +971,19 @@ int main(int argc, char *argv[]) {
         }
     }
 
+#ifdef PAPI
+    if ( PAPI_hl_region_end("computation") != PAPI_OK )
+       cout << "PAPI error!" << endl;
+#endif
+
     printf("Completed.\n");
     return 0;
 }
+
+
+
+
+
+
+
+

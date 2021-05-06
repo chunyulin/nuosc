@@ -1,10 +1,14 @@
 source /pkg/ENV/pycbc_py2/init
 
-python plot_zmap.py ../ee_vl.dat   &
-python plot_zmap.py ../ee_vh.dat   &
-python plot_zmap.py ../exr_vl.dat   &
-python plot_zmap.py ../exr_vh.dat   &
-python plot_zmap.py ../con_vl.dat   &
-python plot_zmap.py ../con_vh.dat   &
+#python plot_zmap.py ../ee_vh.dat   &
+#python plot_zmap.py ../con_vl.dat   &
+
+#python plot_zmap.py ../ee_vh.dat   &
+#python plot_zmap.py ../exr_vh.dat   &
+#python plot_zmap.py ../p1_v.dat   &
+#python plot_zmap.py ../p2_v.dat   &
+#python plot_zmap.py ../p3_v.dat   &
+
+python plot_zmap.py
 
 wait

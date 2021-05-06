@@ -1,4 +1,7 @@
 module purge
 module load ThunderX2CN99/RHEL/7/gcc-9.3.0/armpl
+module load gcc9/papi/6.0
+
+export PAPI_MULTIPLEX=1
 
 make

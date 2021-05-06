@@ -1,0 +1,7 @@
+source /pkg/ENV/pycbc_py2/init
+
+#python plot_P.py "P1" ../p1_v.dat
+#python plot_P.py "P2" ../p2_v.dat
+#python plot_P.py "P3" ../p3_v.dat
+
+python plot_P.py "Pperp"

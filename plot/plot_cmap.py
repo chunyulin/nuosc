@@ -20,7 +20,7 @@ def plotmap(fname):
         #f.seek(8, os.SEEK_SET)
         nz,nvz,gz = np.fromfile(f, dtype=np.intc, count=3)
 
-        data   = np.fromfile(f, dtype=np.double, count=6*(nz+2*gz)*nvz).reshape([6, nvz, nz+2*gz])
+        data   = np.fromfile(f, dtype=np.double, count=8*(nz+2*gz)*nvz).reshape([8, nvz, nz+2*gz])
 
     dz = 1.0/nz
     z_grid = np.linspace(z0-1.5*dz, z1+1.5*dz, nz+2*gz)
@@ -31,7 +31,7 @@ def plotmap(fname):
     #print (v.shape)
     #print (vee.shape)
     NR=2
-    NC=3
+    NC=4
     fig, ax = plt.subplots(nrows=NR, ncols=NC, figsize=(NC*4.5,NR*3) )
     fig.suptitle("Physical time:{}     dz={}     (nv,nz)=({} {})      src file={}".format(time, dz, nvz, nz, fname))
     li = ['ee','exr','exi','bee','bexr','bexi']
