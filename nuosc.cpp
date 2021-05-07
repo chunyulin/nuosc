@@ -10,6 +10,9 @@
 #include <papi.h>
 #endif
 
+#include <algorithm>
+#include <list>
+
 #define BC_PERI
 #define KO_ORD_3
 #define ADVEC_CENTER_FD
@@ -17,20 +20,11 @@
 //#define ADVEC_OFF
 
 
-
 using std::cout;
 using std::endl;
 using std::cin;
 
 typedef double real;
-
-typedef struct stat {
-    real min;
-    real max;
-    real sum;
-    real avg;
-    real std;
-} FieldStat;
 
 typedef struct Vars {
     real* ee;
@@ -64,6 +58,15 @@ typedef struct Vars {
     }
 } FieldVar;
 
+typedef struct stat {
+    real min;
+    real max;
+    real sum;
+    real avg;
+    real std;
+} FieldStat;
+
+
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
@@ -85,6 +88,8 @@ double g(double v, double v0, double sigma){
 //}
 
 
+
+
 class NuOsc {
     public:
         real phy_time, dt;
@@ -93,9 +98,9 @@ class NuOsc {
         real  *vz, *Z;
         // all field variables
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
-        real *G0,*G0b;
         real *P1,  *P2,  *P3,  *relN,  *relP;
         real *P1b, *P2b, *P3b, *relNb, *relPb;
+        real *G0,*G0b;
 
         int nvz; // Dim of vz (Vertex-center grid used.)
         int nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
@@ -209,15 +214,13 @@ class NuOsc {
             exi_vh.open("exi_vh.dat", std::ofstream::out | std::ofstream::trunc);
             exi_vh << nz << " " << z0 << " " << z1 << endl;
             
+            
             p1_v.open("p1_v.dat", std::ofstream::out | std::ofstream::trunc);
             p1_v << nz << " " << z0 << " " << z1 << endl;
             p2_v.open("p2_v.dat", std::ofstream::out | std::ofstream::trunc);
             p2_v << nz << " " << z0 << " " << z1 << endl;
             p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
             p3_v << nz << " " << z0 << " " << z1 << endl;
-            //p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
-            //for (int i=0;i<nz; i+=nz/1000)  p3_v << Z[i] << " ";
-            //p3_v << endl;
         }
 
         //NuOsc(const NuOsc &v) {  // Copy constructor to be checked.
@@ -268,9 +271,10 @@ class NuOsc {
         void eval_conserved(const FieldVar* v0);
         void renormalize(FieldVar* v0);
 
-        void write_z_at_vz();
+        void write_fz();
         void write_bin(const int t);
         void output_detail(const char* fn);
+
 };
 
 void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt) {
@@ -288,17 +292,16 @@ void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, r
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
-
     	    real tmp;
             if(ipt==0) { tmp = eps_c(Z[j],0.0,eps0,lzpt); }
             if(ipt==1) { tmp = eps_r(Z[j],0.0,eps0); }
-            real tmp2 = sqrt(1.0-tmp*tmp);
-            v_stat->ee    [idx(i,j)] = G0[idx(i,j)]*(1.0+tmp2); //sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-            v_stat->xx    [idx(i,j)] = G0[idx(i,j)]*(1.0-tmp2);
+            real p3o = sqrt(1.0-tmp*tmp);
+            v_stat->ee    [idx(i,j)] = G0[idx(i,j)]*(1.0+p3o); //sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+            v_stat->xx    [idx(i,j)] = G0[idx(i,j)]*(1.0-p3o);
             v_stat->ex_re [idx(i,j)] = G0[idx(i,j)]*tmp;
             v_stat->ex_im [idx(i,j)] = 0.0; //random_amp(0.001);
-            v_stat->bee   [idx(i,j)] = G0b[idx(i,j)]*(1.0+tmp2);
-            v_stat->bxx   [idx(i,j)] = G0b[idx(i,j)]*(1.0-tmp2);
+            v_stat->bee   [idx(i,j)] = G0b[idx(i,j)]*(1.0+p3o);
+            v_stat->bxx   [idx(i,j)] = G0b[idx(i,j)]*(1.0-p3o);
             v_stat->bex_re[idx(i,j)] = G0b[idx(i,j)]*tmp;
             v_stat->bex_im[idx(i,j)] = 0.0; //random_amp(0.001);
         }
@@ -365,6 +368,38 @@ void NuOsc::write_bin(const int t) {
     outfile.close();
     printf("		Write %d x %d into %s\n", nvz, nz+2*gz, filename);
 }
+
+/*
+void NuOsc::write_pn_bin(const int t, const int vreduction = 1, const int zreduction = 1) {
+    char filename[32];
+    sprintf(filename,"pn_%04d.bin", t);
+
+    std::ofstream outfile;
+    outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
+    if(!outfile) {
+        cout << "*** Open fails: " << filename << endl;
+    }
+
+    FieldVar *v = v_stat; 
+
+    int reduced_nz = nz/zreduction;
+    real P1tmp = new real[reduced_nz*5];  // only keep v=-1,-0.5,0,0.5,1
+
+
+    outfile.write((char *) &phy_time,  sizeof(real));
+    outfile.write((char *) &vz[0],     sizeof(real));
+    outfile.write((char *) &vz[nvz-1], sizeof(real));
+    outfile.write((char *) &Z[0],      sizeof(real));
+    outfile.write((char *) &Z[nz-1],   sizeof(real));
+    outfile.write((char *) &nz,  sizeof(int));
+    outfile.write((char *) &nvz, sizeof(int));
+    outfile.write((char *) P1,  (nz+2*gz)*nvz*sizeof(real));
+    outfile.write((char *) P2,  (nz+2*gz)*nvz*sizeof(real));
+    outfile.write((char *) P3,  (nz+2*gz)*nvz*sizeof(real));
+    outfile.close();
+    printf("		Write %d x %d into %s\n", nvz, nz+2*gz, filename);
+}
+*/
 
 void NuOsc::updatePeriodicBoundary(FieldVar * in) {
 
@@ -658,18 +693,20 @@ void NuOsc::renormalize(FieldVar* v0) {
     for(int i=0; i<nvz; i++)
     for(int j=0; j<nz; j++) {
 	int ij=idx(i,j);
-	real P1  = v0->ex_re[ij] / G0[ij];
-        real P2  = v0->ex_im[ij] / G0[ij];
-        real P3  = (v0->ee[ij] - v0->xx[ij])/2.0/G0[ij];
-        real P1b = v0->bex_re[ij] / G0b[ij];
-        real P2b = v0->bex_im[ij] / G0b[ij];
-        real P3b = (v0->bee[ij] - v0->bxx[ij])/2.0/G0b[ij];
+	real iG = 1.0 / G0[ij];
+	real iGb = 1.0 / G0b[ij];
+	real P1  = v0->ex_re[ij] * iG;
+        real P2  = v0->ex_im[ij] * iG;
+        real P3  = (v0->ee[ij] - v0->xx[ij])*iG*0.5;
+        real P1b = v0->bex_re[ij] * iGb;
+        real P2b = v0->bex_im[ij] * iGb;
+        real P3b = (v0->bee[ij] - v0->bxx[ij])*0.5 * iGb;
         real iP   = 1.0/sqrt(P1*P1+P2*P2+P3*P3);
         real iPb  = 1.0/sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
         real tmp  = iP *(P3) *G0 [ij];
         real tmpb = iPb*(P3b)*G0b[ij];
-        v0->ee    [ij]  = G0[ij] + tmp;
-        v0->xx    [ij]  = G0[ij] - tmp;
+        v0->ee    [ij]  = G0[ij]+tmp;
+        v0->xx    [ij]  = G0[ij]-tmp;
         v0->ex_re [ij] *= iP;
         v0->ex_im [ij] *= iP;
         v0->bee   [ij]  = G0b[ij]+tmpb;
@@ -840,12 +877,12 @@ void NuOsc::analysis() {
         
         avgP  += v_stat->ee [ij];
         avgPb += v_stat->bee[ij];
-        aM01  +=        P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
-        aM02  +=        P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
-        aM03  +=        P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
-        aM11  += vz[i]*(P1[ij]*G0[ij] - P1b[ij]*G0b[ij]);
-        aM12  += vz[i]*(P2[ij]*G0[ij] - P2b[ij]*G0b[ij]);
-        aM13  += vz[i]*(P3[ij]*G0[ij] - P3b[ij]*G0b[ij]);
+        aM01  += v_stat->ex_re[ij] - v_stat->bex_re[ij];                                    // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
+        aM02  += v_stat->ex_im[ij] - v_stat->bex_im[ij];                                    // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
+        aM03  += 0.5*(v_stat->ee[ij] - v_stat->ee[ij] - v_stat->bee[ij] + v_stat->bxx[ij]); // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
+        aM11  += vz[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);
+        aM12  += vz[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);
+        aM13  += vz[i]*0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
         norP  += 2.0*G0 [ij];
         norPb += 2.0*G0b[ij];
         nor   += 2.0*(G0[ij]-G0b[ij]);
@@ -860,26 +897,20 @@ void NuOsc::analysis() {
     anafile << phy_time << " " << avgP << " " << avgPb << " " << maxrelP << " " << maxrelN << " " << aM0 << " " << aM1 << endl;
 }
 
-void NuOsc::write_z_at_vz() {
+void NuOsc::write_fz() {
     FieldVar *v = v_stat;
-
 #define WRITE_Z_AT(HANDLE, VAR, V_IDX) \
         HANDLE << phy_time << " "; \
         for (int i=0;i<nz; i++) HANDLE << std::setprecision(8) << VAR[idx(V_IDX, i)] << " "; \
         HANDLE << endl;
-    // f(z) at the lowest  v-mode
-    //WRITE_Z_AT(ee_vl,  v->ee,    0)
-    //WRITE_Z_AT(exr_vl, v->ex_re, 0)
-    //WRITE_Z_AT(exi_vl, v->ex_im, 0)
     // f(z) at the highest v-mode
-    WRITE_Z_AT(ee_vh,  v->ee,    nvz-1)
-    WRITE_Z_AT(exr_vh, v->ex_re, nvz-1)
-    WRITE_Z_AT(exi_vh, v->ex_im, nvz-1)
+    //WRITE_Z_AT(ee_vh,  v->ee,    nvz-1)
 
-    // Pn at u ~= -0.5
-    WRITE_Z_AT(p1_v,   P1,  int(nvz*0.25))
-    WRITE_Z_AT(p2_v,   P2,  int(nvz*0.25))
-    WRITE_Z_AT(p3_v,   P3,  int(nvz-1))
+    // Pn at v = 1
+    int at_vz = nvz-1;
+    WRITE_Z_AT(p1_v,   P1,  at_vz)
+    WRITE_Z_AT(p2_v,   P2,  at_vz)
+    WRITE_Z_AT(p3_v,   P3,  at_vz)
 #undef WRITE_Z_AT
 
 }
@@ -911,7 +942,6 @@ int main(int argc, char *argv[]) {
     int END_STEP   = 900.0 / (cfl*dz) + 1;
     int DUMP_EVERY = 99999999;
 
-
     // Parse input argument
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dz") == 0 )  {
@@ -934,12 +964,26 @@ int main(int argc, char *argv[]) {
             mu    = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--renorm") == 0 )  {
             renorm = bool(atoi(argv[t+1]));    t+=1;
+        
+        // for monitoring
+        } else if (strcmp(argv[t], "--ANA_EVERY") == 0 )  {
+            ANAL_EVERY = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--ENDSTEP") == 0 )  {
+            END_STEP = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--ANA_EVERY_T") == 0 )  {
+            ANAL_EVERY = int( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
+        } else if (strcmp(argv[t], "--ENDSTEP_T") == 0 )  {
+            END_STEP = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
+        // for intial data
+        } else if (strcmp(argv[t], "--lnue") == 0 )  {
+            lnue  = atof(argv[t+1]);
+            lnueb = atof(argv[t+2]);    t+=2;
         } else if (strcmp(argv[t], "--eps0") == 0 )  {
             eps0 = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--ana_per") == 0 )  {
-            ANAL_EVERY = atoi(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--endstep") == 0 )  {
-            END_STEP = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--alpha") == 0 )  {
+            alpha = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--ipt") == 0 )  {
+            ipt = atoi(argv[t+1]);    t+=1;
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
@@ -956,7 +1000,7 @@ int main(int argc, char *argv[]) {
     
     // === analysis for t=0
     state.analysis();
-    state.write_z_at_vz();
+    state.write_fz();
     //state.write_bin(0);
 
     for (int t=1; t<=END_STEP; t++) {
@@ -964,7 +1008,7 @@ int main(int argc, char *argv[]) {
 
         if ( t%ANAL_EVERY==0)  {
             state.analysis();
-            state.write_z_at_vz();
+            state.write_fz();
         }
         if ( t%DUMP_EVERY==0) {
             state.write_bin(t);
