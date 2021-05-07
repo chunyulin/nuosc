@@ -122,8 +122,7 @@ class NuOsc {
 
 	// text output of f(z) at certain v-mode
         std::ofstream ee_vl,  ee_vh, ee_vm;
-        std::ofstream exr_vl, exr_vh;
-        std::ofstream exi_vl, exi_vh;
+        std::ofstream p1_vm, p2_vm, p3_vm;
         std::ofstream p1_v, p2_v, p3_v;
 
         inline unsigned int idx(const int i, const int j) { return i*(nz+2*gz) + (j+gz); }    // i:vz   j:z (last index)
@@ -202,19 +201,13 @@ class NuOsc {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
 
-            // dump at highest/lowest v-mode
-            ee_vl.open("ee_vl.dat", std::ofstream::out | std::ofstream::trunc);
-            ee_vl << nz << " " << z0 << " " << z1 << endl;
-            ee_vh.open("ee_vh.dat", std::ofstream::out | std::ofstream::trunc);
-            ee_vh << nz << " " << z0 << " " << z1 << endl;
-            exr_vl.open("exr_vl.dat", std::ofstream::out | std::ofstream::trunc);
-            exr_vl << nz << " " << z0 << " " << z1 << endl;
-            exr_vh.open("exr_vh.dat", std::ofstream::out | std::ofstream::trunc);
-            exr_vh << nz << " " << z0 << " " << z1 << endl;
-            exi_vh.open("exi_vh.dat", std::ofstream::out | std::ofstream::trunc);
-            exi_vh << nz << " " << z0 << " " << z1 << endl;
-            
-            
+            // dump f(z) at certain v-mode
+            p1_vm.open("p1_vm.dat", std::ofstream::out | std::ofstream::trunc);
+            p1_vm << nz << " " << z0 << " " << z1 << endl;
+            p2_vm.open("p2_vm.dat", std::ofstream::out | std::ofstream::trunc);
+            p2_vm << nz << " " << z0 << " " << z1 << endl;
+            p3_vm.open("p3_vm.dat", std::ofstream::out | std::ofstream::trunc);
+            p3_vm << nz << " " << z0 << " " << z1 << endl;
             p1_v.open("p1_v.dat", std::ofstream::out | std::ofstream::trunc);
             p1_v << nz << " " << z0 << " " << z1 << endl;
             p2_v.open("p2_v.dat", std::ofstream::out | std::ofstream::trunc);
@@ -238,11 +231,8 @@ class NuOsc {
             anafile.close();
 
             ee_vl.close();    ee_vh.close();    ee_vm.close();
-            exr_vl.close();  exr_vh.close();
-            exi_vl.close();  exi_vh.close();
-            p1_v.close();
-            p2_v.close();
-            p3_v.close();
+            p1_vm.close();  p2_vm.close();    p3_vm.close();
+            p1_v.close();   p2_v.close();      p3_v.close();
         }
 
         void set_mu(real mu_) {
@@ -906,11 +896,19 @@ void NuOsc::write_fz() {
     // f(z) at the highest v-mode
     //WRITE_Z_AT(ee_vh,  v->ee,    nvz-1)
 
-    // Pn at v = 1
+{
+    // Pn at v = -0.5
+    int at_vz = int(0.25*(nvz-1));
+    WRITE_Z_AT(p1_vm,   P1,  at_vz);
+    WRITE_Z_AT(p2_vm,   P2,  at_vz);
+    WRITE_Z_AT(p3_vm,   P3,  at_vz);
+}
+{    // Pn at v = 1
     int at_vz = nvz-1;
-    WRITE_Z_AT(p1_v,   P1,  at_vz)
-    WRITE_Z_AT(p2_v,   P2,  at_vz)
-    WRITE_Z_AT(p3_v,   P3,  at_vz)
+    WRITE_Z_AT(p1_v,   P1,  at_vz);
+    WRITE_Z_AT(p2_v,   P2,  at_vz);
+    WRITE_Z_AT(p3_v,   P3,  at_vz);
+}
 #undef WRITE_Z_AT
 
 }
@@ -968,10 +966,14 @@ int main(int argc, char *argv[]) {
         // for monitoring
         } else if (strcmp(argv[t], "--ANA_EVERY") == 0 )  {
             ANAL_EVERY = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--DUMP_EVERY") == 0 )  {
+            DUMP_EVERY = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ENDSTEP") == 0 )  {
             END_STEP = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ANA_EVERY_T") == 0 )  {
             ANAL_EVERY = int( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
+        } else if (strcmp(argv[t], "--DUMP_EVERY_T") == 0 )  {
+            DUMP_EVERY = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
         } else if (strcmp(argv[t], "--ENDSTEP_T") == 0 )  {
             END_STEP = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
         // for intial data
@@ -1008,10 +1010,10 @@ int main(int argc, char *argv[]) {
 
         if ( t%ANAL_EVERY==0)  {
             state.analysis();
-            state.write_fz();
         }
         if ( t%DUMP_EVERY==0) {
-            state.write_bin(t);
+            state.write_fz();
+            //state.write_bin(t);
         }
     }
 

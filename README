@@ -1,6 +1,6 @@
 Use "make" to compile.
 
-Run with "./nuosc"
+Run with "make run" for example.
 
 after that, "cd plot", and
 plot z-evolution with "./go_zmap"
