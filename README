@@ -1,9 +1,5 @@
-Use "make" to compile.
-
-Run with "make run" for example.
-
-after that, "cd plot", and
-plot z-evolution with "./go_zmap"
-plot snapshot with "./go_cmap"
-plot history with "./go_rate"
+1) Use "make" to compile.
+2) Submit multiple run with "run.sh". All runs will be in the runtag folder.
+3) Go to each runtag folder, and make plot to compare different runs via:
+   "../plt_*.py"
 ---

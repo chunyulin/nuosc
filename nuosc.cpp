@@ -95,7 +95,7 @@ class NuOsc {
         real phy_time, dt;
 
         // all coordinates
-        real  *vz, *Z;
+        real  *vz, *vw, *Z;
         // all field variables
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
         real *P1,  *P2,  *P3,  *relN,  *relP;
@@ -142,6 +142,7 @@ class NuOsc {
             gz  = gz_;
             int size = (nz+2*gz)*(nvz);
             vz     = new real[nvz];
+            vw     = new real[nvz];   // quadrature of v
             Z      = new real[nz];
             G0     = new real[size];
             G0b    = new real[size];
@@ -166,10 +167,16 @@ class NuOsc {
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
 #ifdef CELL_CENTER_V
             dv = (vz1-vz0)/nvz;      // for v as cell-center
-            for (int i=0;i<nvz; i++)	vz[i] = vz0 + (i+0.5)*dv;   // cell-center
+            for (int i=0;i<nvz; i++)	{
+        	vz[i] = vz0 + (i+0.5)*dv;   // cell-center
+        	vw[i] = 1.0;
+    	    }
 #else
             dv = (vz1-vz0)/(nvz-1);      // for v as vertex-center
-            for (int i=0;i<nvz; i++)	vz[i] = vz0 + i*dv;   // vertex-center
+            for (int i=0;i<nvz; i++) {
+        	vz[i] = vz0 + i*dv;   // vertex-center
+        	vw[i] = (i==0 || i==nvz-1)? 0.5 : 1.0;
+    	    }
 #endif
 
             printf("\n\nNuOsc with max OpenMP core: %d\n\n", omp_get_max_threads() );
@@ -508,8 +515,7 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             real Ibxx   = 0;
             real Ibexr  = 0;
             real Ibexi  = 0;
-#ifdef CELL_CENTER_V
-            for (int k=1;k<nvz; k++) {   // vz' integral
+            for (int k=0;k<nvz; k++) {   // vz' integral
                 real eep    = (in->ee    [idx(k,j)]);
                 real xxp    = (in->xx    [idx(k,j)]);
                 real expr   = (in->ex_re [idx(k,j)]);
@@ -520,77 +526,15 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
                 real bexpi  = (in->bex_im[idx(k,j)]);
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
+                Iee   +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
+                Ixx   += -2*vw[k]*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
+                Iexr  +=    vw[k]*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
+                Iexi  +=    vw[k]*mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
+                Ibee  +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
+                Ibxx  += -2*vw[k]*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
+                Ibexr +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
+                Ibexi +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
             }
-#else
-            for (int k=1;k<nvz-1; k++) {   // vz' integral
-                real eep    = (in->ee    [idx(k,j)]);
-                real xxp    = (in->xx    [idx(k,j)]);
-                real expr   = (in->ex_re [idx(k,j)]);
-                real expi   = (in->ex_im [idx(k,j)]);
-                real beep   = (in->bee   [idx(k,j)]);
-                real bxxp   = (in->bxx   [idx(k,j)]);
-                real bexpr  = (in->bex_re[idx(k,j)]);
-                real bexpi  = (in->bex_im[idx(k,j)]);
-
-                // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -2*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=    mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=    mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -2*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=    mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
-            }
-            {   int k=0;  // Deal with end point for integral in vertex-center grid
-                real eep    = (in->ee    [idx(k,j)]);
-                real xxp    = (in->xx    [idx(k,j)]);
-                real expr   = (in->ex_re [idx(k,j)]);
-                real expi   = (in->ex_im [idx(k,j)]);
-                real beep   = (in->bee   [idx(k,j)]);
-                real bxxp   = (in->bxx   [idx(k,j)]);
-                real bexpr  = (in->bex_re[idx(k,j)]);
-                real bexpi  = (in->bex_im[idx(k,j)]);
-
-                // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=  0.5*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=  0.5* mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
-            }
-            {   int k=nvz-1;  // Deal with end point for integral in vertex-center grid
-                real eep    = (in->ee    [idx(k,j)]);
-                real xxp    = (in->xx    [idx(k,j)]);
-                real expr   = (in->ex_re [idx(k,j)]);
-                real expi   = (in->ex_im [idx(k,j)]);
-                real beep   = (in->bee   [idx(k,j)]);
-                real bxxp   = (in->bxx   [idx(k,j)]);
-                real bexpr  = (in->bex_re[idx(k,j)]);
-                real bexpi  = (in->bex_im[idx(k,j)]);
-
-                // terms for -i* mu * [rho'-rho_bar', rho]
-                Iee   +=  mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Ixx   += -mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
-                Iexr  +=  0.5*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=  0.5*mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibxx  += -mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
-                Ibexr +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=  0.5*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
-            }
-#endif
             // 3.1) calculate integral with simple trapezoidal rule
             out->ee    [idx(i,j)] += dv*Iee;
             out->xx    [idx(i,j)] += dv*Ixx;
@@ -857,6 +801,7 @@ void NuOsc::analysis() {
     real nor=0.0;
     //int maxi,maxj;
 
+    // integral over (vz,z)
     #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,aM11,aM12,aM13,norP,norPb,nor) reduction(max:maxrelP,maxrelN)
     for(int i=0;i<nvz;i++)
     for(int j=0;j<nz;j++)  {
@@ -865,17 +810,17 @@ void NuOsc::analysis() {
         maxrelP = std::max( std::max(maxrelP,relP[ij]), relPb[ij]);
         maxrelN = std::max( std::max(maxrelN,relN[ij]), relNb[ij]);
         
-        avgP  += v_stat->ee [ij];
-        avgPb += v_stat->bee[ij];
-        aM01  += v_stat->ex_re[ij] - v_stat->bex_re[ij];                                    // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
-        aM02  += v_stat->ex_im[ij] - v_stat->bex_im[ij];                                    // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
-        aM03  += 0.5*(v_stat->ee[ij] - v_stat->ee[ij] - v_stat->bee[ij] + v_stat->bxx[ij]); // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
-        aM11  += vz[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);
-        aM12  += vz[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);
-        aM13  += vz[i]*0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
-        norP  += 2.0*G0 [ij];
-        norPb += 2.0*G0b[ij];
-        nor   += 2.0*(G0[ij]-G0b[ij]);
+        avgP  += vw[i]*v_stat->ee [ij];
+        avgPb += vw[i]*v_stat->bee[ij];
+        aM01  += vw[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                  // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
+        aM02  += vw[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);                                  // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
+        aM03  += vw[i]*0.5*(v_stat->ee[ij] - v_stat->ee[ij] - v_stat->bee[ij] + v_stat->bxx[ij]); // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
+        aM11  += vw[i]*vz[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);
+        aM12  += vw[i]*vz[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);
+        aM13  += vw[i]*vz[i]*0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
+        norP  += 2.0*vw[i]*G0 [ij];
+        norPb += 2.0*vw[i]*G0b[ij];
+        nor   += 2.0*vw[i]*(G0[ij]-G0b[ij]);
     }
     avgP  /= norP;
     avgPb /= norPb;

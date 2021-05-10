@@ -10,7 +10,7 @@ import os
 import sys
 import subprocess
 
-p = subprocess.check_output(['ls -d G3a_r*'],shell=True)
+p = subprocess.check_output(['ls -d G*'],shell=True)
 runs = p.split()
 
 data=dict()
@@ -24,7 +24,7 @@ for run in runs:
 def compare(col, tag):
     plt.figure()
     for k in data:
-        plt.plot(data[k][:,0],(data[k][:,col]-data[k][0,col]), label=k)
+        plt.plot(data[k][:,0],(data[k][:,col]), label=k)
     #plt.plot(d2[:,0],(d2[:,col]-d2[0,col]), label=la[2])
     #plt.plot(d3[:,0],(d3[:,col]-d3[0,col]), label=la[3])
     #plt.plot(d4[:,0],(d4[:,col]-d4[0,col]), label=la[4])
