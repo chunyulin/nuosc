@@ -15,7 +15,10 @@ runs = p.split()
 
 data=dict()
 for run in runs:
-    data[run]=np.loadtxt("./{}/analysis.dat".format(run))
+    try:
+        data[run]=np.loadtxt("./{}/analysis.dat".format(run))
+    except:
+	continue
 #d2=np.loadtxt("./G3a_0_0.4_0.1/analysis.dat")
 #d3=np.loadtxt("./G3a_1_0.2_0.1/analysis.dat")
 #d4=np.loadtxt("./G3a_1_0.4_0.1/analysis.dat")

@@ -19,6 +19,7 @@
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
 
+//#define CELL_CENTER_V
 
 using std::cout;
 using std::endl;
@@ -265,8 +266,8 @@ class NuOsc {
         FieldStat _analysis_v(const real var[]);
         FieldStat _analysis_c(const real vr[], const real vi[]);
         void angle_integrated(real &res, const real vr[], const real vi[]);
-        void eval_conserved(const FieldVar* v0);
-        void renormalize(FieldVar* v0);
+        //void eval_conserved(const FieldVar* v0);
+        void renormalize(const FieldVar* v0);
 
         void write_fz();
         void write_bin(const int t);
@@ -601,36 +602,38 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
         }
 }
 
-void NuOsc::eval_conserved(const FieldVar* v) {
+/*
+void NuOsc::eval_conserved(const FieldVar* v0) {
 
     #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
 
             int ij=idx(i,j);
-            P1   [ij] = v->ex_re[ij]/G0[ij];
-	    P2   [ij] = v->ex_im[ij]/G0[ij];
-	    P3   [ij] = (v->ee[ij] - v->xx[ij])/2.0/G0[ij];
-	    P1b  [ij] = v->bex_re[ij]/G0b[ij];
-            P2b  [ij] = v->bex_im[ij]/G0b[ij];
-	    P3b  [ij] = (v->bee[ij] - v->bxx[ij])/2.0/G0b[ij];
-	    relN [ij] = ((v->ee [ij] + v->xx [ij]) / (2.0*G0 [ij])) - 1.0;
-	    relNb[ij] = ((v->bee[ij] + v->bxx[ij]) / (2.0*G0b[ij])) - 1.0;
+            P1   [ij] =   v0->ex_re[ij]/G0[ij];
+	    P2   [ij] = - v0->ex_im[ij]/G0[ij];
+	    P3   [ij] = (v0->ee[ij] - v0->xx[ij])/2.0/G0[ij];
+	    P1b  [ij] = v0->bex_re[ij]/G0b[ij];
+            P2b  [ij] = v0->bex_im[ij]/G0b[ij];
+	    P3b  [ij] = (v0->bee[ij] - v0->bxx[ij])/2.0/G0b[ij];
+	    relN [ij] = ((v0->ee [ij] + v0->xx [ij]) / (2.0*G0 [ij])) - 1.0;
+	    relNb[ij] = ((v0->bee[ij] + v0->bxx[ij]) / (2.0*G0b[ij])) - 1.0;
 	    relP [ij] = sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) - 1.0;
 	    relPb[ij] = sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) - 1.0;
         }
     }
 }
+*/
 
-void NuOsc::renormalize(FieldVar* v0) {
+void NuOsc::renormalize(const FieldVar* v0) {
     #pragma omp parallel for
     for(int i=0; i<nvz; i++)
     for(int j=0; j<nz; j++) {
 	int ij=idx(i,j);
 	real iG = 1.0 / G0[ij];
 	real iGb = 1.0 / G0b[ij];
-	real P1  = v0->ex_re[ij] * iG;
-        real P2  = v0->ex_im[ij] * iG;
+	real P1  =   v0->ex_re[ij] * iG;
+        real P2  = - v0->ex_im[ij] * iG;
         real P3  = (v0->ee[ij] - v0->xx[ij])*iG*0.5;
         real P1b = v0->bex_re[ij] * iGb;
         real P2b = v0->bex_im[ij] * iGb;
@@ -788,7 +791,7 @@ void NuOsc::output_detail(const char* filename) {
 
 void NuOsc::analysis() {
 
-    eval_conserved(v_stat);
+    //eval_conserved(v_stat);
 
     real maxrelP = 0.0;
     real maxrelN = 0.0;
@@ -806,21 +809,22 @@ void NuOsc::analysis() {
     for(int i=0;i<nvz;i++)
     for(int j=0;j<nz;j++)  {
 	int ij = idx(i,j);
+
         //if (relP>maxrelP || relPb>maxrelP) {maxi=i;maxj=j;}
         maxrelP = std::max( std::max(maxrelP,relP[ij]), relPb[ij]);
         maxrelN = std::max( std::max(maxrelN,relN[ij]), relNb[ij]);
         
-        avgP  += vw[i]*v_stat->ee [ij];
-        avgPb += vw[i]*v_stat->bee[ij];
-        aM01  += vw[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                  // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
-        aM02  += vw[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);                                  // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
-        aM03  += vw[i]*0.5*(v_stat->ee[ij] - v_stat->ee[ij] - v_stat->bee[ij] + v_stat->bxx[ij]); // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
-        aM11  += vw[i]*vz[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);
-        aM12  += vw[i]*vz[i]*(v_stat->ex_im[ij] - v_stat->bex_im[ij]);
-        aM13  += vw[i]*vz[i]*0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
-        norP  += 2.0*vw[i]*G0 [ij];
-        norPb += 2.0*vw[i]*G0b[ij];
-        nor   += 2.0*vw[i]*(G0[ij]-G0b[ij]);
+        avgP  += vw[i]* v_stat->ee [ij];
+        avgPb += vw[i]* v_stat->bee[ij];
+        aM01  += vw[i]* (  v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                  // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
+        aM02  += vw[i]* (- v_stat->ex_im[ij] - v_stat->bex_im[ij]);                                  // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
+        aM03  += vw[i]* 0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);   // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
+        aM11  += vw[i]* vz[i]*(v_stat->ex_re[ij] - v_stat->bex_re[ij]);
+        aM12  += vw[i]* vz[i]*(v_stat->ex_im[ij] + v_stat->bex_im[ij]);
+        aM13  += vw[i]* vz[i]*0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
+        norP  += vw[i]* 2.0*G0 [ij];
+        norPb += vw[i]* 2.0*G0b[ij];
+        nor   += vw[i]* 2.0*(G0[ij]-G0b[ij]);
     }
     avgP  /= norP;
     avgPb /= norPb;
