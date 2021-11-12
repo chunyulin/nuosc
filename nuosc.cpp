@@ -1,3 +1,10 @@
+#ifdef NVTX
+#include <nvToolsExt.h> 
+#endif
+
+#include <openacc.h>
+
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
@@ -18,7 +25,6 @@
 #define ADVEC_CENTER_FD
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
-
 //#define CELL_CENTER_V
 
 using std::cout;
@@ -87,8 +93,6 @@ double g(double v, double v0, double sigma){
 //    double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
 //    return exp(-exponant)/N;
 //}
-
-
 
 
 class NuOsc {
@@ -222,6 +226,7 @@ class NuOsc {
             p2_v << nz << " " << z0 << " " << z1 << endl;
             p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
             p3_v << nz << " " << z0 << " " << z1 << endl;
+
         }
 
         //NuOsc(const NuOsc &v) {  // Copy constructor to be checked.
@@ -276,9 +281,11 @@ class NuOsc {
 };
 
 void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt) {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
 
     printf("   Init data: eps = %g  alpha = %f\n", eps0, alpha);
-
 #pragma omp parallel for
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
@@ -288,6 +295,7 @@ void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, r
     }
 
 #pragma omp parallel for
+//#pragma acc kernels loop
     for (int i=0;i<nvz; i++) {
         for (int j=0;j<nz; j++) {
     	    real tmp;
@@ -310,6 +318,9 @@ void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, r
     updatePeriodicBoundary(v_stat);
 #else
     updateInjetOpenBoundary(v_stat);
+#endif
+#ifdef NVTX
+nvtxRangePop();
 #endif
 }
 
@@ -400,10 +411,13 @@ void NuOsc::write_pn_bin(const int t, const int vreduction = 1, const int zreduc
 */
 
 void NuOsc::updatePeriodicBoundary(FieldVar * in) {
-
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
 
 #pragma omp parallel for
+#pragma acc kernels loop
     for (int i=0;i<nvz; i++)
         for (int j=0;j<gz; j++) {
             //lower side
@@ -425,12 +439,16 @@ void NuOsc::updatePeriodicBoundary(FieldVar * in) {
             in->bex_re[idx(i,nz+j)] = in->bex_re[idx(i,j)];
             in->bex_im[idx(i,nz+j)] = in->bex_im[idx(i,j)];
         }
+#ifdef NVTX
+nvtxRangePop();
+#endif
 }
 
 void NuOsc::updateInjetOpenBoundary(FieldVar * in) {
     // Cell-center for z:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
     // Open boundary at two ends
 #pragma omp parallel for
+#pragma acc kernels loop
     for (int i=0;i<nvz; i++)
 	for (int j=0;j<gz; j++) {
         //lower open side, estimated simply by extrapolation
@@ -456,7 +474,11 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * in) {
 }
 
 void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
 #pragma omp parallel for
+#pragma acc kernels loop
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
 
@@ -566,11 +588,18 @@ void NuOsc::calRHS(FieldVar * out, const FieldVar * in) {
             out->bex_im[idx(i,j)] += ko_eps * KO_FD(bexi);
             #undef KO_FD
         }
+#ifdef NVTX
+nvtxRangePop();
+#endif
 }
 
 /* v0 = v1 + a * v2 */
 void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2) {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
 #pragma omp parallel for
+#pragma acc kernels loop
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
             int k = idx(i,j);
@@ -583,11 +612,18 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
     	    v0->bex_re[k] = v1->bex_re[k] + a * v2->bex_re[k];
             v0->bex_im[k] = v1->bex_im[k] + a * v2->bex_im[k];
         }
+#ifdef NVTX
+nvtxRangePop();
+#endif
 }
 
 // v0 = v1 + a * ( v2 + v3 )
 void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3) {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
 #pragma omp parallel for
+#pragma acc kernels loop
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
             int k = idx(i,j);
@@ -600,6 +636,9 @@ void NuOsc::vectorize(FieldVar* v0, const FieldVar * v1, const real a, const Fie
             v0->bex_re[k] = v1->bex_re[k] + a * (v2->bex_re[k] + v3->bex_re[k]);
             v0->bex_im[k] = v1->bex_im[k] + a * (v2->bex_im[k] + v3->bex_im[k]);
         }
+#ifdef NVTX
+nvtxRangePop();
+#endif
 }
 
 /*
@@ -627,6 +666,7 @@ void NuOsc::eval_conserved(const FieldVar* v0) {
 
 void NuOsc::renormalize(const FieldVar* v0) {
     #pragma omp parallel for
+    #pragma acc kernels loop
     for(int i=0; i<nvz; i++)
     for(int j=0; j<nz; j++) {
 	int ij=idx(i,j);
@@ -654,6 +694,9 @@ void NuOsc::renormalize(const FieldVar* v0) {
 }
 
 void NuOsc::step_rk4() {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
     //Step-1
 #ifdef BC_PERI
     updatePeriodicBoundary(v_stat);
@@ -698,6 +741,9 @@ void NuOsc::step_rk4() {
     if(renorm) renormalize(v_stat);
 
     phy_time += dt;
+#ifdef NVTX
+nvtxRangePop();
+#endif
 }
 
 FieldStat NuOsc::_analysis_v(const real var[]) {
@@ -710,6 +756,7 @@ FieldStat NuOsc::_analysis_v(const real var[]) {
     real sum2 = 0;
 
 #pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
+//#pragma acc parallel loop reduction(+:sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
             real val = var[idx(i,j)];
@@ -738,6 +785,7 @@ FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
     real sum2 = 0;
 
 #pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
+//#pragma acc parallel loop reduction(+:sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax)
     for (int i=0;i<nvz; i++)
         for (int j=0;j<nz; j++) {
             int ij = idx(i,j);
@@ -763,6 +811,7 @@ void NuOsc::angle_integrated(real &res, const real vr[], const real vi[]) {
     int loc = nz/2;
     real sum = 0.0;
 #pragma omp parallel for reduction(+: sum)
+//#pragma acc parallel loop reduction(+:sum)
     for (int k=1;k<nvz-1; k++) {   // vz' integral
         sum   += (vr[idx(loc,k)]*vr[idx(loc,k)]+vi[idx(loc,k)]*vi[idx(loc,k)]);
     }
@@ -790,6 +839,12 @@ void NuOsc::output_detail(const char* filename) {
 }
 
 void NuOsc::analysis() {
+#ifdef NVTX
+nvtxRangePush(__FUNCTION__);
+#endif
+#ifdef NVTX
+nvtxRangePop();
+#endif
 
     //eval_conserved(v_stat);
 
@@ -806,6 +861,7 @@ void NuOsc::analysis() {
 
     // integral over (vz,z)
     #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,aM11,aM12,aM13,norP,norPb,nor) reduction(max:maxrelP,maxrelN)
+    //#pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,aM11,aM12,aM13,norP,norPb,nor) reduction(max:maxrelP,maxrelN)
     for(int i=0;i<nvz;i++)
     for(int j=0;j<nz;j++)  {
 	int ij = idx(i,j);
@@ -834,6 +890,10 @@ void NuOsc::analysis() {
     printf("%6.5e %6.5e %6.5e %6.5e %6.5e %6.5e\n",avgP,avgPb,maxrelP,maxrelN,aM0, aM1);
     
     anafile << phy_time << " " << avgP << " " << avgPb << " " << maxrelP << " " << maxrelN << " " << aM0 << " " << aM1 << endl;
+#ifdef NVTX
+nvtxRangePop();
+#endif
+
 }
 
 void NuOsc::write_fz() {
@@ -869,9 +929,9 @@ int main(int argc, char *argv[]) {
        cout << "PAPI error!" << endl;
 #endif
 
-    real dz  = 0.2;
+    real dz  = 0.25;
     real z0  = -600;     real z1  =  -z0;
-    real vz0 = -1;       real vz1 =  -vz0;    int nvz = 16 + 1;
+    real vz0 = -1;       real vz1 =  -vz0;    int nvz = 30 + 1;
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 0.0;
@@ -886,7 +946,7 @@ int main(int argc, char *argv[]) {
     real lzpt  = 50.0;    // width_pert_for_0
 
     int ANAL_EVERY = 10.0   / (cfl*dz) + 1;
-    int END_STEP   = 900.0 / (cfl*dz) + 1;
+    int END_STEP   = 10; //10.0 / (cfl*dz) + 1;
     int DUMP_EVERY = 99999999;
 
     // Parse input argument
@@ -949,11 +1009,14 @@ int main(int argc, char *argv[]) {
 
     state.fillInitValue(1.0, alpha, lnue, lnueb, ipt, eps0, lzpt);
     
+
+
     // === analysis for t=0
     state.analysis();
     state.write_fz();
     //state.write_bin(0);
 
+    auto t1 = std::chrono::high_resolution_clock::now();
     for (int t=1; t<=END_STEP; t++) {
         state.step_rk4();
 
@@ -965,6 +1028,7 @@ int main(int argc, char *argv[]) {
             //state.write_bin(t);
         }
     }
+    auto t2 = std::chrono::high_resolution_clock::now();
 
 #ifdef PAPI
     if ( PAPI_hl_region_end("computation") != PAPI_OK )
@@ -972,6 +1036,11 @@ int main(int argc, char *argv[]) {
 #endif
 
     printf("Completed.\n");
+
+    int size=(nz+2*state.gz)*(nvz);
+    real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
+    printf("Walltime per step          : %.3f ms\n", stepms/END_STEP);
+    printf("Walltime per step per grid : %.3f us\n", stepms/END_STEP/size*1000);
     return 0;
 }
 
