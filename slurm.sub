@@ -14,6 +14,6 @@ OUT=nuosc
 ##.%q{PMIX_RANK}
 
 srun ${NSYS} profile -o ${OUT} -f true --trace openmp,nvtx,cuda ./nuosc
-
+#srun ./nuosc --dz 0.005 --nvz 151 --mu 0.1 --ANA_EVERY 999
 
 echo "--- Walltime: ${SECONDS} sec."
