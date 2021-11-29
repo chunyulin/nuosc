@@ -199,9 +199,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #undef ADV_FD
 #endif
 
-#ifdef NVTX
-    nvtxRangePush("mu-loop");
-#endif
             if (mu>0.0) {
                 // 3) interaction terms: vz-integral with a simple trapezoidal rule (can be optimized later)
                 real Iee    = 0;
@@ -246,9 +243,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
                 out->bex_re[idx(i,j)] += dv*Ibexr;
                 out->bex_im[idx(i,j)] += dv*Ibexi;
             } // end of mu-part
-#ifdef NVTX
-    nvtxRangePop();
-#endif
 
 #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
