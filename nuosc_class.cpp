@@ -202,11 +202,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             if (mu>0.0) {
                 // 3) interaction terms: vz-integral with a simple trapezoidal rule (can be optimized later)
                 real Iee    = 0;
-                real Ixx    = 0;
                 real Iexr   = 0;
                 real Iexi   = 0;
                 real Ibee   = 0;
-                real Ibxx   = 0;
                 real Ibexr  = 0;
                 real Ibexi  = 0;
 
@@ -225,21 +223,19 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
                     // terms for -i* mu * [rho'-rho_bar', rho]
                     Iee   +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                    Ixx   += -2*vw[k]*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );  // = -Iee
                     Iexr  +=    vw[k]*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
                     Iexi  +=    vw[k]*mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
                     Ibee  +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                    Ibxx  += -2*vw[k]*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) ); // = -Ibee
                     Ibexr +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
                     Ibexi +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
                 }
                 // 3.1) calculate integral with simple trapezoidal rule
                 out->ee    [idx(i,j)] += dv*Iee;
-                out->xx    [idx(i,j)] += dv*Ixx;
+                out->xx    [idx(i,j)] -= dv*Iee;
                 out->ex_re [idx(i,j)] += dv*Iexr;
                 out->ex_im [idx(i,j)] += dv*Iexi;
                 out->bee   [idx(i,j)] += dv*Ibee;
-                out->bxx   [idx(i,j)] += dv*Ibxx;
+                out->bxx   [idx(i,j)] -= dv*Ibee;
                 out->bex_re[idx(i,j)] += dv*Ibexr;
                 out->bex_im[idx(i,j)] += dv*Ibexi;
             } // end of mu-part
