@@ -247,11 +247,14 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
             real ko_eps = -ko/dz/64.0;
-#define KO_FD(x)  ( x[-3] + x[3] - 6*(x[-2]+x[2]) + 15*(x[-1]+x[1]) - 20*x[0] )
+#define KO_FD(x) ( x[-3*nvz] + x[3*nvz] - 6*(x[-2*nvz]+x[2*nvz]) + 15*(x[-nvz]+x[nvz]) - 20*x[0] )
 #else
             // Kreiss-Oliger dissipation (3-nd order)
             real ko_eps = -ko/dz/16.0;
-#define KO_FD(x)  ( x[-2] + x[2] - 4*(x[-1]+x[1]) + 6*x[0] )
+#define KO_FD(x) ( x[-2*nvz] + x[2*nvz] - 4*(x[-nvz]+x[nvz]) + 6*x[0] )
+
+            
+            
 #endif
             out->ee    [idx(i,j)] += ko_eps * KO_FD(ee);
             out->xx    [idx(i,j)] += ko_eps * KO_FD(xx);
