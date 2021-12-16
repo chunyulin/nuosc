@@ -29,13 +29,24 @@
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
 
-//#define CELL_CENTER_V
-
 using std::cout;
 using std::endl;
 using std::cin;
 
+#define PARFORALL(i,j,v) \
+                     _Pragma("omp parallel for collapse(3)") \
+                     _Pragma("acc parallel loop collapse(3)") \
+                     for (int i=0;i<ny; i++) \
+                     for (int j=0;j<nz; j++) \
+                     for (int v=0;v<nv; v++)
+ 
+#define FORALL(i,j,v) \
+                     for (int i=0;i<ny; i++) \
+                     for (int j=0;j<nz; j++) \
+                     for (int v=0;v<nv; v++)
+ 
 typedef double real;
+
 
 typedef struct Vars {
     real* ee;
@@ -81,47 +92,30 @@ typedef struct stat {
 
 
 
-/*
    inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
    inline real random_amp(real a) { return a * rand() / RAND_MAX; }
    template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
-// for init data
-inline real eps_c(real z, real z0, real eps0, real lzpt){return eps0*exp(-(z-z0)*(z-z0)/lzpt);}
-inline real eps_r(real z, real z0, real eps0) {return eps0*rand()/RAND_MAX;}
-double g(double v, double v0, double sigma){
-double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
-double N = sigma*sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/sqrt(2.0))+erf((1.0-v0)/sigma/sqrt(2.0)));
-return exp(-exponant)/N;
-}
+int gen_v_simple(const int nv_, real *& vw, real *& vy, real *& vz);
 
-//inline real eps (real z, real z0) { return 0.1*exp( -(z-z0)*(z-z0) / 50.); }
-//inline real eps_(real z, real z0) { real e = eps(z, z0); return sqrt(1.0 - e*e); }
-//double g(double v, double v0, double sigma, double N){
-//    double exponant = (v-v0)*(v-v0)/(2.0*sigma*sigma);
-//    return exp(-exponant)/N;
-//}
-*/
-
-
-class NuOsc {
+class NuOsc2D {
     public:
         real phy_time, dt;
 
-        // all coordinates
-        real  *vz, *vw, *Z;
-        // all field variables
-        FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;
+        real  *vw;                       // integral quadrature
+        real  *vy, *Y, *vz, *Z;                    // coordinates
+        FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
+
         real *P1,  *P2,  *P3,  *relN,  *relP;
         real *P1b, *P2b, *P3b, *relNb, *relPb;
         real *G0,*G0b;
 
-        int nvz; // Dim of vz (Vertex-center grid used.)
-        int nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
-        int gz;  // Width of z-buffer zone. 4 for 2nd-order of d/dz.
-        real vz0, vz1;
-        real  z0,  z1;
-        real  dv,  dz;
+        int nv;       // # of v cubature points.
+        int ny,  nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
+        int gy,  gz;  // Width of z-buffer zone. 4 for 2nd-order of d/dz.
+        real  y0,  y1,  z0,  z1;
+        real  dy, dz;
+
         real CFL;
         real ko;
 
@@ -140,26 +134,36 @@ class NuOsc {
         std::ofstream p1_v, p2_v, p3_v;
         std::ofstream ogv, ogvb;
 
-        inline unsigned int idx(const int i, const int j) { return (j+gz)*nvz + i; }    // i:vz   j:z (last index)
-        inline unsigned int idz(const int j) { return j; }
+        //inline unsigned int idx(const int i, const int j) { return (j+gz)*nvz + i; }    // i(last):vz   j:z
+        inline unsigned int idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
 
-        NuOsc(const int  nvz_, const int   nz_,
-                const real vz0_, const real vz1_,
-                const real  z0_, const real  z1_,
-                const real CFL_, const real  ko_, const int gz_ = 2) : phy_time(0.), ko(ko_)  {
+        NuOsc2D(const int  nv_, const int   ny_, const int   nz_,
+                const real  y0_, const real  y1_, const real  z0_, const real  z1_,
+                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
 
-            vz0 = vz0_;  vz1 = vz1_;
-            z0  = z0_;    z1 = z1_;
+	    // coordinates~~
+	    
+            z0  = z0_;  z1 = z1_;
+            y0  = y0_;  y1 = y1_;
+
+            nz  = nz_;
+            ny  = ny_;
+#ifndef KO_ORD_3
+            gz  = 3;
+            gy  = 3;
+#else
+            gz  = 2;
+            gy  = 2;
+#endif
+            Z      = new real[nz];
+            Y      = new real[ny];
+
+	    // v cubature
+            nv = gen_v_simple(nv_, vw, vy, vz);
+            long size = (ny+2*gy)*(nz+2*gz)*nv;
             CFL = CFL_;
 
-            nvz = nvz_;
-            nz  = nz_;
-            gz  = gz_;
-            int size = (nz+2*gz)*(nvz);
-
-            vz     = new real[nvz];
-            vw     = new real[nvz];   // quadrature of v
-            Z      = new real[nz];
+	    // field variables for analysis~~
             G0     = new real[size];
             G0b    = new real[size];
             P1    = new real[size];
@@ -173,32 +177,25 @@ class NuOsc {
             relPb = new real[size];
             relNb = new real[size];
 
+	    // field variables~~
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 #pragma acc enter data create(v_stat[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor)
             dz = (z1-z0)/nz;       // cell-center
+            dy = (y1-y0)/ny;       // cell-center
             dt = dz*CFL;
+            for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
-#ifdef CELL_CENTER_V
-            dv = (vz1-vz0)/nvz;      // for v as cell-center
-            for (int i=0;i<nvz; i++)	{
-                vz[i] = vz0 + (i+0.5)*dv;   // cell-center
-                vw[i] = 1.0;
-            }
-#else
-            dv = (vz1-vz0)/(nvz-1);      // for v as vertex-center
-            for (int i=0;i<nvz; i++) {
-                vz[i] = vz0 + i*dv;   // vertex-center
-                vw[i] = (i==0 || i==nvz-1)? 0.5 : 1.0;
-            }
-#endif
 
-            printf("\n\nNuOsc with max OpenMP core: %d\n\n", omp_get_max_threads() );
-            printf("   Domain: vz:( %12f %12f )  nvz = %5d                     dv = %g\n", vz0,vz1, nvz, dv);
+            printf("\n\nNuOsc2D with max OpenMP core: %d\n\n", omp_get_max_threads() );
+            printf("   Domain:  v: nv = %5d points within units disk\n", nv );
+            printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
             printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
+            printf("   Size per field var = %.1f MB\n", size*8/1024./1024.);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
+
 #ifdef BC_PERI
             printf("   Use Periodic boundary\n");
 #else
@@ -238,27 +235,16 @@ class NuOsc {
             p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
             p3_v << nz << " " << z0 << " " << z1 << endl;
 
-            ogv.open("ogv.dat", std::ofstream::out | std::ofstream::trunc);
-            ogv << nvz << " " << vz0 << " " << vz1 << endl;
-            ogvb.open("ogvb.dat", std::ofstream::out | std::ofstream::trunc);
-            ogvb << nvz << " " << vz0 << " " << vz1 << endl;
-
         }
 
-        //NuOsc(const NuOsc &v) {  // Copy constructor to be checked.
-        //    NuOsc(v.nz, v.nvz);
-        //}
-
-
-        ~NuOsc() {
-            delete[] vz;  delete[] Z;
+        ~NuOsc2D() {
+            delete[] vy; delete[] vz; delete[] vw;  delete[] Y;  delete[] Z;
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] relP;  delete[] relN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] relPb; delete[] relNb;
 #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor)
             delete v_stat, v_rhs, v_pre, v_cor;
-
 
             anafile.close();
 
@@ -290,13 +276,13 @@ class NuOsc {
         void analysis();
         FieldStat _analysis_v(const real var[]);
         FieldStat _analysis_c(const real vr[], const real vi[]);
-        void angle_integrated(real &res, const real vr[], const real vi[]);
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
         void write_fz();
-        void write_fv();
         void write_bin(const int t);
         void output_detail(const char* fn);
+
+        void __output_detail(const char* fn);
 
 };
