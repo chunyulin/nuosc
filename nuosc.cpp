@@ -2,26 +2,21 @@
 
 int main(int argc, char *argv[]) {
 
-#ifdef PAPI
-    if ( PAPI_hl_region_begin("computation") != PAPI_OK )
-        cout << "PAPI error!" << endl;
-#endif
-
     real dz  = 0.1;
     real dy  = 0.1;
-    real y0  = -10;     real y1  =  -y0;
-    real z0  = -10;     real z1  =  -z0;
-    int nv = 10;
+    real y0  = -0.4;     real y1  =  -y0;
+    real z0  = -10;      real z1  =  -z0;
+    int nv_in = 20;
     real cfl = 0.4;      real ko = 0.0;
 
-    real mu  = 0.0;
+    real mu  = 1.0;
     bool renorm = false;
 
     // === initial value
-    real alpha = 0.92;     //0.92 for G4b  // nuebar/nue_asymmetric_parameter
+    real alpha = 0.9;     //0.92 for G4b  // nuebar/nue_asymmetric_parameter
     real lnue  = 0.6;     // width_nue
-    real lnueb = 0.53;    // width_nuebar
-    real ipt   = 0;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
+    real lnueb = 0.5;    // width_nuebar
+    real ipt   = 1;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
     real eps0  = 0.1;     // 1e-7 for G4b    // eps0
     real lzpt  = 50.0;    // width_pert_for_0
 
@@ -29,25 +24,21 @@ int main(int argc, char *argv[]) {
     int END_STEP   = 5; //900.0 / (cfl*dz) + 1;
     int DUMP_EVERY = 99999999;
 
-    // Parse input argument
+    // Parse input argument --------------------------------------------
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dz") == 0 )  {
             dz  = atof(argv[t+1]);     t+=1;
             dy = dz;
+        } else if (strcmp(argv[t], "--ymax") == 0 )  {
+    	    y1   = atof(argv[t+1]);    t+=1;
+            y0   = -y1;
         } else if (strcmp(argv[t], "--zmax") == 0 )  {
             z1   = atof(argv[t+1]);    t+=1;
             z0   = -z1;
-            y1   = z1;
-            y0   = z0;
         } else if (strcmp(argv[t], "--cfl") == 0 )  {
             cfl   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--nv") == 0 )  {
-            nv   = atoi(argv[t+1]);    t+=1;
-#ifdef CELL_CENTER_V
-            assert(nv%2==0);
-#else
-            assert(nv%2==1);
-#endif
+            nv_in   = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ko") == 0 )  {
             ko    = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--mu") == 0 )  {
@@ -90,24 +81,35 @@ int main(int argc, char *argv[]) {
         }
     }
     int nz  = int((z1-z0)/dz);
+#ifdef COSENU2D
     int ny  = int((y1-y0)/dy);
+#else
+    int ny  = 0;
+#endif
 
     // === Initialize simuation
-    NuOsc2D state(nv, ny, nz, y0, y1, z0, z1, cfl, ko);
+#ifdef COSENU2D
+    NuOsc state(nv_in, ny, nz, y0, y1, z0, z1, cfl, ko);
+    long size=(ny+2*state.gy)*(nz+2*state.gz)*(state.get_nv());
+#else
+    NuOsc state(nv_in, nz, z0, z1, cfl, ko);
+    long size=(nz+2*state.gz)*(state.get_nv());
+#endif
     state.set_mu(mu);
     state.set_renorm(renorm);
 
     state.fillInitValue(1.0, alpha, lnue, lnueb, ipt, eps0, lzpt);
 
     // === analysis for t=0
-    //state.analysis();
+    state.analysis();
     //state.write_fz();
     //state.write_bin(0);
 
     std::cout << std::flush;
+    real stepms;
     auto t1 = std::chrono::high_resolution_clock::now();
     for (int t=1; t<=END_STEP; t++) {
-        cout << t << "..." << endl;
+        //cout << t << "..." << endl;
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
@@ -117,22 +119,16 @@ int main(int argc, char *argv[]) {
             state.write_fz();
             //state.write_bin(t);
         }
-    }
-    auto t2 = std::chrono::high_resolution_clock::now(); 
 
-#ifdef PAPI
-    if ( PAPI_hl_region_end("computation") != PAPI_OK )
-        cout << "PAPI error!" << endl;
-#endif
+        if (t%1000==0 || t==END_STEP) {
+	    auto t2 = std::chrono::high_resolution_clock::now();
+            stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
+    	    printf("Walltime:   %.3f ms per step, %.3f us per step-grid.\n", stepms/END_STEP, stepms/END_STEP/size*1000);
+        }
+    }
 
     printf("Completed.\n");
 
-    long size=(ny+2*state.gy)*(nz+2*state.gz)*(nv);
-    real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    printf("Walltime per step          : %.3f ms\n", stepms/END_STEP);
-    printf("Core: %d  Walltime per step per grid : %.3f us\n",  omp_get_max_threads(), stepms/END_STEP/size*1000);
-
-    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, nv, stepms/END_STEP/size*1000);
-
+    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/END_STEP/size*1000);
     return 0;
 }

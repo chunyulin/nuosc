@@ -23,9 +23,11 @@
 #include <algorithm>
 #include <list>
 
+//#define COSENU2D
+ 
 #define BC_PERI
 #define KO_ORD_3
-#define ADVEC_CENTER_FD
+//#define ADVEC_CENTER_FD  // no need
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
 
@@ -33,18 +35,36 @@ using std::cout;
 using std::endl;
 using std::cin;
 
+#ifdef COSENU2D
+
 #define PARFORALL(i,j,v) \
-                     _Pragma("omp parallel for collapse(3)") \
-                     _Pragma("acc parallel loop collapse(3)") \
-                     for (int i=0;i<ny; i++) \
-                     for (int j=0;j<nz; j++) \
-                     for (int v=0;v<nv; v++)
- 
+    _Pragma("omp parallel for collapse(3)") \
+    _Pragma("acc parallel loop collapse(3)") \
+    for (int i=0;i<ny; i++) \
+    for (int j=0;j<nz; j++) \
+    for (int v=0;v<nv; v++)
+
 #define FORALL(i,j,v) \
-                     for (int i=0;i<ny; i++) \
-                     for (int j=0;j<nz; j++) \
-                     for (int v=0;v<nv; v++)
- 
+    for (int i=0;i<ny; i++) \
+    for (int j=0;j<nz; j++) \
+    for (int v=0;v<nv; v++)
+
+#else
+
+#define PARFORALL(i,j,v) \
+    for (int i=0;i<1; i++) \
+    _Pragma("omp parallel for collapse(2)") \
+    _Pragma("acc parallel loop collapse(2)") \
+    for (int j=0;j<nz; j++) \
+    for (int v=0;v<nv; v++)
+
+#define FORALL(i,j,v) \
+    for (int i=0;i<1; i++) \
+    for (int j=0;j<nz; j++) \
+    for (int v=0;v<nv; v++)
+
+#endif
+
 typedef double real;
 
 
@@ -92,29 +112,35 @@ typedef struct stat {
 
 
 
-   inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
-   inline real random_amp(real a) { return a * rand() / RAND_MAX; }
-   template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
+inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
+inline real random_amp(real a) { return a * rand() / RAND_MAX; }
+template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
-int gen_v_simple(const int nv_, real *& vw, real *& vy, real *& vz);
+int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
+int gen_v1d_simple(const int nv_, real *& vw, real *& vz);
 
-class NuOsc2D {
+class NuOsc {
     public:
         real phy_time, dt;
 
-        real  *vw;                       // integral quadrature
-        real  *vy, *Y, *vz, *Z;                    // coordinates
+        real  *vw;                 // integral quadrature
+        int nv;       // # of v cubature points.
+
+        real  *vz, *Z;             // coordinates
+        real z0,  z1, dz;
+        int nz, gz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
+
+#ifdef COSENU2D
+        real  *vy, *Y;                    // coordinates
+        real y0,  y1, dy;
+        int ny, gy;  // Dim of y
+#endif
+
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
 
         real *P1,  *P2,  *P3,  *relN,  *relP;
         real *P1b, *P2b, *P3b, *relNb, *relPb;
         real *G0,*G0b;
-
-        int nv;       // # of v cubature points.
-        int ny,  nz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
-        int gy,  gz;  // Width of z-buffer zone. 4 for 2nd-order of d/dz.
-        real  y0,  y1,  z0,  z1;
-        real  dy, dz;
 
         real CFL;
         real ko;
@@ -134,36 +160,57 @@ class NuOsc2D {
         std::ofstream p1_v, p2_v, p3_v;
         std::ofstream ogv, ogvb;
 
-        //inline unsigned int idx(const int i, const int j) { return (j+gz)*nvz + i; }    // i(last):vz   j:z
+#ifdef COSENU2D
         inline unsigned int idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
+#else
+        inline unsigned int idx(const int i, const int j, const int v) { return   (j+gz)*nv + v; }
+#endif
 
-        NuOsc2D(const int  nv_, const int   ny_, const int   nz_,
+#ifdef COSENU2D
+        NuOsc(const int  nv_, 
+                const int   ny_, const int   nz_, 
                 const real  y0_, const real  y1_, const real  z0_, const real  z1_,
                 const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
+#else
+        NuOsc(const int  nv_, 
+                const int   nz_, const real  z0_, const real  z1_,
+                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
+#endif
 
-	    // coordinates~~
-	    
-            z0  = z0_;  z1 = z1_;
-            y0  = y0_;  y1 = y1_;
+            // coordinates~~
 
-            nz  = nz_;
-            ny  = ny_;
+            nz  = nz_;  z0  = z0_;  z1 = z1_;
+            Z      = new real[nz];
+            dz = (z1-z0)/nz;       // cell-center
+            for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
 #ifndef KO_ORD_3
             gz  = 3;
-            gy  = 3;
 #else
             gz  = 2;
+#endif
+
+#ifdef COSENU2D
+            ny  = ny_;  y0  = y0_;  y1 = y1_;
+            Y      = new real[ny];
+            dy = (y1-y0)/ny;       // cell-center
+            for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
+#ifndef KO_ORD_3
+            gy  = 3;
+#else
             gy  = 2;
 #endif
-            Z      = new real[nz];
-            Y      = new real[ny];
-
-	    // v cubature
-            nv = gen_v_simple(nv_, vw, vy, vz);
+            // v cubature
+            nv = gen_v2d_simple(nv_, vw, vy, vz);
             long size = (ny+2*gy)*(nz+2*gz)*nv;
-            CFL = CFL_;
+#else
+            nv = gen_v1d_simple(nv_, vw, vz);
+            long size = (nz+2*gz)*nv;
+#endif
 
-	    // field variables for analysis~~
+            CFL = CFL_;
+            dt = dz*CFL;
+
+            // field variables for analysis~~
             G0     = new real[size];
             G0b    = new real[size];
             P1    = new real[size];
@@ -177,21 +224,18 @@ class NuOsc2D {
             relPb = new real[size];
             relNb = new real[size];
 
-	    // field variables~~
+            // field variables~~
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
 #pragma acc enter data create(v_stat[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor)
-            dz = (z1-z0)/nz;       // cell-center
-            dy = (y1-y0)/ny;       // cell-center
-            dt = dz*CFL;
-            for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
-            for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
 
             printf("\n\nNuOsc2D with max OpenMP core: %d\n\n", omp_get_max_threads() );
-            printf("   Domain:  v: nv = %5d points within units disk\n", nv );
+            printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/nv_ );
+#ifdef COSENU2D
             printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
+#endif
             printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
             printf("   Size per field var = %.1f MB\n", size*8/1024./1024.);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
@@ -220,6 +264,7 @@ class NuOsc2D {
 
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
+	    anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0 ]" << endl;
 
             // dump f(z) at certain v-mode
             p1_vm.open("p1_vm.dat", std::ofstream::out | std::ofstream::trunc);
@@ -237,8 +282,11 @@ class NuOsc2D {
 
         }
 
-        ~NuOsc2D() {
-            delete[] vy; delete[] vz; delete[] vw;  delete[] Y;  delete[] Z;
+        ~NuOsc() {
+            delete[] Z; delete[] vz; delete[] vw;
+#ifdef COSENU2D
+            delete[] Y;delete[] vy;
+#endif
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] relP;  delete[] relN;
@@ -255,11 +303,11 @@ class NuOsc2D {
 
         }
 
+        int get_nv() { return nv;   }
         void set_mu(real mu_) {
             mu = mu_;
             printf("   Setting mu = %f\n", mu);
         }
-
         void set_renorm(bool renorm_) {
             renorm = renorm_;
             printf("   Setting renorm = %d\n", renorm);

@@ -1,3 +1,5 @@
+source /pkg/ENV/pycbc_py2/init
+
 module purge
 module load arm21/21.1
 
