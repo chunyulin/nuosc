@@ -1,5 +1,8 @@
 #pragma once
 
+//#define COSENU2D
+
+
 #ifdef NVTX
 #include <nvToolsExt.h>
 #endif
@@ -23,10 +26,9 @@
 #include <algorithm>
 #include <list>
 
-//#define COSENU2D
- 
 #define BC_PERI
-#define KO_ORD_3
+//#define KO_ORD_3
+
 //#define ADVEC_CENTER_FD  // no need
 //#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
@@ -35,7 +37,9 @@ using std::cout;
 using std::endl;
 using std::cin;
 
+
 #ifdef COSENU2D
+#define COLLAPSE_LOOP 3
 
 #define PARFORALL(i,j,v) \
     _Pragma("omp parallel for collapse(3)") \
@@ -50,6 +54,7 @@ using std::cin;
     for (int v=0;v<nv; v++)
 
 #else
+#define COLLAPSE_LOOP 2
 
 #define PARFORALL(i,j,v) \
     for (int i=0;i<1; i++) \
@@ -137,9 +142,10 @@ class NuOsc {
 #endif
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
+        FieldVar *v_stat0;
 
-        real *P1,  *P2,  *P3,  *relN,  *relP;
-        real *P1b, *P2b, *P3b, *relNb, *relPb;
+        real *P1,  *P2,  *P3,  *dN,  *dP;
+        real *P1b, *P2b, *P3b, *dNb, *dPb;
         real *G0,*G0b;
 
         real CFL;
@@ -161,9 +167,9 @@ class NuOsc {
         std::ofstream ogv, ogvb;
 
 #ifdef COSENU2D
-        inline unsigned int idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
+        inline unsigned long idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
 #else
-        inline unsigned int idx(const int i, const int j, const int v) { return   (j+gz)*nv + v; }
+        inline unsigned long idx(const int i, const int j, const int v) { return   (j+gz)*nv + v; }
 #endif
 
 #ifdef COSENU2D
@@ -219,20 +225,21 @@ class NuOsc {
             P1b   = new real[size];
             P2b   = new real[size];
             P3b   = new real[size];
-            relP  = new real[size];
-            relN  = new real[size];
-            relPb = new real[size];
-            relNb = new real[size];
+            dP  = new real[size];
+            dN  = new real[size];
+            dPb = new real[size];
+            dNb = new real[size];
 
             // field variables~~
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
-#pragma acc enter data create(v_stat[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor)
+            v_stat0 = new FieldVar(size);
+#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
 
             printf("\n\nNuOsc2D with max OpenMP core: %d\n\n", omp_get_max_threads() );
-            printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/nv_ );
+            printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/(nv_-1) );
 #ifdef COSENU2D
             printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
 #endif
@@ -289,10 +296,10 @@ class NuOsc {
 #endif
             delete[] G0;
             delete[] G0b;
-            delete[] P1;  delete[] P2;  delete[] P3;  delete[] relP;  delete[] relN;
-            delete[] P1b; delete[] P2b; delete[] P3b; delete[] relPb; delete[] relNb;
-#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor)
-            delete v_stat, v_rhs, v_pre, v_cor;
+            delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
+            delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
+#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
 
             anafile.close();
 
@@ -313,7 +320,7 @@ class NuOsc {
             printf("   Setting renorm = %d\n", renorm);
         }
 
-        void fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt);
+        void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real lzpt);
 
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
@@ -327,10 +334,10 @@ class NuOsc {
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
+        void snapshot(const int t = 0);
+	
         void write_fz();
-        void write_bin(const int t);
         void output_detail(const char* fn);
-
         void __output_detail(const char* fn);
 
 };

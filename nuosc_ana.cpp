@@ -13,15 +13,13 @@ void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
         P2b[ij] =  2.0*v0->bex_im[ij] * iGb;
         P3b[ij] = (v0->bee[ij] - v0->bxx[ij]) * iGb;
 
-        relN [ij] = (v0->ee [ij] + v0->xx [ij]);
-        relN [ij] = (relN [ij] - G0[ij])/relN [ij];   // relative difference of (ee+xx)
-        relNb[ij] = (v0->bee[ij] + v0->bxx[ij]);
-        relNb[ij] = (relNb [ij] - G0b[ij])/relNb [ij] ;
+        dN [ij] = (v0->ee [ij] + v0->xx [ij]);
+        dN [ij] = (dN [ij] - G0[ij])/dN [ij];   // relative difference of (ee+xx)
+        dNb[ij] = (v0->bee[ij] + v0->bxx[ij]);
+        dNb[ij] = (dNb [ij] - G0b[ij])/dNb [ij] ;
 
-        relP [ij] = sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]);
-        relP [ij] = (1.0 - relP [ij])/relP [ij];       // -relP actually to save one fabs(). Note init |P|=1
-        relPb[ij] = sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]);
-        relPb[ij] = (1.0 - relPb[ij])/relPb[ij];
+        dP [ij] = std::abs( 1.0 - sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) );
+        dPb[ij] = std::abs( 1.0 - sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) );
     }
 }
 
@@ -61,8 +59,7 @@ FieldStat NuOsc::_analysis_v(const real var[]) {
     real vmax = -1.e32;
     real sum  = 0;
     real sum2 = 0;
-
-#pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax) collapse(3)
+#pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v)  {
         real val = var[idx(i,j,v)];
         if (val>vmax) vmax = val;
@@ -89,9 +86,9 @@ FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
     real sum  = 0;
     real sum2 = 0;
 
-#pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax) collapse(3)
+#pragma omp parallel for reduction(+: sum) reduction(+:sum2) reduction(min:vmin) reduction(max:vmax) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v)  {
-        int ij = idx(i,j,v);
+        auto ij = idx(i,j,v);
         real val = vr[ij]*vr[ij]+vi[ij]*vi[ij];
         if (val>vmax) vmax = val;
         if (val<vmin) vmin = val;
@@ -109,66 +106,61 @@ FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
     return res;
 }
 
-
 void NuOsc::analysis() {
 
     eval_conserved(v_stat);
 
-    real maxrelP = 0.0;
-    real maxrelN = 0.0;
-    real avgP  = 0.0;
-    real avgPb = 0.0;
-    real surv  = 0.0;
-    real survb = 0.0;
-    real norP  = 0.0;
-    real norPb = 0.0;
+    real maxdP = 0.0;
+    real maxdN = 0.0;
+    real avgP  = 0.0, avgPb = 0.0;
+    real surv  = 0.0, survb  = 0.0;
+    real s0  = 0.0, s1  = 0.0;
+    real nor  = 0.0, norb = 0.0;
     real aM01 = 0.0, aM02 = 0.0, aM03 = 0.0;
     //real aM11 = 0.0, aM12 = 0.0, aM13 = 0.0;
 
     // integral over (vz,z): assume dz=dy=const.
-#pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,norP,norPb) reduction(max:maxrelP,maxrelN) collapse(3)
+#pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP,maxdN) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v)  {
-        int ij = idx(i,j,v);
+        auto ij = idx(i,j,v);
 
-        //if (relP>maxrelP || relPb>maxrelP) {maxi=i;maxj=j;}
-        maxrelP = std::max( std::max(maxrelP,relP[ij]), relPb[ij]);
-        //maxrelN = std::max( std::max(maxrelN,relN[ij]), relNb[ij]);  // What's this?
+        //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
+        maxdP = std::max( std::max(maxdP,dP[ij]), dPb[ij]);
+        //maxdN = std::max( std::max(maxdN,dN[ij]), dNb[ij]);  // What's this?
 
         surv  += vw[v]* v_stat->ee [ij];
         survb += vw[v]* v_stat->bee[ij];
 
-        avgP  +=  ( 1.0 - sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) ) * G0 [ij] * vw[v];
-        avgPb +=  ( 1.0 - sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) ) * G0b[ij] * vw[v];
+        avgP  +=  std::abs( 1.0 - sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) ) * G0 [ij] * vw[v];
+        avgPb +=  std::abs( 1.0 - sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) ) * G0b[ij] * vw[v];
 
         // M0
-        aM01  += vw[v]*  (v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                  // P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
-        aM02  += vw[v]* (-v_stat->ex_im[ij] - v_stat->bex_im[ij]);                                  // P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
-        aM03  += vw[v]* 0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);   // P3[ij]*G0[ij] - P3b[ij]*G0b[ij];
+        aM01  += vw[v]* ( v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                 // = P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
+        aM02  += vw[v]* (-v_stat->ex_im[ij] - v_stat->bex_im[ij]);                                 // = P2[ij]*G0[ij] - P2b[ij]*G0b[ij];
+        aM03  += vw[v]* 0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]); // = P3[ij]*G0[ij] - P3b[ij]*G0b[ij], which is also the net e-x lepton number;
         // M1
         //aM11  += vw[v]* vz[i]* (v_stat->ex_re[ij] - v_stat->bex_re[ij]);
         //aM12  += vw[v]* vz[i]* (v_stat->ex_im[ij] + v_stat->bex_im[ij]);
         //aM13  += vw[v]* vz[i]* 0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
         
-        norP  += vw[v]* G0 [ij];   // const: should be calculated initially
-        norPb += vw[v]* G0b[ij];
+        nor  += vw[v]* G0 [ij];   // const: should be calculated initially
+        norb += vw[v]* G0b[ij];
     }
-    surv  /= norP;
-    survb /= norPb;
-    avgP  /= norP;
-    avgPb /= norPb;
-    real aM0    = sqrt(aM01*aM01+aM02*aM02+aM03*aM03);
+    surv  /= nor;
+    survb /= norb;
+    avgP  /= nor;
+    avgPb /= norb;
+    real aM0    = sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz;
     //real aM1    = sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
-    
-    printf("T= %15f ", phy_time);
-    printf(" |dP|max= %5.4e   surb= %5.4e %5.4e  conP= %5.4e %5.4e  |M0|= %5.4e\n",maxrelP,surv,survb,avgP,avgPb,aM0);
 
-    anafile << phy_time << std::setprecision(13) << " " << maxrelP << " " 
+    printf("T= %15f ", phy_time);
+    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
+
+    anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
                         << surv << " " << survb << " " 
                         << avgP << " " << avgPb << " " 
-                        << aM0  << endl;
+                        << aM0 << " " << aM03  << endl;
 }
-
-
 
 
 void NuOsc::output_detail(const char* filename) {
@@ -188,7 +180,6 @@ void NuOsc::output_detail(const char* filename) {
         outfile << endl;
     }
 }
-
 
 void NuOsc::write_fz() {   // FIXME
 #define WRITE_Z_AT(HANDLE, VAR, V_IDX) \

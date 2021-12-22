@@ -2,7 +2,7 @@
 
 // for init data
 inline real eps_c(real z, real z0, real eps0, real lzpt){return eps0*exp(-(z-z0)*(z-z0)/lzpt);}
-inline real eps_r(real a) {return a*rand()/RAND_MAX;}
+inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 double g(double v, double v0, double sigma){
     double N = sigma*sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/sqrt(2.0))+erf((1.0-v0)/sigma/sqrt(2.0)));
     return exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) )/N;
@@ -31,41 +31,50 @@ int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
 
 // v quaduture in  [-1:1]
 int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
-    real dv = 2.0/nv;
+    assert(nv%2==1); // for simpson integral rule
+    real dv = 2.0/(nv-1);
     vz = new real[nv];
     vw = new real[nv];
     for (int j=0;j<nv; j++) {
-        vz[j] = (0.5+j)*dv - 1;
+        vz[j] = j*dv - 1;
         vw[j] = dv;
     }
+    vw[0]    = 0.5*dv;
+    vw[nv-1] = 0.5*dv;
     return nv;
 }
 
 
-void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, real eps0, real lzpt) {
+void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real lzpt) {
 
-    printf("   Init data: eps = %g  alpha = %f\n", eps0, alpha);
+    printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, lzpt);
 
     FORALL(i,j,v) {
-
+    
+	    auto ijv = idx(i,j,v);
+	    
 	    // ELN profile
-            G0 [idx(i,j,v)] =         g(vz[v], 1.0, lnue );
-            G0b[idx(i,j,v)] = alpha * g(vz[v], 1.0, lnueb);
+            G0 [ijv] =         g(vz[v], 1.0, lnue );
+            G0b[ijv] = alpha * g(vz[v], 1.0, lnueb);
 
             real tmp;
             if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,lzpt); }   // center perturbation
             else if (ipt==1) { tmp = eps_r(eps0); }                 // random
-            else if (ipt==2) { assert(0); }                         // Not implemented
+            else             { assert(0); }                         // Not implemented
 
             real p3o = sqrt(1.0-tmp*tmp);
-            v_stat->ee    [idx(i,j,v)] = 0.5* G0[idx(i,j,v)]*(1.0+p3o);
-            v_stat->xx    [idx(i,j,v)] = 0.5* G0[idx(i,j,v)]*(1.0-p3o);
-            v_stat->ex_re [idx(i,j,v)] = 0.5* G0[idx(i,j,v)]*tmp;
-            v_stat->ex_im [idx(i,j,v)] = 0.0;
-            v_stat->bee   [idx(i,j,v)] = 0.5* G0b[idx(i,j,v)]*(1.0+p3o);
-            v_stat->bxx   [idx(i,j,v)] = 0.5* G0b[idx(i,j,v)]*(1.0-p3o);
-            v_stat->bex_re[idx(i,j,v)] = 0.5* G0b[idx(i,j,v)]*tmp;
-            v_stat->bex_im[idx(i,j,v)] = 0.0;
+            v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
+            v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
+            v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmp;
+            v_stat->ex_im [ijv] = 0.0;
+            v_stat->bee   [ijv] = 0.5* G0b[ijv]*(1.0+p3o);
+            v_stat->bxx   [ijv] = 0.5* G0b[ijv]*(1.0-p3o);
+            v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmp;
+            v_stat->bex_im[ijv] = 0.0;
+
+	    // archive init state for analysis
+            v_stat0->ee    [ijv] = v_stat->ee [ijv];
+            v_stat0->bee   [ijv] = v_stat->bee[ijv];
     }
 
 #ifdef BC_PERI
@@ -74,18 +83,41 @@ void NuOsc::fillInitValue(real f0, real alpha, real lnue, real lnueb, int ipt, r
     updateInjetOpenBoundary(v_stat);
 #endif
 
+
+#if 0
+    // dumpG
+    std::ofstream o;
+    char fn[32];
+    sprintf(fn, "G0_%f.dat", alpha);
+    o.open(fn, std::ofstream::out | std::ofstream::trunc);
+    for (int v=0;v<nv;v++) {
+	    auto ijv = idx(1,1,v);
+	    o << vz[v] << " " << G0[ijv] - G0b[ijv] << endl;
+    }
+    o.close();
+#endif
+#if 0
+    // dumpP1
+    std::ofstream o;
+    char fn[32];
+    sprintf(fn, "P1_%f.dat", alpha);
+    o.open(fn, std::ofstream::out | std::ofstream::trunc);
+    for (int v=0;v<nv;v++) {
+	    auto ijv = idx(1,1,v);
+	    o << vz[v] << " " << G0[ijv] - G0b[ijv] << endl;
+    }
+    o.close();
+#endif
+
 }
 
-
-void NuOsc::write_bin(const int t) {
+void NuOsc::snapshot(const int t) {
     char filename[32];
-    sprintf(filename,"stat_%04d.bin", t);
+    sprintf(filename,"P_%05d.bin", t);
 
     std::ofstream outfile;
     outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
-    if(!outfile) {
-        cout << "*** Open fails: " << filename << endl;
-    }
+    if(!outfile) cout << "*** Open fails: " << filename << endl;
 
 #ifdef COSENU2D
     int size = (ny+2*gy)*(nz+2*gz)*nv;
@@ -96,13 +128,12 @@ void NuOsc::write_bin(const int t) {
     FieldVar *v = v_stat; 
 
     outfile.write((char *) &phy_time,  sizeof(real));
-    outfile.write((char *) &vz[0],     sizeof(real));
-    outfile.write((char *) &vz[nv-1], sizeof(real));
-    outfile.write((char *) &Z[0],      sizeof(real));
-    outfile.write((char *) &Z[nz-1],   sizeof(real));
+    outfile.write((char *) &z0,  sizeof(real));
+    outfile.write((char *) &z1,  sizeof(real));
     outfile.write((char *) &nz,  sizeof(int));
-    outfile.write((char *) &nv, sizeof(int));
+    outfile.write((char *) &nv,  sizeof(int));
     outfile.write((char *) &gz,  sizeof(int));
+    /*
     outfile.write((char *) v->ee,     size*sizeof(real));
     outfile.write((char *) v->xx,     size*sizeof(real));
     outfile.write((char *) v->ex_re,  size*sizeof(real));
@@ -111,6 +142,11 @@ void NuOsc::write_bin(const int t) {
     outfile.write((char *) v->bxx,    size*sizeof(real));
     outfile.write((char *) v->bex_re, size*sizeof(real));
     outfile.write((char *) v->bex_im, size*sizeof(real));
+    */
+    outfile.write((char *) P1,  size*sizeof(real));
+    outfile.write((char *) P2,  size*sizeof(real));
+    outfile.write((char *) P3,  size*sizeof(real));
+    
     outfile.close();
     printf("		Write %d x %d into %s\n", nv, nz+2*gz, filename);
 }
@@ -122,14 +158,12 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
 
-#ifdef COSENU2D
 #pragma omp parallel for collapse(3)
 #pragma acc parallel for collapse(3)
+#ifdef COSENU2D
     for (int i=0;i<ny; i++)
 #else
-    int i=0;
-#pragma omp parallel for collapse(2)
-#pragma acc parallel for collapse(2)
+    for (int i=0;i<1; i++)
 #endif
     for (int j=0;j<gz; j++)
     for (int v=0;v<nv; v++) {
@@ -152,6 +186,7 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
                 in->bex_re[idx(i,nz+j,v)] = in->bex_re[idx(i,j,v)];
                 in->bex_im[idx(i,nz+j,v)] = in->bex_im[idx(i,j,v)];
     }
+
 
 #ifdef COSENU2D
 #pragma omp parallel for collapse(3)
@@ -197,14 +232,15 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
     nvtxRangePush(__FUNCTION__);
 #endif
 
-#ifdef COSENU2D
-	const int nzv = nv*nz;
-#endif
+    const int nzv = nv*nz;
 
-    int i=0;
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for collapse(3)
+#ifdef COSENU2D
+    for (int i=0;i<ny; i++)
+#else
+    for (int i=0;i<1; i++)
+#endif
 #pragma acc parallel loop gang
-    //for (int i=0;i<ny; i++)
     for (int j=0;j<nz; j++)
 #pragma acc loop vector
         for (int v=0;v<nv; v++) {
@@ -233,13 +269,13 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #else
             // Kreiss-Oliger dissipation (3-nd order)
             real ko_eps_z = -ko/dz/16.0;
-#ifdef COSENU2D
+  #ifdef COSENU2D
             real ko_eps_y = -ko/dy/16.0;
             #define KO_FD(x) ( ko_eps_z * ( x[-2*nv]  + x[2*nv]  - 4*(x[-nv] +x[nv])  + 6*x[0] ) + \
                                ko_eps_y * ( x[-2*nzv] + x[2*nzv] - 4*(x[-nzv]+x[nzv]) + 6*x[0] ) )
-#else
+  #else
 	    #define KO_FD(x)   ko_eps_z * ( x[-2*nv]  + x[2*nv]  - 4*(x[-nv] +x[nv])  + 6*x[0] )
-#endif
+  #endif
 #endif
 
             // prepare advection FD operator
@@ -285,6 +321,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
             }
 
+#if 0
             // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
             out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
             out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
@@ -294,7 +331,17 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
             out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
             out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
-
+#else
+            // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
+            out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee);
+            out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx);
+            out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr);
+            out->ex_im [idx(i,j,v)] =  Iexi  + ADV_FD(exi)  + KO_FD(exi);
+            out->bee   [idx(i,j,v)] =  Ibee  + ADV_FD(bee)  + KO_FD(bee);
+            out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
+            out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
+            out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
+#endif
         }
 #ifdef NVTX
     nvtxRangePop();
@@ -308,7 +355,7 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 #endif
 
     PARFORALL(i,j,v) {
-        int k = idx(i,j,v);
+        auto k = idx(i,j,v);
         v0->ee    [k] = v1->ee    [k] + a * v2->ee    [k];
         v0->xx    [k] = v1->xx    [k] + a * v2->xx    [k];
         v0->ex_re [k] = v1->ex_re [k] + a * v2->ex_re [k];
@@ -330,7 +377,7 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 #endif
 
     PARFORALL(i,j,v) {
-            int k = idx(i,j,v);
+            auto k = idx(i,j,v);
             v0->ee    [k] = v1->ee    [k] + a * (v2->ee    [k] + v3->ee    [k]);
             v0->xx    [k] = v1->xx    [k] + a * (v2->xx    [k] + v3->xx    [k]);
             v0->ex_re [k] = v1->ex_re [k] + a * (v2->ex_re [k] + v3->ex_re [k]);

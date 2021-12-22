@@ -15,8 +15,8 @@ int main(int argc, char *argv[]) {
     // === initial value
     real alpha = 0.9;     //0.92 for G4b  // nuebar/nue_asymmetric_parameter
     real lnue  = 0.6;     // width_nue
-    real lnueb = 0.5;    // width_nuebar
-    real ipt   = 1;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
+    real lnueb = 0.5;     // width_nuebar
+    real ipt   = 0;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
     real eps0  = 0.1;     // 1e-7 for G4b    // eps0
     real lzpt  = 50.0;    // width_pert_for_0
 
@@ -98,12 +98,12 @@ int main(int argc, char *argv[]) {
     state.set_mu(mu);
     state.set_renorm(renorm);
 
-    state.fillInitValue(1.0, alpha, lnue, lnueb, ipt, eps0, lzpt);
+    state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, lzpt);
 
     // === analysis for t=0
     state.analysis();
+    //state.snapshot();
     //state.write_fz();
-    //state.write_bin(0);
 
     std::cout << std::flush;
     real stepms;
@@ -116,14 +116,14 @@ int main(int argc, char *argv[]) {
             state.analysis();
         }
         if ( t%DUMP_EVERY==0) {
-            state.write_fz();
-            //state.write_bin(t);
+            //state.write_fz();
+            state.snapshot(t);
         }
 
         if (t%1000==0 || t==END_STEP) {
 	    auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("Walltime:   %.3f ms per step, %.3f us per step-grid.\n", stepms/END_STEP, stepms/END_STEP/size*1000);
+    	    printf("Walltime:  %.3f ms per step, %.3f us per step-grid.\n", stepms/t, stepms/t/size*1000);
         }
     }
 
