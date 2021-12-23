@@ -11,6 +11,7 @@
 #endif
 
 #include <chrono>
+#include <vector>
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
@@ -27,7 +28,7 @@
 #include <list>
 
 #define BC_PERI
-//#define KO_ORD_3
+#define KO_ORD_3
 
 //#define ADVEC_CENTER_FD  // no need
 //#define ADVEC_UPWIND  ## always blow-up
@@ -36,6 +37,7 @@
 using std::cout;
 using std::endl;
 using std::cin;
+using std::string;
 
 
 #ifdef COSENU2D
@@ -116,6 +118,23 @@ typedef struct stat {
 } FieldStat;
 
 
+// A monitor is basically a data file at an iteration 
+// that contains reduced snapshot of multiple vaiables
+typedef struct skimshot {
+    std::list<real*> vlist;
+    string fntpl;
+    int every, nsz, nsv;
+    int dsz, dsv;
+
+    skimshot(std::list<real*> vlist_, string fntpl_, int every_, int nsz_, int nsv_) {
+        vlist = vlist_;
+        fntpl = fntpl_;
+        every = every_;
+        nsz = nsz_;
+        nsv = nsv_;
+    }
+} SkimShot;
+
 
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
@@ -123,6 +142,7 @@ template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   
 
 int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
 int gen_v1d_simple(const int nv_, real *& vw, real *& vz);
+
 
 class NuOsc {
     public:
@@ -142,7 +162,7 @@ class NuOsc {
 #endif
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
-        FieldVar *v_stat0;
+        FieldVar *v_stat0;   // NOT used.
 
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
@@ -159,12 +179,8 @@ class NuOsc {
         bool renorm = false;  // can be set by set_renorm()
 
         std::ofstream anafile;
-
-        // text output of f(z) at certain v-mode
-        std::ofstream ee_vl,  ee_vh, ee_vm;
-        std::ofstream p1_vm, p2_vm, p3_vm;
-        std::ofstream p1_v, p2_v, p3_v;
-        std::ofstream ogv, ogvb;
+        std::list<SkimShot> skimshots;
+        
 
 #ifdef COSENU2D
         inline unsigned long idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
@@ -197,7 +213,7 @@ class NuOsc {
 
 #ifdef COSENU2D
             ny  = ny_;  y0  = y0_;  y1 = y1_;
-            Y      = new real[ny];
+            Y   = new real[ny];
             dy = (y1-y0)/ny;       // cell-center
             for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
 #ifndef KO_ORD_3
@@ -273,20 +289,6 @@ class NuOsc {
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
 	    anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0 ]" << endl;
 
-            // dump f(z) at certain v-mode
-            p1_vm.open("p1_vm.dat", std::ofstream::out | std::ofstream::trunc);
-            p1_vm << nz << " " << z0 << " " << z1 << endl;
-            p2_vm.open("p2_vm.dat", std::ofstream::out | std::ofstream::trunc);
-            p2_vm << nz << " " << z0 << " " << z1 << endl;
-            p3_vm.open("p3_vm.dat", std::ofstream::out | std::ofstream::trunc);
-            p3_vm << nz << " " << z0 << " " << z1 << endl;
-            p1_v.open("p1_v.dat", std::ofstream::out | std::ofstream::trunc);
-            p1_v << nz << " " << z0 << " " << z1 << endl;
-            p2_v.open("p2_v.dat", std::ofstream::out | std::ofstream::trunc);
-            p2_v << nz << " " << z0 << " " << z1 << endl;
-            p3_v.open("p3_v.dat", std::ofstream::out | std::ofstream::trunc);
-            p3_v << nz << " " << z0 << " " << z1 << endl;
-
         }
 
         ~NuOsc() {
@@ -303,11 +305,6 @@ class NuOsc {
 
             anafile.close();
 
-            ee_vl.close();    ee_vh.close();    ee_vm.close();
-            p1_vm.close();  p2_vm.close();    p3_vm.close();
-            p1_v.close();   p2_v.close();      p3_v.close();
-            ogv.close();    ogvb.close();
-
         }
 
         int get_nv() { return nv;   }
@@ -320,8 +317,13 @@ class NuOsc {
             printf("   Setting renorm = %d\n", renorm);
         }
 
-        void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real lzpt);
+        void addSkimShot(std::list<real*> v, char *fntpl, int dt, int sv, int sz) {
+    	     SkimShot ss(v, fntpl, dt, sv, sz);
+             skimshots.push_back(ss);
+        }
+        void checkSkimShots(const int t=0);
 
+        void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real sigma);
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
         void step_rk4();
@@ -335,9 +337,9 @@ class NuOsc {
         void renormalize(const FieldVar* v0);
 
         void snapshot(const int t = 0);
-	
-        void write_fz();
-        void output_detail(const char* fn);
+        void checkpoint(const int t = 0);
+        
+	void output_detail(const char* fn);
         void __output_detail(const char* fn);
 
 };

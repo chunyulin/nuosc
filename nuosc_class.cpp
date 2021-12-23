@@ -1,7 +1,7 @@
 #include "nuosc_class.h"
 
 // for init data
-inline real eps_c(real z, real z0, real eps0, real lzpt){return eps0*exp(-(z-z0)*(z-z0)/lzpt);}
+inline real eps_c(real z, real z0, real eps0, real sigma){return eps0*exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
 inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 double g(double v, double v0, double sigma){
     double N = sigma*sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/sqrt(2.0))+erf((1.0-v0)/sigma/sqrt(2.0)));
@@ -45,9 +45,9 @@ int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
 }
 
 
-void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real lzpt) {
+void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
 
-    printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, lzpt);
+    printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
 
     FORALL(i,j,v) {
     
@@ -58,7 +58,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             G0b[ijv] = alpha * g(vz[v], 1.0, lnueb);
 
             real tmp;
-            if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,lzpt); }   // center perturbation
+            if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,sigma); }   // center perturbation
             else if (ipt==1) { tmp = eps_r(eps0); }                 // random
             else             { assert(0); }                         // Not implemented
 
@@ -73,8 +73,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             v_stat->bex_im[ijv] = 0.0;
 
 	    // archive init state for analysis
-            v_stat0->ee    [ijv] = v_stat->ee [ijv];
-            v_stat0->bee   [ijv] = v_stat->bee[ijv];
+            //v_stat0->ee    [ijv] = v_stat->ee [ijv];
+            //v_stat0->bee   [ijv] = v_stat->bee[ijv];
     }
 
 #ifdef BC_PERI
@@ -111,46 +111,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
 
 }
 
-void NuOsc::snapshot(const int t) {
-    char filename[32];
-    sprintf(filename,"P_%05d.bin", t);
-
-    std::ofstream outfile;
-    outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
-    if(!outfile) cout << "*** Open fails: " << filename << endl;
-
-#ifdef COSENU2D
-    int size = (ny+2*gy)*(nz+2*gz)*nv;
-#else
-    int size = (nz+2*gz)*nv;
-#endif
-
-    FieldVar *v = v_stat; 
-
-    outfile.write((char *) &phy_time,  sizeof(real));
-    outfile.write((char *) &z0,  sizeof(real));
-    outfile.write((char *) &z1,  sizeof(real));
-    outfile.write((char *) &nz,  sizeof(int));
-    outfile.write((char *) &nv,  sizeof(int));
-    outfile.write((char *) &gz,  sizeof(int));
-    /*
-    outfile.write((char *) v->ee,     size*sizeof(real));
-    outfile.write((char *) v->xx,     size*sizeof(real));
-    outfile.write((char *) v->ex_re,  size*sizeof(real));
-    outfile.write((char *) v->ex_im,  size*sizeof(real));
-    outfile.write((char *) v->bee,    size*sizeof(real));
-    outfile.write((char *) v->bxx,    size*sizeof(real));
-    outfile.write((char *) v->bex_re, size*sizeof(real));
-    outfile.write((char *) v->bex_im, size*sizeof(real));
-    */
-    outfile.write((char *) P1,  size*sizeof(real));
-    outfile.write((char *) P2,  size*sizeof(real));
-    outfile.write((char *) P3,  size*sizeof(real));
-    
-    outfile.close();
-    printf("		Write %d x %d into %s\n", nv, nz+2*gz, filename);
-}
-
 void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #ifdef NVTX
     nvtxRangePush(__FUNCTION__);
@@ -159,7 +119,7 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
 
 #pragma omp parallel for collapse(3)
-#pragma acc parallel for collapse(3)
+#pragma acc parallel loop collapse(3)
 #ifdef COSENU2D
     for (int i=0;i<ny; i++)
 #else
@@ -190,7 +150,7 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 
 #ifdef COSENU2D
 #pragma omp parallel for collapse(3)
-#pragma acc parallel for collapse(3)
+#pragma acc parallel loop collapse(3)
     for (int i=0;i<gy; i++)
     for (int j=0;j<nz; j++)
     for (int v=0;v<nv; v++) {
@@ -258,9 +218,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             // prepare KO operator
 #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
-            real ko_eps_y = -ko/dy/64.0;
             real ko_eps_z = -ko/dz/64.0;
   #ifdef COSENU2D
+            real ko_eps_y = -ko/dy/64.0;
             #define KO_FD(x) ( ko_eps_z*( x[-3*nv]  + x[3*nv]  - 6*(x[-2*nv]+x[2*nv])   + 15*(x[-nv]+x[nv])   - 20*x[0] ) + \
                                ko_eps_y*( x[-3*nzv] + x[3*nzv] - 6*(x[-2*nzv]+x[2*nzv]) + 15*(x[-nzv]+x[nzv]) - 20*x[0] ) )
   #else
@@ -447,4 +407,5 @@ void NuOsc::step_rk4() {
     nvtxRangePop();
 #endif
 }
+
 

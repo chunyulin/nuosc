@@ -1,11 +1,26 @@
-source /pkg/ENV/pycbc_py2/init
-
 module purge
-module load arm21/21.1
 
-#module load gcc9/papi/6.0
-#export PAPI_MULTIPLEX=1
+host=`hostname`
+if [[ $host == *"twcc.ai" ]]; then
 
-#module load nvhpc/21.7
+  echo "==== on TWCC"
+  module load miniconda3
+  conda activate /opt/ohpc/pkg/kagra/ENV/py37
+  module load nvhpc/21.7
+  
+  export CXX=nvc++
+  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed"
+
+
+else
+  echo "==== on ARM"
+  module load arm21/21.1
+  #module load gcc9/papi/6.0
+  #export PAPI_MULTIPLEX=1
+
+  export CXX=armclang++
+  export OPT="-Ofast -std=c++11 -fopenmp"
+  
+fi
 
 make

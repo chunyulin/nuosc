@@ -1,5 +1,45 @@
 #include "nuosc_class.h"
 
+void NuOsc::checkSkimShots(const int t) {
+
+    for (auto const& ss : skimshots) {
+
+        auto nsz = ss.nsz;
+        auto nsv = ss.nsv;
+        auto dsz = ss.dsz;
+        auto dsv = ss.dsv;
+	dsz = nz/nsz;         assert(nz%nsz==0);
+	dsv = (nv-1)/(nsv-1); assert((nv-1)%(nsv-1)==0);
+
+	//printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nsz, nz, dsz, nsv, nv, dsv);
+
+        if ( t % ss.every != 0 ) break;
+        
+        char filename[32];
+	sprintf(filename, ss.fntpl.c_str(), t);
+	
+        std::ofstream outfile;
+        outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
+        if(!outfile) cout << "*** Open fails: " <<  filename << endl;
+    
+        std::vector<real> carr(nsz*nsv);
+            
+        for (auto const& var : ss.vlist) {
+            
+            #pragma omp parallel for collapse(2)
+            #pragma acc parallel loop collapse(2)
+            for(int j=0;j<nz; j+=dsz)
+            for(int v=0;v<nv; v+=dsv) {
+                carr[ (j/dsz)*nsv + v/dsv ] = var[ idx(0,j,v) ];
+            }
+	    outfile.write((char *) carr.data(),  nsz*nsv*sizeof(real));
+	}
+        printf("		Write %d vars of size %dx%d into %s\n", ss.vlist.size(), nsv, nsz, filename);
+        outfile.close();
+    }
+
+}
+        
 void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
 
     PARFORALL(i,j,v)   {
@@ -181,6 +221,7 @@ void NuOsc::output_detail(const char* filename) {
     }
 }
 
+/*
 void NuOsc::write_fz() {   // FIXME
 #define WRITE_Z_AT(HANDLE, VAR, V_IDX) \
     HANDLE << phy_time << " "; \
@@ -205,3 +246,80 @@ void NuOsc::write_fz() {   // FIXME
 #undef WRITE_Z_AT
 
 }
+*/
+
+void NuOsc::snapshot(const int t) {
+    char filename[32];
+    sprintf(filename,"P_%05d.bin", t);
+
+    std::ofstream outfile;
+    outfile.open(filename, std::ofstream::out | std::ofstream::trunc);
+    if(!outfile) cout << "*** Open fails: " << filename << endl;
+
+#ifdef COSENU2D
+    int size = (ny+2*gy)*(nz+2*gz)*nv;
+#else
+    int size = (nz+2*gz)*nv;
+#endif
+
+    FieldVar *v = v_stat; 
+
+    outfile.write((char *) &phy_time,  sizeof(real));
+    outfile.write((char *) &z0,  sizeof(real));
+    outfile.write((char *) &z1,  sizeof(real));
+    outfile.write((char *) &nz,  sizeof(int));
+    outfile.write((char *) &nv,  sizeof(int));
+    outfile.write((char *) &gz,  sizeof(int));
+    /*
+    outfile.write((char *) v->ee,     size*sizeof(real));
+    outfile.write((char *) v->xx,     size*sizeof(real));
+    outfile.write((char *) v->ex_re,  size*sizeof(real));
+    outfile.write((char *) v->ex_im,  size*sizeof(real));
+    outfile.write((char *) v->bee,    size*sizeof(real));
+    outfile.write((char *) v->bxx,    size*sizeof(real));
+    outfile.write((char *) v->bex_re, size*sizeof(real));
+    outfile.write((char *) v->bex_im, size*sizeof(real));
+    */
+    outfile.write((char *) P1,  size*sizeof(real));
+    outfile.write((char *) P2,  size*sizeof(real));
+    outfile.write((char *) P3,  size*sizeof(real));
+    
+    outfile.close();
+    printf("		Write %d x %d into %s\n", nv, nz+2*gz, filename);
+}
+
+void NuOsc::checkpoint(const int t) {
+    char cptmetafn[32], cptfn[32];;
+    sprintf(cptfn,    "cpt%05d.bin", t);
+    sprintf(cptmetafn ,"cpt%05d.meta", t);
+
+    std::ofstream cptmeta, cpt;
+    cptmeta.open(cptmetafn, std::ofstream::out | std::ofstream::trunc);
+    if(!cptmeta) cout << "*** Open fails: " << cptmetafn << endl;
+    cpt.open(cptfn, std::ofstream::out | std::ofstream::trunc);
+    if(!cpt) cout << "*** Open fails: " << cptfn << endl;
+
+#ifdef COSENU2D
+    int size = (ny+2*gy)*(nz+2*gz)*nv;
+#else
+    int size = (nz+2*gz)*nv;
+#endif
+
+
+    cptmeta << phy_time << " " << nz << " " << nv << " " << z0 << " " << z1 << " " << gz << endl
+            << CFL << " " << dt << " " << dz << " " << mu << " " << renorm << " " << ko << endl;
+    cptmeta.close();
+
+    FieldVar *v = v_stat; 
+    cpt.write((char *) v->ee,     size*sizeof(real));
+    cpt.write((char *) v->xx,     size*sizeof(real));
+    cpt.write((char *) v->ex_re,  size*sizeof(real));
+    cpt.write((char *) v->ex_im,  size*sizeof(real));
+    cpt.write((char *) v->bee,    size*sizeof(real));
+    cpt.write((char *) v->bxx,    size*sizeof(real));
+    cpt.write((char *) v->bex_re, size*sizeof(real));
+    cpt.write((char *) v->bex_im, size*sizeof(real));
+    cpt.close();
+    printf("		Write %d x %d into %s\n", nv, nz+2*gz, cptfn);
+}
+

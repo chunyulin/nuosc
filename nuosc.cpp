@@ -6,22 +6,22 @@ int main(int argc, char *argv[]) {
     real dy  = 0.1;
     real y0  = -0.4;     real y1  =  -y0;
     real z0  = -10;      real z1  =  -z0;
-    int nv_in = 20;
+    int nv_in = 41;
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 1.0;
     bool renorm = false;
 
     // === initial value
-    real alpha = 0.9;     //0.92 for G4b  // nuebar/nue_asymmetric_parameter
+    real alpha = 0.9;     // nuebar-nue asymmetric parameter
     real lnue  = 0.6;     // width_nue
-    real lnueb = 0.5;     // width_nuebar
-    real ipt   = 0;       // 0_for_central_z_perturbation;1_for_random;2_for_perodic
-    real eps0  = 0.1;     // 1e-7 for G4b    // eps0
-    real lzpt  = 50.0;    // width_pert_for_0
+    real lnueb = 0.53;    // width_nuebar
+    real ipt   = 0;       // 0: central_z_perturbation; 1:random
+    real eps0  = 0.1;
+    real sigma  = 100.0;    // lzpt = 2*simga**2
 
-    int ANAL_EVERY = 5; //10.0   / (cfl*dz) + 1;
-    int END_STEP   = 5; //900.0 / (cfl*dz) + 1;
+    int ANAL_EVERY = 5;    // 10.0  / (cfl*dz) + 1;
+    int END_STEP   = 5;    // 900.0 / (cfl*dz) + 1;
     int DUMP_EVERY = 99999999;
 
     // Parse input argument --------------------------------------------
@@ -69,6 +69,8 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[t], "--lnue") == 0 )  {
             lnue  = atof(argv[t+1]);
             lnueb = atof(argv[t+2]);    t+=2;
+        } else if (strcmp(argv[t], "--sigma") == 0 )  {
+            sigma = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--eps0") == 0 )  {
             eps0 = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--alpha") == 0 )  {
@@ -98,10 +100,17 @@ int main(int argc, char *argv[]) {
     state.set_mu(mu);
     state.set_renorm(renorm);
 
-    state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, lzpt);
+    state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 
+    // Setup SkimShots
+    std::list<real*> plist( {state.P1, state.P2, state.P3 } );
+    state.addSkimShot(plist, "P%06d.bin", DUMP_EVERY, state.nz/2, 21 );
+    std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
+    state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, state.nz/2, 21 );
+                    
     // === analysis for t=0
     state.analysis();
+    state.checkSkimShots();
     //state.snapshot();
     //state.write_fz();
 
@@ -117,13 +126,13 @@ int main(int argc, char *argv[]) {
         }
         if ( t%DUMP_EVERY==0) {
             //state.write_fz();
-            state.snapshot(t);
         }
+	state.checkSkimShots(t);
 
-        if (t%1000==0 || t==END_STEP) {
+        if (t==10 || t==100 || t==1000 || t==END_STEP) {
 	    auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("Walltime:  %.3f ms per step, %.3f us per step-grid.\n", stepms/t, stepms/t/size*1000);
+    	    printf("Walltime:  %.3f secs/T, %.3f us per step-grid.\n", stepms/state.phy_time, stepms/t/size*1000);
         }
     }
 
