@@ -103,10 +103,10 @@ int main(int argc, char *argv[]) {
     state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 
     // Setup SkimShots
-    std::list<real*> plist( {state.P1, state.P2, state.P3 } );
-    state.addSkimShot(plist, "P%06d.bin", DUMP_EVERY, state.nz/2, 21 );
-    std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
-    state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, state.nz/2, 21 );
+    std::list<real*> plist( { state.P3 } );
+    state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
+    //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
+    //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
                     
     // === analysis for t=0
     state.analysis();
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
         if (t==10 || t==100 || t==1000 || t==END_STEP) {
 	    auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("Walltime:  %.3f secs/T, %.3f us per step-grid.\n", stepms/state.phy_time, stepms/t/size*1000);
+    	    printf("Walltime:  %.3f secs/T, %.3f us per step-grid.\n", stepms/state.phy_time/1000, stepms/t/size*1000);
         }
     }
 

@@ -6,7 +6,7 @@
 #ifdef NVTX
 #include <nvToolsExt.h>
 #endif
-#ifdef OPENACC
+#ifdef _OPENACC
 #include <openacc.h>
 #endif
 
@@ -123,8 +123,8 @@ typedef struct stat {
 typedef struct skimshot {
     std::list<real*> vlist;
     string fntpl;
-    int every, nsz, nsv;
-    int dsz, dsv;
+    int every;
+    int nsz, nsv;   // reduced dimension
 
     skimshot(std::list<real*> vlist_, string fntpl_, int every_, int nsz_, int nsv_) {
         vlist = vlist_;
@@ -254,7 +254,13 @@ class NuOsc {
             v_stat0 = new FieldVar(size);
 #pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
 
-            printf("\n\nNuOsc2D with max OpenMP core: %d\n\n", omp_get_max_threads() );
+	    int ngpus = 0;	
+#ifdef _OPENACC
+            printf("\n\nOpenACC Enabled.\n" );
+            acc_device_t dev_type = acc_get_device_type();
+    	    ngpus = acc_get_num_devices( dev_type ); 
+#endif
+            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
             printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/(nv_-1) );
 #ifdef COSENU2D
             printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
@@ -317,10 +323,44 @@ class NuOsc {
             printf("   Setting renorm = %d\n", renorm);
         }
 
-        void addSkimShot(std::list<real*> v, char *fntpl, int dt, int sv, int sz) {
-    	     SkimShot ss(v, fntpl, dt, sv, sz);
+        void addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sz, int sv) {
+    	     SkimShot ss(var, fntpl, dumpstep, sz, sv);
              skimshots.push_back(ss);
-        }
+
+             auto dsz = nz/sz;
+             auto dsv = (nv-1)/(sv-1);
+             printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nz, sz, dsz, nv, sv, dsv);
+             assert(nz%sz==0);
+             assert((nv-1)%(sv-1)==0);
+
+
+             std::ofstream outfile;
+             char filename[32];
+             string tmp = string(fntpl) + ".meta";
+             sprintf(filename, tmp.c_str(), 0);
+             outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
+             if(!outfile) cout << "*** Open fails: " <<  filename << endl;
+
+	     // grid information
+	     outfile << nz << " " << sz << " " << dsz << " " << z0<< " " << z1 << " " << dt << endl;
+             outfile << nv << " " << sv << " " << dsv << endl;
+
+	     for(int j=0;j<nz; j+=dsz)   outfile << Z[j] << " ";
+	     outfile << endl;
+	     for(int v=0;v<nv; v+=dsv)   outfile << vz[v] << " ";
+	     outfile << endl;
+
+	     # if 0
+	     // mixed ascii and binary not working
+	     std::vector<real> tmpz(sz);
+	     std::vector<real> tmpv(sv);
+	     for(int j=0;j<nz; j+=dsz)   tmpz[j/dsz] = Z[j];
+	     for(int v=0;v<nv; v+=dsv)   tmpz[v/dsv] = vz[v];
+	     outfile.write((char *) tmpz.data(), sz*sizeof(real));
+	     outfile.write((char *) tmpv.data(), sv*sizeof(real));
+	     #endif
+         }
+
         void checkSkimShots(const int t=0);
 
         void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real sigma);

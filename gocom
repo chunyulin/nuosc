@@ -14,6 +14,7 @@ if [[ $host == *"twcc.ai" ]]; then
 
 else
   echo "==== on ARM"
+  module load python/3.8.5
   module load arm21/21.1
   #module load gcc9/papi/6.0
   #export PAPI_MULTIPLEX=1

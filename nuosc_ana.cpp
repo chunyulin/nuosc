@@ -6,10 +6,8 @@ void NuOsc::checkSkimShots(const int t) {
 
         auto nsz = ss.nsz;
         auto nsv = ss.nsv;
-        auto dsz = ss.dsz;
-        auto dsv = ss.dsv;
-	dsz = nz/nsz;         assert(nz%nsz==0);
-	dsv = (nv-1)/(nsv-1); assert((nv-1)%(nsv-1)==0);
+	auto dsz = nz/nsz;         assert(nz%nsz==0);
+	auto dsv = (nv-1)/(nsv-1); assert((nv-1)%(nsv-1)==0);
 
 	//printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nsz, nz, dsz, nsv, nv, dsv);
 
