@@ -238,7 +238,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
   #endif
 #endif
 
-<<<<<<< HEAD
             // prepare advection FD operator
             //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
             real factor_z = -vz[v]/(12*dz);
@@ -302,60 +301,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
             out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
             out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
-=======
-            if (mu>0.0) {
-                // 3) interaction terms: vz-integral with a simple trapezoidal rule (can be optimized later)
-                real Iee    = 0;
-                real Iexr   = 0;
-                real Iexi   = 0;
-                real Ibee   = 0;
-                real Ibexr  = 0;
-                real Ibexi  = 0;
-
-                //3.#pragma acc loop vector  // implicit reduction detected
-                //#pragma acc loop vector
-#pragma acc loop
-                for (int k=0;k<nvz; k++) {   // vz' integral
-                    real eep    = (in->ee    [idx(k,j)]);
-                    real xxp    = (in->xx    [idx(k,j)]);
-                    real expr   = (in->ex_re [idx(k,j)]);
-                    real expi   = (in->ex_im [idx(k,j)]);
-                    real beep   = (in->bee   [idx(k,j)]);
-                    real bxxp   = (in->bxx   [idx(k,j)]);
-                    real bexpr  = (in->bex_re[idx(k,j)]);
-                    real bexpi  = (in->bex_im[idx(k,j)]);
-
-                    // terms for -i* mu * [rho'-rho_bar', rho]
-                    Iee   +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                    Iexr  +=    vw[k]*mu* (1-vz[i]*vz[k])*  (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                    Iexi  +=    vw[k]*mu* (1-vz[i]*vz[k])*  ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                    Ibee  +=  2*vw[k]*mu* (1-vz[i]*vz[k])*  (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                    Ibexr +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                    Ibexi +=    vw[k]*mu* (1-vz[i]*vz[k])*  ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
-                }
-                // 3.1) calculate integral with simple trapezoidal rule
-                out->ee    [idx(i,j)] += dv*Iee;
-                out->xx    [idx(i,j)] -= dv*Iee;
-                out->ex_re [idx(i,j)] += dv*Iexr;
-                out->ex_im [idx(i,j)] += dv*Iexi;
-                out->bee   [idx(i,j)] += dv*Ibee;
-                out->bxx   [idx(i,j)] -= dv*Ibee;
-                out->bex_re[idx(i,j)] += dv*Ibexr;
-                out->bex_im[idx(i,j)] += dv*Ibexi;
-            } // end of mu-part
-
-#ifndef KO_ORD_3
-            // Kreiss-Oliger dissipation (5-th order)
-            real ko_eps = -ko/dz/64.0;
-#define KO_FD(x) ( x[-3*nvz] + x[3*nvz] - 6*(x[-2*nvz]+x[2*nvz]) + 15*(x[-nvz]+x[nvz]) - 20*x[0] )
-#else
-            // Kreiss-Oliger dissipation (3-nd order)
-            real ko_eps = -ko/dz/16.0;
-#define KO_FD(x) ( x[-2*nvz] + x[2*nvz] - 4*(x[-nvz]+x[nvz]) + 6*x[0] )
-
-            
-            
->>>>>>> b203102887457b76bfc4b746c4590fe67d5cfe54
 #endif
         }
 #ifdef NVTX
