@@ -8,7 +8,39 @@ double g(double v, double v0, double sigma){
     return exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) )/N;
 }
 
-// v quaduture on 2D unit disk
+// Find the (vy,vz) index from (~0, -1) to (~0, 1) 
+// Just a quick workaround to get coarse-grained v grid for snapshot from 2D v list.
+vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in, const real * vy, const real * vz) {
+
+    assert(nv_in%2==0);
+
+    vector<int> v_slices;
+
+    real dv = 2.0/nv_in;
+    uint v0, v1;
+    for(int v=0; v<nv_in*nv_in;v++)  {
+        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
+	if ( std::abs(vy[v] - 0.5*dv) < 0.1*dv  ) { v0=v; break; }
+    }
+    for(int v=v0;v<nv_in*nv_in;v++) {
+        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
+	if ( std::abs(vy[v]-0.5*dv)> 0.5*dv ) { v1=v; break; }
+    }
+    
+    uint dsv = ceil(float(v1-v0) / nv_target);
+    
+    for (int v=0;v<nv_target-1; v++)  v_slices.push_back(v0+dsv*v);
+    v_slices.push_back(v1-1);
+
+    printf("   Gen %d skimmed v-pts near vy= %f and vz in [ %f %f ].\n", 
+		v_slices.size(), dv,
+		vz[ v_slices[0] ], 
+		vz[ v_slices.back() ] );
+    
+    return v_slices;
+}
+
+// 2D v quaduture on a unit disk
 int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
     real dv = 2.0/nv;
     vy = new real[nv*nv];
@@ -29,9 +61,9 @@ int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
     return co;  // co < nv*nv
 }
 
-// v quaduture in  [-1:1]
+// 1D vertex-center v-grid in [-1:1]
 int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
-    assert(nv%2==1); // for simpson integral rule
+    assert(nv%2==1);  // just for convenience to include v=1, -1, 0 via trapezoidal rule
     real dv = 2.0/(nv-1);
     vz = new real[nv];
     vw = new real[nv];
@@ -47,7 +79,7 @@ int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
 
 void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
 
-    printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
+    printf("   Init data: [ %s w/ alpha= %f  eps0= %g  z-sigma= %g  v-sigma= %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue, lnueb);
 
     FORALL(i,j,v) {
     
@@ -58,8 +90,9 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             G0b[ijv] = alpha * g(vz[v], 1.0, lnueb);
 
             real tmp;
-            if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,sigma); }   // center perturbation
+            if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,sigma); }  // center perturbation
             else if (ipt==1) { tmp = eps_r(eps0); }                 // random
+            else if (ipt==2) { tmp = eps_c(Y[i],0.0,eps0,sigma)*eps_c(Z[j],0.0,eps0,sigma); }  // 2D symmetric gaussian
             else             { assert(0); }                         // Not implemented
 
             real p3o = sqrt(1.0-tmp*tmp);
@@ -108,7 +141,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
     }
     o.close();
 #endif
-
 }
 
 void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
@@ -147,7 +179,6 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
                 in->bex_im[idx(i,nz+j,v)] = in->bex_im[idx(i,j,v)];
     }
 
-
 #ifdef COSENU2D
 #pragma omp parallel for collapse(3)
 #pragma acc parallel loop collapse(3)
@@ -182,8 +213,6 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 
 
 void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) { 
-    cout << "Not implemented." << endl;
-    assert(0);
 }
 
 
@@ -192,7 +221,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
     nvtxRangePush(__FUNCTION__);
 #endif
 
-    const int nzv = nv*nz;
+    const int nzv = nv*(nz+2*gz);
 
 #pragma omp parallel for collapse(3)
 #ifdef COSENU2D
@@ -244,7 +273,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #ifdef COSENU2D
             real factor_y = -vy[v]/(12*dy);
             #define ADV_FD(x) ( factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv]  ) ) + \
-                                  factor_y*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
+                                factor_y*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
 #else
             #define ADV_FD(x)     factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv])  )
 #endif
@@ -268,7 +297,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
                 // terms for -i* mu * [rho'-rho_bar', rho]
                 #ifdef COSENU2D
-		real fvdv = vw[k]*mu* (1-vy[v]*vy[k]-vz[v]*vz[k]);
+                real fvdv = vw[k]*mu* (1-vy[v]*vy[k]-vz[v]*vz[k]);
                 #else
                 real fvdv = vw[k]*mu* (1-vz[v]*vz[k]);
                 #endif
@@ -281,18 +310,8 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
             }
 
-#if 0
             // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-            out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
-            out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
-            out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr)  - pmo* 2*ct*exi [0];
-            out->ex_im [idx(i,j,v)] =  Iexi  + ADV_FD(exi)  + KO_FD(exi)  + pmo*(2*ct*exr [0] + st*( ee[0] - xx[0] ) );
-            out->bee   [idx(i,j,v)] =  Ibee  + ADV_FD(bee)  + KO_FD(bee)  - pmo* 2*st*bexi[0];
-            out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
-            out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
-            out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
-#else
-            // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
+#ifdef VACUUM_OFF
             out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee);
             out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx);
             out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr);
@@ -301,6 +320,15 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
             out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
             out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
+#else
+            out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
+            out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
+            out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr)  - pmo* 2*ct*exi [0];
+            out->ex_im [idx(i,j,v)] =  Iexi  + ADV_FD(exi)  + KO_FD(exi)  + pmo*(2*ct*exr [0] + st*( ee[0] - xx[0] ) );
+            out->bee   [idx(i,j,v)] =  Ibee  + ADV_FD(bee)  + KO_FD(bee)  - pmo* 2*st*bexi[0];
+            out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
+            out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
+            out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
 #endif
         }
 #ifdef NVTX

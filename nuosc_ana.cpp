@@ -1,44 +1,6 @@
 #include "nuosc_class.h"
 
-void NuOsc::checkSkimShots(const int t) {
-
-    for (auto const& ss : skimshots) {
-
-        auto nsz = ss.nsz;
-        auto nsv = ss.nsv;
-	auto dsz = nz/nsz;         assert(nz%nsz==0);
-	auto dsv = (nv-1)/(nsv-1); assert((nv-1)%(nsv-1)==0);
-
-	//printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nsz, nz, dsz, nsv, nv, dsv);
-
-        if ( t % ss.every != 0 ) break;
-        
-        char filename[32];
-	sprintf(filename, ss.fntpl.c_str(), t);
-	
-        std::ofstream outfile;
-        outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
-        if(!outfile) cout << "*** Open fails: " <<  filename << endl;
-    
-        std::vector<real> carr(nsz*nsv);
-            
-        for (auto const& var : ss.vlist) {
-            
-            #pragma omp parallel for collapse(2)
-            #pragma acc parallel loop collapse(2)
-            for(int j=0;j<nz; j+=dsz)
-            for(int v=0;v<nv; v+=dsv) {
-                carr[ (j/dsz)*nsv + v/dsv ] = var[ idx(0,j,v) ];
-            }
-	    outfile.write((char *) carr.data(),  nsz*nsv*sizeof(real));
-	}
-        printf("		Write %d vars of size %dx%d into %s\n", ss.vlist.size(), nsv, nsz, filename);
-        outfile.close();
-    }
-
-}
-        
-void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
+void NuOsc::eval_extrinsics(const FieldVar* __restrict v0) {
 
     PARFORALL(i,j,v)   {
         int ij=idx(i,j,v);
@@ -77,7 +39,7 @@ void NuOsc::renormalize(const FieldVar* __restrict v0) {
         real iPb  = 1.0/sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
         real tmp  = iP *(P3) *G0 [ij];
         real tmpb = iPb*(P3b)*G0b[ij];
-        
+
         v0->ee    [ij]  = G0[ij]+tmp;
         v0->xx    [ij]  = G0[ij]-tmp;
         v0->ex_re [ij] *= iP;
@@ -146,7 +108,7 @@ FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
 
 void NuOsc::analysis() {
 
-    eval_conserved(v_stat);
+    eval_extrinsics(v_stat);
 
     real maxdP = 0.0;
     real maxdN = 0.0;
@@ -180,7 +142,7 @@ void NuOsc::analysis() {
         //aM11  += vw[v]* vz[i]* (v_stat->ex_re[ij] - v_stat->bex_re[ij]);
         //aM12  += vw[v]* vz[i]* (v_stat->ex_im[ij] + v_stat->bex_im[ij]);
         //aM13  += vw[v]* vz[i]* 0.5*(v_stat->ee[ij] - v_stat->xx[ij] - v_stat->bee[ij] + v_stat->bxx[ij]);
-        
+
         nor  += vw[v]* G0 [ij];   // const: should be calculated initially
         norb += vw[v]* G0b[ij];
     }
@@ -195,9 +157,9 @@ void NuOsc::analysis() {
     printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
 
     anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
-                        << surv << " " << survb << " " 
-                        << avgP << " " << avgPb << " " 
-                        << aM0 << " " << aM03  << endl;
+        << surv << " " << survb << " " 
+        << avgP << " " << avgPb << " " 
+        << aM0 << " " << aM03  << endl;
 }
 
 
@@ -218,33 +180,6 @@ void NuOsc::output_detail(const char* filename) {
         outfile << endl;
     }
 }
-
-/*
-void NuOsc::write_fz() {   // FIXME
-#define WRITE_Z_AT(HANDLE, VAR, V_IDX) \
-    HANDLE << phy_time << " "; \
-    for (int i=0;i<nz; i++) HANDLE << std::setprecision(8) << VAR[idx(V_IDX, i,i)] << " "; \
-    HANDLE << endl;
-    // f(z) at the highest v-mode
-    //WRITE_Z_AT(ee_vh,  v->ee,    nv-1)
-
-    {
-        // Pn at v = -0.5
-        int at_vz = int(0.25*(nv-1));
-        WRITE_Z_AT(p1_vm,   P1,  at_vz);
-        WRITE_Z_AT(p2_vm,   P2,  at_vz);
-        WRITE_Z_AT(p3_vm,   P3,  at_vz);
-    }
-    {    // Pn at v = 1
-        int at_vz = nv-1;
-        WRITE_Z_AT(p1_v,   P1,  at_vz);
-        WRITE_Z_AT(p2_v,   P2,  at_vz);
-        WRITE_Z_AT(p3_v,   P3,  at_vz);
-    }
-#undef WRITE_Z_AT
-
-}
-*/
 
 void NuOsc::snapshot(const int t) {
     char filename[32];
@@ -269,19 +204,19 @@ void NuOsc::snapshot(const int t) {
     outfile.write((char *) &nv,  sizeof(int));
     outfile.write((char *) &gz,  sizeof(int));
     /*
-    outfile.write((char *) v->ee,     size*sizeof(real));
-    outfile.write((char *) v->xx,     size*sizeof(real));
-    outfile.write((char *) v->ex_re,  size*sizeof(real));
-    outfile.write((char *) v->ex_im,  size*sizeof(real));
-    outfile.write((char *) v->bee,    size*sizeof(real));
-    outfile.write((char *) v->bxx,    size*sizeof(real));
-    outfile.write((char *) v->bex_re, size*sizeof(real));
-    outfile.write((char *) v->bex_im, size*sizeof(real));
-    */
+       outfile.write((char *) v->ee,     size*sizeof(real));
+       outfile.write((char *) v->xx,     size*sizeof(real));
+       outfile.write((char *) v->ex_re,  size*sizeof(real));
+       outfile.write((char *) v->ex_im,  size*sizeof(real));
+       outfile.write((char *) v->bee,    size*sizeof(real));
+       outfile.write((char *) v->bxx,    size*sizeof(real));
+       outfile.write((char *) v->bex_re, size*sizeof(real));
+       outfile.write((char *) v->bex_im, size*sizeof(real));
+       */
     outfile.write((char *) P1,  size*sizeof(real));
     outfile.write((char *) P2,  size*sizeof(real));
     outfile.write((char *) P3,  size*sizeof(real));
-    
+
     outfile.close();
     printf("		Write %d x %d into %s\n", nv, nz+2*gz, filename);
 }
@@ -305,7 +240,7 @@ void NuOsc::checkpoint(const int t) {
 
 
     cptmeta << phy_time << " " << nz << " " << nv << " " << z0 << " " << z1 << " " << gz << endl
-            << CFL << " " << dt << " " << dz << " " << mu << " " << renorm << " " << ko << endl;
+        << CFL << " " << dt << " " << dz << " " << mu << " " << renorm << " " << ko << endl;
     cptmeta.close();
 
     FieldVar *v = v_stat; 
