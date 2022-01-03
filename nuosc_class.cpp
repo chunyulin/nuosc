@@ -8,38 +8,6 @@ double g(double v, double v0, double sigma){
     return exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) )/N;
 }
 
-// Find the (vy,vz) index from (~0, -1) to (~0, 1) 
-// Just a quick workaround to get coarse-grained v grid for snapshot from 2D v list.
-vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in, const real * vy, const real * vz) {
-
-    assert(nv_in%2==0);
-
-    vector<int> v_slices;
-
-    real dv = 2.0/nv_in;
-    uint v0, v1;
-    for(int v=0; v<nv_in*nv_in;v++)  {
-        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
-	if ( std::abs(vy[v] - 0.5*dv) < 0.1*dv  ) { v0=v; break; }
-    }
-    for(int v=v0;v<nv_in*nv_in;v++) {
-        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
-	if ( std::abs(vy[v]-0.5*dv)> 0.5*dv ) { v1=v; break; }
-    }
-    
-    uint dsv = ceil(float(v1-v0) / nv_target);
-    
-    for (int v=0;v<nv_target-1; v++)  v_slices.push_back(v0+dsv*v);
-    v_slices.push_back(v1-1);
-
-    printf("   Gen %d skimmed v-pts near vy= %f and vz in [ %f %f ].\n", 
-		v_slices.size(), dv,
-		vz[ v_slices[0] ], 
-		vz[ v_slices.back() ] );
-    
-    return v_slices;
-}
-
 // 2D v quaduture on a unit disk
 int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
     real dv = 2.0/nv;
@@ -62,7 +30,7 @@ int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
 }
 
 // 1D vertex-center v-grid in [-1:1]
-int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
+int gen_v1d_vertex_center(const int nv, real *& vw, real *& vz) {
     assert(nv%2==1);  // just for convenience to include v=1, -1, 0 via trapezoidal rule
     real dv = 2.0/(nv-1);
     vz = new real[nv];
@@ -75,11 +43,22 @@ int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
     vw[nv-1] = 0.5*dv;
     return nv;
 }
-
+// 1D vertex-center v-grid in [-1:1]
+int gen_v1d_cell_center(const int nv, real *& vw, real *& vz) {
+    assert(nv%2==0);  // just for convenience to include v=1, -1, 0 via trapezoidal rule
+    real dv = 2.0/nv;
+    vz = new real[nv];
+    vw = new real[nv];
+    for (int j=0;j<nv; j++) {
+        vz[j] = (j+0.5)*dv - 1;
+        vw[j] = dv;
+    }
+    return nv;
+}
 
 void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
 
-    printf("   Init data: [ %s w/ alpha= %f  eps0= %g  z-sigma= %g  v-sigma= %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue, lnueb);
+    printf("   Init data: [ %s w/ alpha= %f  eps0= %g  z-sigma= %g  v-sigma= %g %g ]\n\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue, lnueb);
 
     FORALL(i,j,v) {
     
@@ -92,10 +71,12 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             real tmp;
             if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,sigma); }  // center perturbation
             else if (ipt==1) { tmp = eps_r(eps0); }                 // random
+#ifdef COSENU2D
             else if (ipt==2) { tmp = eps_c(Y[i],0.0,eps0,sigma)*eps_c(Z[j],0.0,eps0,sigma); }  // 2D symmetric gaussian
+#endif
             else             { assert(0); }                         // Not implemented
 
-            real p3o = sqrt(1.0-tmp*tmp);
+            real p3o = sqrt(1.0-tmp*tmp);   // Initial P3 in out case
             v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
             v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
             v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmp;

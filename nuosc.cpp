@@ -3,13 +3,17 @@
 int main(int argc, char *argv[]) {
 
     // ====== default input argument ========================
-    real dz  = 0.1;
+    real dz  = 0.1;       // I prefer fixing only dz and [z0, z1], with nz the direvatives. 
     real dy  = 0.1;
-    real y1  = 1,  y0 = -y1;
-    real z1  = 4,  z0 = -z1;
-    uint nv_in = 40;
-    real cfl = 0.4;      real ko = 0.1;
-
+    real y1  = 0.5*dy,  y0 = -y1;
+    real z1  = 128,  z0 = -z1;
+#ifdef COSENU2D
+    uint nv_in = 32;     // For 2D, the actuall nv may not be nv_in^2...
+#else
+    uint nv_in = 128;     // For 2D, the actuall nv may not be nv_in^2...
+#endif
+    real cfl = 0.4;      
+    real ko = 0.1;
     real mu  = 1.0;
     bool renorm = false;
 
@@ -18,12 +22,16 @@ int main(int argc, char *argv[]) {
     real lnueb = 0.53;    // width_nuebar
     real ipt   = 0;       // 0: central_z_perturbation; 1:random
     real eps0  = 1e-2;
-    real sigma  = 0.1*z1;    // lzpt = 2*simga**2
+    real sigma  = 0.2*z1;    // lzpt = 2*simga**2
 
-    uint ANAL_EVERY = 1; //1.0     / (cfl*dz) + 1;
-    uint END_STEP   = 5; //16.0    / (cfl*dz) + 1;
+    uint ANAL_EVERY = 2     / (cfl*dz) + 1;
+    uint END_STEP   = 2*z1    / (cfl*dz) + 1;
     uint DUMP_EVERY = ANAL_EVERY;
 
+    uint sy = 1;   // output dim of skimmed shots
+    uint sz = 1;
+    uint sv = 1;
+    
     // ====== Parse input argument ========================
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dz") == 0 )  {
@@ -65,7 +73,16 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[t], "--END_STEP_T") == 0 )  {
             END_STEP = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
             cout << " ** END_STEP: " << END_STEP << endl;
-            // for intial data
+
+        // for skimmed shot
+        } else if (strcmp(argv[t], "--sy") == 0 )  {
+            sy = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--sz") == 0 )  {
+            sz = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--sv") == 0 )  {
+            sv = atoi(argv[t+1]);    t+=1;
+
+        // for intial data
         } else if (strcmp(argv[t], "--lnue") == 0 )  {
             lnue  = atof(argv[t+1]);
             lnueb = atof(argv[t+2]);    t+=2;
@@ -90,11 +107,10 @@ int main(int argc, char *argv[]) {
 #endif
 
     // ====== Initialize simuation ========================
-#ifdef COSENU2D
     NuOsc state(nv_in, ny, nz, y0, y1, z0, z1, cfl, ko);
+#ifdef COSENU2D
     long size=(ny+2*state.gy)*(nz+2*state.gz)*(state.get_nv());
 #else
-    NuOsc state(nv_in, nz, z0, z1, cfl, ko);
     long size=(nz+2*state.gz)*(state.get_nv());
 #endif
     state.set_mu(mu);
@@ -103,30 +119,38 @@ int main(int argc, char *argv[]) {
     state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 
     // ======  Setup SkimShots ========================
-    std::list<real*> plist( { state.P3 } );
-
-    // VZ-Z shot
-    //uint skimmed_nv = 4;
-    //vector<int> y_slices{ny/2};
-    //vector<int> v_slices = gen_skimmed_vslice_index(skimmed_nv, nv_in, state.vy, state.vz );
-    //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, y_slices, nz, v_slices );
-
-    // YZ shot
+    std::list<real*> vlist( { state.P3 } );
+    {
+    // For P3(Z, Vz) plot in 1D/2D run
+#ifdef COSENU2D
+    uint sy = 5;
+    uint sz = 32;
+    uint sv = 4;
+    vector<int> v_idx = gen_skimmed_vslice_index(sv, nv_in, state.vy, state.vz);
+#else
+    uint sy = 1;
+    uint sz = 32;
+    uint sv = 4;
+    vector<int> v_idx = gen_skimmed_vslice_index(sv, nv_in);    
+#endif
+    state.addSkimShot(vlist, "P3_%06d.bin", DUMP_EVERY, sy, sz, v_idx );
+    }
+    
+#if 0
+    {
+    // For P3(Y,Z) plot
+    uint sy = ny;
+    uint sz = nz;
     uint skimmed_nv = 4;
-    uint sy = ny, sz = nz;
     vector<int> vidx = gen_skimmed_vslice_index(skimmed_nv, nv_in, state.vy, state.vz );
-    state.addYZSkimShot(plist, "P3XZ_%06d.bin", DUMP_EVERY, sy, sz, vidx);
-
+    state.addSkimShot(vlist, "P3ZY_%06d.bin", DUMP_EVERY, sy, sz, vidx);
+    }
+#endif
 
     // ====== analysis at t=0 ========================
     state.analysis();
-    //state.checkSkimShot();
-    //state.checkSkimShotToConsole();
-    state.checkYZSkimShot();
+    state.takeSkimShot();
     
-    //state.snapshot();
-    //state.write_fz();
-
     // ====== Begin the main loop ========================
     std::cout << std::flush;
     real stepms;
@@ -141,11 +165,9 @@ int main(int argc, char *argv[]) {
         if ( t%DUMP_EVERY==0) {
             //state.write_fz();
         }
-	//state.checkSkimShot(t);
-	//state.checkSkimShotToConsole(t);
-        state.checkYZSkimShot(t);
+        state.takeSkimShot(t);
 
-        if (t==10 || t==100 || t==1000 || t==END_STEP) {
+        if (t==1 || t==10 || t==100 || t==1000 || t==END_STEP) {
 	    auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
     	    printf("Walltime:  %.3f secs/T, %.3f us per step-grid.\n", stepms/state.phy_time/1000, stepms/t/size*1000);

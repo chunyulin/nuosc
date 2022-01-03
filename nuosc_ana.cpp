@@ -121,6 +121,7 @@ void NuOsc::analysis() {
 
     // integral over (vz,z): assume dz=dy=const.
 #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP,maxdN) collapse(COLLAPSE_LOOP)
+#pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP,maxdN) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v)  {
         auto ij = idx(i,j,v);
 
@@ -150,16 +151,20 @@ void NuOsc::analysis() {
     survb /= norb;
     avgP  /= nor;
     avgPb /= norb;
-    real aM0    = sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz;
+
+    auto avgx = dz * dy / ((y1-y0)*(z1-z0));
+    aM01 *= avgx;
+    aM02 *= avgx;
+    aM03 *= avgx;
+    //real aM0 = sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz / (z1-z0) * dy / (y1-y0) / nv;
     //real aM1    = sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
 
-    printf("T= %15f ", phy_time);
-    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
-
+    printf("T= %9.3f ", phy_time);
+    printf("   |dP|max= %8.2e  av|dP|= %8.2e  Psurv= %8.2e %8.2e  M0= %8.2e %8.2e %8.2e\n",maxdP,avgP,surv,survb,aM01,aM02,aM03);
     anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
         << surv << " " << survb << " " 
         << avgP << " " << avgPb << " " 
-        << aM0 << " " << aM03  << endl;
+        << aM01 << " " << aM02 << " " << aM03 << endl;
 }
 
 

@@ -1,7 +1,7 @@
 #pragma once
 
 //==== Major configuration macros to use  =========
-#define COSENU2D
+//#define COSENU2D
 #define BC_PERI
 #define KO_ORD_3
 #define VACUUM_OFF
@@ -76,7 +76,6 @@ using std::vector;
 
 typedef double real;
 
-
 typedef struct Vars {
     real* ee;
     real* xx;
@@ -120,18 +119,19 @@ typedef struct stat {
 } FieldStat;
 
 
-// A monitor is basically a data file at an iteration 
-// that contains reduced snapshot of multiple vaiables
+// Each "SkimShot" is basically a binary file per iteration 
+// that contains reduced snapshot of multiple vaiables.
+// I choose noe to combine multiple iteration in a file, as each iteration is large for nD-simulation.  
 typedef struct SkimShot_struct {
     std::list<real*> var_list;
     string fntpl;
     int every;
-    int sy, sz, sv;   // reduced dimension
+    int sy, sz, sv;         // reduced grid in each dimension
+    vector<int> y_slices;   // coordinate for the reduced dimension
     vector<int> v_slices;
-    vector<int> y_slices;
 
-    // For YZ shot
-    SkimShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, uint sy_, uint sz_, const vector<int> v_slices_) {
+    // init with specified v-coordinate...    
+    SkimShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, uint sy_, uint sz_, vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
@@ -139,17 +139,8 @@ typedef struct SkimShot_struct {
         sz = sz_;
         v_slices = v_slices_;
     }
-
-    SkimShot_struct(std::list<real*> var_list_, string fntpl_, int every_, const vector<int> y_slices_, int sz_, int sv_) {
-        var_list = var_list_;
-        fntpl = fntpl_;
-        every = every_;
-        y_slices = y_slices_;
-        sz = sz_;
-        sv = sv_;
-    }
-
-    SkimShot_struct(std::list<real*> var_list_, string fntpl_, int every_, const vector<int> y_slices_, int sz_, const vector<int> v_slices_) {
+    // init with specified y and v-coordinate...    
+    SkimShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, vector<int> y_slices_, uint sz_, vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
@@ -165,9 +156,12 @@ inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
 
-vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in, const real * vy, const real * vz);
 int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
-int gen_v1d_simple(const int nv_, real *& vw, real *& vz);
+int gen_v1d_vertex_center(const int nv_, real *& vw, real *& vz);
+int gen_v1d_cell_center(const int nv_, real *& vw, real *& vz);
+
+vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in, const real * vy, const real * vz);
+vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in);
 
 
 class NuOsc {
@@ -177,18 +171,17 @@ class NuOsc {
         real  *vw;                 // integral quadrature
         int nv;       // # of v cubature points.
 
-        real  *vz, *Z;             // coordinates
+        // z-coordinate
+        real  *vz, *Z;
         real z0,  z1, dz;
         int nz, gz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
 
-#ifdef COSENU2D
-        real  *vy, *Y;                    // coordinates
+        // y-coordinate
+        real  *vy, *Y;
         real y0,  y1, dy;
         int ny, gy;  // Dim of y
-#endif
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
-        FieldVar *v_stat0;   // NOT used.
 
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
@@ -214,16 +207,10 @@ class NuOsc {
         inline unsigned long idx(const int i, const int j, const int v) { return   (j+gz)*nv + v; }
 #endif
 
-#ifdef COSENU2D
         NuOsc(const int  nv_, 
                 const int   ny_, const int   nz_, 
                 const real  y0_, const real  y1_, const real  z0_, const real  z1_,
                 const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
-#else
-        NuOsc(const int  nv_, 
-                const int   nz_, const real  z0_, const real  z1_,
-                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
-#endif
 
             // coordinates~~
 
@@ -242,37 +229,51 @@ class NuOsc {
             Y   = new real[ny];
             dy = (y1-y0)/ny;       // cell-center
             for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
-#ifndef KO_ORD_3
+            #ifndef KO_ORD_3
             gy  = 3;
-#else
+            #else
             gy  = 2;
-#endif
-            // v cubature
+            #endif
+            // 2D v grid & cubature
             nv = gen_v2d_simple(nv_, vw, vy, vz);
+            real dv = 2.0 / (nv_);
             long size = (ny+2*gy)*(nz+2*gz)*nv;
 #else
-            nv = gen_v1d_simple(nv_, vw, vz);
+            // dummy y-coor
+            dy = dz;
+            ny = 1;  y1  = dy;  y0 = 0;
+            Y    = new real[ny];
+            Y[0] = 0.5*dy;
+
+            //nv = gen_v1d_vertex_center(nv_, vw, vz);
+            //real dv = 2.0 / (nv_-1);
+            nv = gen_v1d_cell_center(nv_, vw, vz);
+            vy = new real[nv];
+            real dv = 2.0 / (nv_);
             long size = (nz+2*gz)*nv;
 #endif
             CFL = CFL_;
             dt = dz*CFL;
 
 
-	    // ===== Initial message...
-	    int ngpus = 0;	
+	    //====== Initial message...
 #ifdef _OPENACC
-            printf("\n\nOpenACC Enabled.\n" );
+            int ngpus = 0;	
             acc_device_t dev_type = acc_get_device_type();
     	    ngpus = acc_get_num_devices( dev_type ); 
+            printf("\n\nOpenACC Enabled with GPU: %d.\n", ngpus) ;
+            if (ngpus>1) printf("**Note: MultiGPU may not be effective currently.\n") ;
 #endif
-            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
+
 #ifdef COSENU2D
-            printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/(nv_) );
-            printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
+            printf("\nNuOsc2D with max OpenMP core: %d\n\n", omp_get_max_threads());
+            printf("   Domain:  v: nv = %5d points within units disk, dv = %g\n", nv, dv);
+            printf("            y:( %12f %12f )\t   ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
 #else
-            printf("   Domain:  v: nv = %5d points within [-1,1] dv = %g\n", nv, 2.0/(nv_-1) );
+            printf("\nNuOsc1D with max OpenMP core: %d\n\n", omp_get_max_threads());
+            printf("   Domain:  v:( -1 1 )\t   nv = %5d, dv = %g\n", nv, dv);
 #endif
-            printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
+            printf("            z:( %12f %12f )\t   nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
             printf("   Size per field var = %.1f MB\n", size*8/1024./1024.);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 
@@ -300,9 +301,9 @@ class NuOsc {
             printf("   Use center-FD for advaction\n");
   #endif
 #endif
+            printf("\n");
 
-
-            // field variables for analysis~~
+            // supporting field variables for initial profile and analysis...
             G0     = new real[size];
             G0b    = new real[size];
             P1    = new real[size];
@@ -316,33 +317,27 @@ class NuOsc {
             dPb = new real[size];
             dNb = new real[size];
 
-            // field variables~~
+            // field variables...
             v_stat = new FieldVar(size);
             v_rhs  = new FieldVar(size);
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
-            v_stat0 = new FieldVar(size);
-#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-
-
+#pragma acc enter data create(v_stat[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor)
 
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
-	    anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0 ]" << endl;
-
+            anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6-8:aM0 ]" << endl;
         }
 
         ~NuOsc() {
             delete[] Z; delete[] vz; delete[] vw;
-#ifdef COSENU2D
-            delete[] Y;delete[] vy;
-#endif
+            delete[] Y; delete[] vy;
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-            delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
+#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor)
+            delete v_stat, v_rhs, v_pre, v_cor;
 
             anafile.close();
 
@@ -370,19 +365,13 @@ class NuOsc {
         void analysis();
         void renormalize(const FieldVar* v0);
 
-	// output
-        void addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, vector<int> yidx, int sz, int sv);
-        void addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, vector<int> yidx, int sz, vector<int> vidx);
-        void checkSkimShot(const int t=0);
-        void checkSkimShotToConsole(const int t=0);
-
+	// Output:
 	// TODO: should be able to use a single interface to generate arbitray slice over difference axis...
-	// Output y-z plane
-        void addYZSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sy, int sz, vector<int> vidx);
-        void checkYZSkimShot(const int t=0);
-
+        void addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sy, int sz, vector<int> vidx);
+        void takeSkimShot(const int t=0);
+        void takeSkimShotToConsole(const int t=0);
         void checkpoint(const int t = 0);
-        
+       
         // deprecated
         void snapshot(const int t = 0);
         FieldStat _analysis_v(const real var[]);

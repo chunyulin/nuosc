@@ -1,15 +1,62 @@
 #include "nuosc_class.h"
 
-// 2D y-z plane in real space
-void NuOsc::addYZSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sy, int sz, std::vector<int> vidx) {
+// Find the (vy,vz) index from (~0, -1) to (~0, 1) 
+// Just a quick workaround to get coarse-grained v grid for snapshot from 2D v list.
+vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in, const real * vy, const real * vz) {
+
+    assert(nv_in%2==0);
+    vector<int> v_slices;
+    real dv = 2.0/nv_in;
+    uint v0, v1;
+    for(int v=0; v<nv_in*nv_in;v++)  {
+        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
+	if ( std::abs(vy[v] - 0.5*dv) < 0.1*dv  ) { v0=v; break; }
+    }
+    for(int v=v0;v<nv_in*nv_in;v++) {
+        //cout<< "Processing ... " << vy[v] << " " << vz[v] << endl; 
+	if ( std::abs(vy[v]-0.5*dv)> 0.5*dv ) { v1=v; break; }
+    }
+    
+    uint dsv = ceil(float(v1-v0) / nv_target);
+    
+    for (int v=0;v<nv_target-1; v++)  v_slices.push_back(v0+dsv*v);
+    v_slices.push_back(v1-1);
+
+    printf("   Gen %d skimmed v-pts near vy= %f and vz in [ %f %f ].\n", 
+		v_slices.size(), dv,
+		vz[ v_slices[0] ], 
+		vz[ v_slices.back() ] );
+    
+    return v_slices;
+}
+
+// Get coarse-grained v-index: just evenly spread nv_target pts over nv_in point. 
+vector<int> gen_skimmed_vslice_index(uint sv, uint nv) {
+
+    vector<int> v_slices(sv);
+    uint dsv = floor(nv / (sv-1));
+
+    for(int v=0;v<sv-1;v++) v_slices[v] = v*dsv;
+  
+    v_slices[sv-1] = nv - 1;
+    
+    return v_slices;
+}
+
+// Register skimmed shot for reduce sy, sz at selected v[v_idx], for both 1D/2D.
+void NuOsc::addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sy, int sz, vector<int> vidx) {
+    //for (auto&i:vidx)  cout << i << " " ;
+
     SkimShot ss(var, fntpl, dumpstep, sy, sz, vidx);
     skimshots.push_back(ss);
 
-    int sv = vidx.size();
-    int dsz = nz/sz;
-    int dsy = ny/sy;
-    printf("   Add %dx%d YZ skimshot at %d v-slices: ", sy, sz, sv);
-    for(auto &v:vidx) printf("(%g,%g) ",vy[v],vz[v]); cout << endl;
+    int dsz = floor(nz/sz);
+    int dsy = floor(ny/sy);
+    int sv  = vidx.size();
+
+    printf("Add %d x %d x %d skimshot every %d steps. ( Simulation size %d x %d x %d )\n", sy, sz, sv, dumpstep, ny, nz, nv);
+    //cout << "      at vz-slices: "; for(auto &v:vidx) printf("%g ",vz[v]); cout << endl;
+    assert(nz>=sz && ny>=sy && nv>=sv);
 
     std::ofstream outfile;
     char filename[32];
@@ -23,14 +70,14 @@ void NuOsc::addYZSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int s
     outfile << ny <<" "<< nz <<" "<< nv            << endl;
     outfile << y0 <<" "<< y1 <<" "<< z0 <<" "<< z1 << endl;
 
-    for(int i=0;i<ny; i+=dsz)   outfile << Y[i]  << " ";   outfile << endl;
+    for(int i=0;i<ny; i+=dsy)   outfile << Y[i]  << " ";   outfile << endl;
     for(int j=0;j<nz; j+=dsz)   outfile << Z[j]  << " ";   outfile << endl;
     for(auto &v:vidx)       outfile << vy[v] << " ";   outfile << endl;
     for(auto &v:vidx)       outfile << vz[v] << " ";   outfile << endl;
 }
 
-// Skimmed output to binaries file for post-processing
-void NuOsc::checkYZSkimShot(const int t) {
+// Take skimmed shot for addYZSkimShot()
+void NuOsc::takeSkimShot(const int t) {
 
     for (auto const& ss : skimshots) {
 
@@ -49,6 +96,7 @@ void NuOsc::checkYZSkimShot(const int t) {
         outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
         if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
+        printf("		Writing %d vars of size %d x %d x %d into %s\n", ss.var_list.size(), sy, sz, sv, filename);
         std::vector<real> carr(sy*sz*sv);
 
         for (auto const& var : ss.var_list) {
@@ -65,53 +113,12 @@ void NuOsc::checkYZSkimShot(const int t) {
             outfile.write((char *) &phy_time, sizeof(real) );
             outfile.write((char *) carr.data(),  sy*sz*sv*sizeof(real));
         }
-        printf("		Write %d vars of size %dx%dx%d into %s\n", ss.var_list.size(), sy, sz, sv, filename);
         outfile.close();
     }
 }
 
-// Skimmed output to binaries file for post-processing
-void NuOsc::checkSkimShot(const int t) {
-
-    for (auto const& ss : skimshots) {
-
-        std::vector<int> vc = ss.v_slices;
-        std::vector<int> yc = ss.y_slices;
-        int sy = yc.size();
-        int sz = ss.sz;
-        int sv = vc.size();
-        int dsz = nz/sz;
-
-        if ( t % ss.every != 0 ) break;
-
-        char filename[32];
-        sprintf(filename, ss.fntpl.c_str(), t);
-
-        std::ofstream outfile;
-        outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
-        if(!outfile) cout << "*** Open fails: " <<  filename << endl;
-
-        std::vector<real> carr(sy*sz*sv);
-
-        for (auto const& var : ss.var_list) {
-
-#pragma omp parallel for collapse(3)
-#pragma acc parallel loop collapse(3)
-            for(int i=0; i<sy; i++)
-                for(int j=0; j<sz; j++)
-                    for(int v=0; v<sv; v++) {
-                        carr[ (i*sz + j) * sv + v ] = var[ idx(yc[i],j*dsz,vc[v]) ];
-                    }
-
-            outfile.write((char *) carr.data(),  sy*sz*sv*sizeof(real));
-        }
-        printf("		Write %d vars of size %dx%dx%d into %s\n", ss.var_list.size(), sy, sv, sz, filename);
-        outfile.close();
-    }
-}
-
-// Skimmed output to console for debugging
-void NuOsc::checkSkimShotToConsole(const int t) {
+// NOT USED..
+void NuOsc::takeSkimShotToConsole(const int t) {
 
     for (auto const& ss : skimshots) {
 
@@ -138,73 +145,3 @@ void NuOsc::checkSkimShotToConsole(const int t) {
         }
     }
 }
-
-// not used 
-void NuOsc::addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> y_slices, int sz, int sv) {
-    SkimShot ss(var, fntpl, dumpstep, y_slices, sz, sv);
-    skimshots.push_back(ss);
-
-    auto dsz = nz/sz;
-    auto dsv = (nv-1)/(sv-1);
-    printf("   Add SkimShot with z: %d / %d / %d   v: %d / %d / %d   at y-slices ", nz, sz, dsz, nv, sv, dsv);
-    for(auto &i:y_slices) cout << i << " ";  cout << endl;
-    assert(nz%sz==0);
-    assert((nv-1)%(sv-1)==0);
-
-
-    std::ofstream outfile;
-    char filename[32];
-    string tmp = string(fntpl) + ".meta";
-    sprintf(filename, tmp.c_str(), 0);
-    outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
-    if(!outfile) cout << "*** Open fails: " <<  filename << endl;
-
-    // grid information
-    for(auto &i:y_slices)  outfile << i << " ";   outfile << endl;
-    outfile << nz << " " << sz << " " << dsz << " " << z0<< " " << z1 << " " << dt << endl;
-    outfile << nv << " " << sv << " " << dsv << endl;
-
-    for(int i=0;i<ny; i++)      outfile << Y[i] << " ";
-    outfile << endl;
-    for(int j=0;j<nz; j+=dsz)   outfile << Z[j] << " ";
-    outfile << endl;
-    for(int v=0;v<nv; v+=dsv)   outfile << vz[v] << " ";
-    outfile << endl;
-
-# if 0
-    // mixed ascii and binary not working
-    std::vector<real> tmpz(sz);
-    for(int j=0;j<nz; j+=dsz)   tmpz[j/dsz] = Z[j];
-    outfile.write((char *) tmpz.data(), sz*sizeof(real));
-#endif
-}
-
-// 2D Generalization of the previous one that is mainly for 1D. Here we make nv into explicit v_slices...
-void NuOsc::addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, vector<int> y_slices, int sz, vector<int> v_slices) {
-    SkimShot ss(var, fntpl, dumpstep, y_slices, sz, v_slices);
-    skimshots.push_back(ss);
-
-    auto dsz = nz/sz;
-    auto sy = y_slices.size();
-    auto sv = v_slices.size();
-    printf("   Add SkimShot with z: %d / %d / %d  at %d v-slices and %d y-slices.\n", nz, sz, dsz, sv, sy);
-
-    std::ofstream outfile;
-    char filename[32];
-    string tmp = string(fntpl) + ".meta";
-    sprintf(filename, tmp.c_str(), 0);
-    outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
-    if(!outfile) cout << "*** Open fails: " <<  filename << endl;
-
-    // grid information
-    outfile << dt <<" "<< sy <<" "<< sz <<" "<< sv << endl;
-    outfile << ny <<" "<< nz <<" "<< nv            << endl;
-    outfile << y0 <<" "<< y1 <<" "<< z0 <<" "<< z1 << endl;
-
-    for(auto &i:y_slices)       outfile << Y[i] << " ";   outfile << endl;
-    for(int j=0;j<nz; j+=dsz)   outfile << Z[j] << " ";   outfile << endl;
-    for(auto &v:v_slices)       outfile << vz[v] << " ";   outfile << endl;
-
-}
-
-

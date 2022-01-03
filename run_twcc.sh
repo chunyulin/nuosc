@@ -1,65 +1,75 @@
 #!/bin/bash
+subarm() {
+    local runset=$1; shift
+    local jobid=$1; shift
+    local exec=$*
 
-sub() {
-    local runtag=$1; shift
-    local cfl=$1; shift
-    local zmax=$1; shift
-    local dz=$1; shift
-    local nvz=$1; shift
-    local ipt=$1; shift
-    local eps0=$1; shift
-    local alpha=$1; shift
-    local sigma=$1; shift
-    local ko=$1; shift
-    local ana=$1; shift
-    local dump=$1; shift
-    local end=$1; shift
-
-    local jobtag="r${alpha}_k${ko}_n${nvz}_d${dz}_eps${eps0}_s${sigma}"
-    local folder="${runtag}/${jobtag}"
-    mkdir ${folder} -p
-    cp ./nuosc ./run_twcc.sh ${runtag}
+    echo $exec
+        
+    local jobfolder="${runset}/${jobid}"
+    mkdir ${jobfolder} -p
+    cp ./nuosc ./run_twcc.sh ${runset}
     
-    cat << EOF > ${folder}/sub.slurm
+    cat << EOF > ${jobfolder}/sub.slurm
 #!/bin/bash
-#SBATCH --job-name ${runtag}_${renorm}_${dz}_${eps0}
-#SBATCH -A GOV109092
-#SBATCH -p gp1d
-#SBATCH --gres=gpu:2
-#SBATCH --nodes 1 --ntasks-per-node 1 --cpus-per-task 8
-#SBATCH --mem-bind=verbose,p
+#SBATCH -A GOV109018 -p gp4d
+#SBATCH --job-name ${jobid}
+#SBATCH --nodes 1 --ntasks-per-node 1 --cpus-per-task 4
+#SBATCH --gres=gpu:1
+###SBATCH --mem-bind=verbose,p
 module purge
 module load nvhpc/21.7
-srun --cpu-bind=v,cores \
-  ../nuosc --mu 1.0 --nv ${nvz} --dz ${dz} --zmax ${zmax} --cfl ${cfl} \\
-           --ipt ${ipt} --eps0 ${eps0} --alpha ${alpha} --sigma ${sigma} --ko ${ko} \\
-           --ANA_EVERY_T ${ana} --DUMP_EVERY_T ${dump} --ENDSTEP_T ${end}
+srun --cpu-bind=v,cores ${exec}
 echo "--- Walltime: \${SECONDS} sec."
+
+module load miniconda3 ffmpeg
+conda activate /opt/ohpc/pkg/kagra/ENV/py37
+MP4=${jobid}.mp4
+python3 ../../pltZVz_P3.py P3ZVz_*.bin
+convert -delay 5 ZY*.png \${MP4}
+chmod a+r \${MP4}
 EOF
-    (cd ${folder}; sbatch sub.slurm )
+    (cd ${jobfolder}; sbatch sub.slurm )
+}
+
+comp2d () {
+  RUNSET="comp2d_zmax$2"
+  JOBID="y$1_nv$3_a$4"
+  EXEC="../nuosc --ymax $1 --zmax $2 --dz 0.1 --nv $3 --cfl 0.4 --ko 0.1
+             --sy $(($1*10)) --sz 2560 --sv $3
+             --mu 1.0 --ipt 0 --eps0 1e-2 --alpha $1
+             --ANA_EVERY_T 2 --DUMP_EVERY_T 2 --END_STEP_T $(($2*4))"
+
+  subarm ${RUNSET} ${JOBID} ${EXEC}
+}
+
+ipt2 () {
+  RUNSET="ipt2z$2"
+  JOBID="ipt2_a$1_$nv$3_s$4"
+  EXEC="../nuosc --ymax $2 --zmax $2 --dz 0.1 --nv $3 --cfl 0.4 --ko 0.1
+             --sy $(($2*10)) --sz $(($2*10)) --sv $3
+             --mu 1.0 --ipt 2 --eps0 1e-2 --alpha $1 --sigma $4 
+             --ANA_EVERY_T 2 --DUMP_EVERY_T 2 --END_STEP_T $(($2*3))"
+
+  subarm ${RUNSET} ${JOBID} ${EXEC}
 }
 
 
-noc () {
-  group="noc$1"
-  cfl=0.4
-  zmax=5120
-  eps0=1.e-2
-  anatime=5.0
-  dumptime=10000000.0
-  endtime=6000.0
-  nv=201
-  dz=0.1
-  alpha=1.0
-  sigma=100.0
-  ipt=$1
+#ipt2 0.9 32 20 4
+#ipt2 0.9 50 16 4
+#ipt2 1.1 50 16 4
 
-sub ${group} ${cfl} ${zmax}  ${dz} ${nv} ${ipt} ${eps0} ${alpha} ${sigma} 1.0 ${anatime} ${dumptime} ${endtime}
-sub ${group} ${cfl} ${zmax}  ${dz} ${nv} ${ipt} ${eps0} ${alpha} ${sigma} 0.5 ${anatime} ${dumptime} ${endtime}
-sub ${group} ${cfl} ${zmax}  ${dz} 401   ${ipt} ${eps0} ${alpha} ${sigma} 1.0 ${anatime} ${dumptime} ${endtime}
-sub ${group} ${cfl} ${zmax}  0.05  ${nv} ${ipt} ${eps0} ${alpha} ${sigma} 1.0 ${anatime} ${dumptime} ${endtime}
-sub ${group} ${cfl} ${zmax}  0.2   ${nv} ${ipt} ${eps0} ${alpha} ${sigma} 1.0 ${anatime} ${dumptime} ${endtime}
-}
+comp2d 2 512 20 0.9
+comp2d 2 512 20 1.0
+comp2d 2 512 20 1.1
+comp2d 2 512 20 1.2
 
-noc 0  ## point-like
-#alpha 1  ## random
+comp2d 2 512 32 0.9
+comp2d 2 512 32 1.0
+comp2d 2 512 32 1.1
+comp2d 2 512 32 1.2
+
+comp2d 2 256 32 0.9
+comp2d 2 256 32 1.0
+comp2d 2 256 32 1.1
+comp2d 2 256 32 1.2

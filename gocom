@@ -4,12 +4,12 @@ host=`hostname`
 if [[ $host == *"twcc.ai" ]]; then
 
   echo "==== on TWCC"
-  module load miniconda3
+  module load miniconda3 ffmpeg
   conda activate /opt/ohpc/pkg/kagra/ENV/py37
   module load nvhpc/21.7
   
   export CXX=nvc++
-  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed"
+  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed -DCOSENU2D"
 
 
 else
@@ -21,6 +21,7 @@ else
 
   export CXX=armclang++
   export OPT="-Ofast -std=c++11 -fopenmp"
+  export OPT="-Ofast -std=c++11 -fopenmp -DCOSENU2D"
   
 fi
 

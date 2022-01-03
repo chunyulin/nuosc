@@ -10,7 +10,7 @@ import os
 import sys
 import subprocess
 
-p = subprocess.check_output(['ls -d alpha*'],shell=True)
+p = subprocess.check_output(['ls -d */'],shell=True)
 runs = p.split()
 
 data=dict()
@@ -33,11 +33,22 @@ def compare(col, tag, log = 0):
     plt.legend()
     plt.savefig("ana_{}.png".format(tag))
 
+def compare_M():
+    col=6
+    plt.figure()
+    for k in data:
+        y = np.sqrt(data[k][:,col]**2+data[k][:,col+1]**2+data[k][:,col+2]**2)
+        plt.plot(data[k][:,0], y, label=k.decode())
+    plt.xlabel("Physical time")
+    plt.title("M")
+    #if (log): plt.yscale("log")
+    plt.legend()
+    plt.savefig("ana_M.png".format(tag))
+
 #:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0
 compare(1,"max(P-1)", 1)
 compare(2,"Pee")
 compare(3,"Peeb")
 compare(4,"avgP")
 compare(5,"avgPb")
-compare(6,"|M|", 0)
-compare(7,"e-x")
+compare_M()

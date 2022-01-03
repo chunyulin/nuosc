@@ -1,10 +1,11 @@
 A typical workflow on ARM/TWCC cluster
 
-1) Use ". ./gocom" to make.
-2) Submit multiple runs with "run*.sh" into slurm. Each set of runs is in the `runtag` folder.
-3) Make plots:
-    a) In each runtag folder, use `plt_analysis.py` to compare statistics quantities like `|P|-1, Pee, M0` for different runs.
-    b) For 1D run, use `plt_skimshot*.py *.bin` to generate plots for each binary snapshot.
-    c) For 2D run, use `pltYZ_P3.py *.bin` to generate contour plot.
-    d) Generate movie by `makemovie.*`.
+1. Use ". ./gocom" to make.
+1. Submit multiple runs with "run*.sh" into slurm. Each set of runs is in the `runtag` folder.
+1. Post processing:
+    1. For each 1D/2D run, use `../plt_analysis.py` to generate comparison plot for different runs of statistics quantities `|P|-1, Pee, M0` in `./*/analysis.dat`.
+    1. For each 1D/2D run, use `../pltZVz_P3.py` to generate contour plot of P(Z,Vz).
+    1. For each 1D/2D run, use `../cpltZVz_P3.py` to generate comparison plot of P(Z,Vz) for different run. Assuming each run has the same DUMP period.
+    1. For each 2D run, use `../../pltYZ_P3.py *.bin` to generate contour plot of P(Z,Y).
+    1. Generate movie by `makemovie.*`.
 --
