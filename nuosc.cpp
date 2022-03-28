@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[t], "--DUMP_EVERY") == 0 )  {
             DUMP_EVERY = atoi(argv[t+1]);    t+=1;
             cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
-        } else if (strcmp(argv[t], "--ENDSTEP") == 0 )  {
+        } else if (strcmp(argv[t], "--END_STEP") == 0 )  {
             END_STEP = atoi(argv[t+1]);    t+=1;
             cout << " ** END_STEP: " << END_STEP << endl;
         } else if (strcmp(argv[t], "--ANA_EVERY_T") == 0 )  {
@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[t], "--DUMP_EVERY_T") == 0 )  {
             DUMP_EVERY = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
             cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
-        } else if (strcmp(argv[t], "--ENDSTEP_T") == 0 )  {
+        } else if (strcmp(argv[t], "--END_STEP_T") == 0 )  {
             END_STEP = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
             cout << " ** END_STEP: " << END_STEP << endl;
             // for intial data
@@ -103,41 +103,44 @@ int main(int argc, char *argv[]) {
     state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 
     // Setup SkimShots
-    std::list<real*> plist( { state.P3 } );
-    state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
+    //std::list<real*> plist( { state.P3 } );
+    //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
     //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
     //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
                     
     // === analysis for t=0
-    state.analysis();
-    state.checkSkimShots();
+    //state.analysis();
+    //state.checkSkimShots();
     //state.snapshot();
     //state.write_fz();
 
     std::cout << std::flush;
     real stepms;
-    auto t1 = std::chrono::high_resolution_clock::now();
+    std::chrono::time_point<std::chrono::high_resolution_clock> t1;
+    const int cooltime = 2;
     for (int t=1; t<=END_STEP; t++) {
+
+        if (t==cooltime)  t1 = std::chrono::high_resolution_clock::now();
         //cout << t << "..." << endl;
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
-            state.analysis();
+            //state.analysis();
         }
         if ( t%DUMP_EVERY==0) {
             //state.write_fz();
         }
-	state.checkSkimShots(t);
+	//state.checkSkimShots(t);
 
-        if (t==10 || t==100 || t==1000 || t==END_STEP) {
+        if ( t==10 || t==100 || t==1000 || t==END_STEP) {
 	    auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("Walltime:  %.3f secs/T, %.3f us per step-grid.\n", stepms/state.phy_time/1000, stepms/t/size*1000);
+    	    printf("%d Walltime:  %.3f secs/T, %.3f us per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1000);
         }
     }
 
     printf("Completed.\n");
 
-    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/END_STEP/size*1000);
+    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1000);
     return 0;
 }
