@@ -56,8 +56,8 @@ void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
         dNb[ij] = (v0->bee[ij] + v0->bxx[ij]);
         dNb[ij] = (dNb [ij] - G0b[ij])/dNb [ij] ;
 
-        dP [ij] = std::abs( 1.0 - sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) );
-        dPb[ij] = std::abs( 1.0 - sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) );
+        dP [ij] = std::abs( 1.0 - std::sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) );
+        dPb[ij] = std::abs( 1.0 - std::sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) );
     }
 }
 
@@ -73,8 +73,8 @@ void NuOsc::renormalize(const FieldVar* __restrict v0) {
         real P1b = v0->bex_re[ij] * iGb;
         real P2b = v0->bex_im[ij] * iGb;
         real P3b = (v0->bee[ij] - v0->bxx[ij]) * iGb;
-        real iP   = 1.0/sqrt(P1*P1+P2*P2+P3*P3);
-        real iPb  = 1.0/sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
+        real iP   = 1.0/std::sqrt(P1*P1+P2*P2+P3*P3);
+        real iPb  = 1.0/std::sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
         real tmp  = iP *(P3) *G0 [ij];
         real tmpb = iPb*(P3b)*G0b[ij];
         
@@ -111,7 +111,7 @@ FieldStat NuOsc::_analysis_v(const real var[]) {
     res.max = vmax;
     res.sum = sum;
     res.avg = sum/(nz*nv);
-    res.std = sqrt( sum2/(nz*nv) - res.avg*res.avg  );
+    res.std = std::sqrt( sum2/(nz*nv) - res.avg*res.avg  );
 
     return res;
 }
@@ -139,7 +139,7 @@ FieldStat NuOsc::_analysis_c(const real vr[], const real vi[]) {
     res.max = vmax;
     res.sum = sum;
     res.avg = sum/(nz*nv);
-    res.std = sqrt( sum2/(nz*nv) - res.avg*res.avg  );
+    res.std = std::sqrt( sum2/(nz*nv) - res.avg*res.avg  );
 
     return res;
 }
@@ -169,8 +169,8 @@ void NuOsc::analysis() {
         surv  += vw[v]* v_stat->ee [ij];
         survb += vw[v]* v_stat->bee[ij];
 
-        avgP  +=  std::abs( 1.0 - sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) ) * G0 [ij] * vw[v];
-        avgPb +=  std::abs( 1.0 - sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) ) * G0b[ij] * vw[v];
+        avgP  +=  std::abs( 1.0 - std::sqrt(P1 [ij]*P1 [ij]+P2 [ij]*P2 [ij]+P3 [ij]*P3 [ij]) ) * G0 [ij] * vw[v];
+        avgPb +=  std::abs( 1.0 - std::sqrt(P1b[ij]*P1b[ij]+P2b[ij]*P2b[ij]+P3b[ij]*P3b[ij]) ) * G0b[ij] * vw[v];
 
         // M0
         aM01  += vw[v]* ( v_stat->ex_re[ij] - v_stat->bex_re[ij]);                                 // = P1[ij]*G0[ij] - P1b[ij]*G0b[ij];
@@ -188,16 +188,18 @@ void NuOsc::analysis() {
     survb /= norb;
     avgP  /= nor;
     avgPb /= norb;
-    real aM0    = sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz;
-    //real aM1    = sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
+    real aM0    = std::sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz;
+    //real aM1    = std::sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
+    real ELNe = std::abs(n_nue0*(1-surv) - n_nueb0*(1-survb)) / (n_nue0 + n_nueb0);
 
     printf("T= %15f ", phy_time);
-    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
+    //printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
+    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, ELNe);
 
     anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
                         << surv << " " << survb << " " 
                         << avgP << " " << avgPb << " " 
-                        << aM0 << " " << aM03  << endl;
+                        << aM0 << " " << aM03  << " " << ELNe << endl;
 }
 
 

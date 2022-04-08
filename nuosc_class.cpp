@@ -4,7 +4,8 @@
 inline real eps_c(real z, real z0, real eps0, real sigma){return eps0*exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
 inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 double g(double v, double v0, double sigma){
-    double N = sigma*sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/sqrt(2.0))+erf((1.0-v0)/sigma/sqrt(2.0)));
+    double N = sigma*std::sqrt(M_PI/2.0)*(erf((1.0+v0)/sigma/std::sqrt(2.0))+erf((1.0-v0)/sigma/std::sqrt(2.0)));
+    //cout << "== Checking A : " << 1/N << endl;
     return exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) )/N;
 }
 
@@ -29,9 +30,9 @@ int gen_v2d_simple(const int nv, real *& vw, real *& vy, real *& vz) {
     return co;  // co < nv*nv
 }
 
-// v quaduture in  [-1:1]
-int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
-    assert(nv%2==1); // for simpson integral rule
+// v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
+int gen_v1d_trapezoidal(const int nv, real *& vw, real *& vz) {
+    assert(nv%2==1);
     real dv = 2.0/(nv-1);
     vz = new real[nv];
     vw = new real[nv];
@@ -44,11 +45,30 @@ int gen_v1d_simple(const int nv, real *& vw, real *& vz) {
     return nv;
 }
 
+// v quaduture in [-1:1], vertex-center with Simpson 1/3 rule on uniform rgid.
+int gen_v1d_simpson(const int nv, real *& vw, real *& vz) {
+    assert(nv%2==1);
+    real dv = 2.0/(nv-1);
+    const real o3dv = 1./3.*dv;
+    vz = new real[nv];
+    vw = new real[nv];
+    for (int j=0;j<nv; j++) {
+        vz[j] = j*dv - 1;
+        vw[j] = 2*((j%2)+1)*o3dv;
+    }
+    vw[0]    = o3dv;
+    vw[nv-1] = o3dv;
+    return nv;
+}
+
 
 void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
 
     printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
 
+    real ne0 = 0.0, nb0 = 0.0;
+
+#pragma omp parallel for reduction(+:ne0,nb0) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v) {
     
 	    auto ijv = idx(i,j,v);
@@ -62,7 +82,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             else if (ipt==1) { tmp = eps_r(eps0); }                 // random
             else             { assert(0); }                         // Not implemented
 
-            real p3o = sqrt(1.0-tmp*tmp);
+            real p3o = std::sqrt(1.0-tmp*tmp);
             v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
             v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
             v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmp;
@@ -72,10 +92,15 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmp;
             v_stat->bex_im[ijv] = 0.0;
 
-	    // archive init state for analysis
-            //v_stat0->ee    [ijv] = v_stat->ee [ijv];
-            //v_stat0->bee   [ijv] = v_stat->bee[ijv];
+            // initial nv_e
+            ne0 += vw[v]*v_stat->ee [ijv];
+            nb0 += vw[v]*v_stat->bee[ijv];
     }
+    n_nue0  = ne0*dz/(z1-z0);   // initial n_nue
+    n_nueb0 = nb0*dz/(z1-z0);   // initial n_nueb
+
+    printf("      init number density of nu_e: %g %g\n", n_nue0, n_nueb0);
+    
 
 #ifdef BC_PERI
     updatePeriodicBoundary(v_stat);

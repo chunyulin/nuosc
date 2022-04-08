@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
             dz  = atof(argv[t+1]);     t+=1;
             dy = dz;
         } else if (strcmp(argv[t], "--ymax") == 0 )  {
-    	    y1   = atof(argv[t+1]);    t+=1;
+            y1   = atof(argv[t+1]);    t+=1;
             y0   = -y1;
         } else if (strcmp(argv[t], "--zmax") == 0 )  {
             z1   = atof(argv[t+1]);    t+=1;
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
     //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
                     
     // === analysis for t=0
-    //state.analysis();
+    state.analysis();
     //state.checkSkimShots();
     //state.snapshot();
     //state.write_fz();
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     std::cout << std::flush;
     real stepms;
     std::chrono::time_point<std::chrono::high_resolution_clock> t1;
-    const int cooltime = 2;
+    const int cooltime = 5;
     for (int t=1; t<=END_STEP; t++) {
 
         if (t==cooltime)  t1 = std::chrono::high_resolution_clock::now();
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
-            //state.analysis();
+            state.analysis();
         }
         if ( t%DUMP_EVERY==0) {
             //state.write_fz();

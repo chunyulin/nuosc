@@ -1,14 +1,13 @@
 
 
-#CXX=g++
+CXX=g++
 #CXX=armclang++
 #CXX=nvc++
 
 #INCLUDE=-I/pkg/gcc9/papi-6.0/include
 #LIBS=-L/pkg/gcc9/papi-6.0/lib -lpapi
 #DEBUG=-DPAPI
-#OPT=-Ofast -std=c++11 -fopenmp
-
+OPT=-Ofast -std=c++11 -fopenmp -DIM_SIMPSON #-DCOSENU2D
 #OPT=-mp -O3 -Minfo=mp
 
 #OPT=-acc=gpu -O3 -Minfo=acc -ta=tesla:managed

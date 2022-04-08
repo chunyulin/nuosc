@@ -1,7 +1,7 @@
 #pragma once
 
 //#define COSENU2D
-
+//#define IM_SIMPSON
 
 #ifdef NVTX
 #include <nvToolsExt.h>
@@ -29,6 +29,7 @@
 
 #define BC_PERI
 #define KO_ORD_3
+
 
 //#define ADVEC_CENTER_FD  // no need
 //#define ADVEC_UPWIND  ## always blow-up
@@ -141,7 +142,8 @@ inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
 int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
-int gen_v1d_simple(const int nv_, real *& vw, real *& vz);
+int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
+int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
 
 
 class NuOsc {
@@ -167,6 +169,7 @@ class NuOsc {
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
         real *G0,*G0b;
+        real n_nue0,n_nueb0;   // initial number density for nue
 
         real CFL;
         real ko;
@@ -225,7 +228,11 @@ class NuOsc {
             nv = gen_v2d_simple(nv_, vw, vy, vz);
             long size = (ny+2*gy)*(nz+2*gz)*nv;
 #else
-            nv = gen_v1d_simple(nv_, vw, vz);
+            #ifdef IM_SIMPSON
+            nv = gen_v1d_simpson(nv_, vw, vz);
+            #else
+            nv = gen_v1d_trapezoidal(nv_, vw, vz);
+            #endif
             long size = (nz+2*gz)*nv;
 #endif
 
@@ -274,6 +281,12 @@ class NuOsc {
 #else
             printf("   Use open boundary\n");
 #endif
+#ifdef IM_SIMPSON
+            printf("   Use Simpson 1/3 integration.\n");
+#else
+            printf("   Use simple trapezoidal integration\n");
+#endif
+
 #ifndef KO_ORD_3
             printf("   Use 5-th order KO dissipation\n");
 #else
@@ -329,7 +342,7 @@ class NuOsc {
 
              auto dsz = nz/sz;
              auto dsv = (nv-1)/(sv-1);
-             printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nz, sz, dsz, nv, sv, dsv);
+             //printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nz, sz, dsz, nv, sv, dsv);
              assert(nz%sz==0);
              assert((nv-1)%(sv-1)==0);
 

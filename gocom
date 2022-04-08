@@ -20,7 +20,7 @@ else
   #export PAPI_MULTIPLEX=1
 
   export CXX=armclang++
-  export OPT="-Ofast -std=c++11 -fopenmp"
+  export OPT="-Ofast -std=c++11 -fopenmp -DIM_SIMPSON"
   
 fi
 
