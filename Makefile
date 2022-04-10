@@ -12,7 +12,7 @@ ${TARGET}: ${OBJS}
 
 run:
 	#numactl -C 0-15 
-	./${TARGET} --zmax 5120 --dz 1 --nv 201 --ko 0.1 --cfl 0.4 --ANA_EVERY_T 1 --DUMP_EVERY_T 999 --END_STEP_T 40
+	./${TARGET} --ipt 4 --zmax 5120 --dz 1 --nv 201 --ko 0.1 --cfl 0.4 --ANA_EVERY_T 1 --DUMP_EVERY_T 999 --END_STEP_T 40
 
 nsys:
 	NSYS=/work/opt/ohpc/pkg/qchem/nv/nsight-systems-2020.3.1/bin/nsys

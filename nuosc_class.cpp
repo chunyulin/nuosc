@@ -64,12 +64,59 @@ int gen_v1d_simpson(const int nv, real *& vw, real *& vz) {
 
 void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
 
-    printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
-
     real ne0 = 0.0, nb0 = 0.0;
 
-#pragma omp parallel for reduction(+:ne0,nb0) collapse(COLLAPSE_LOOP)
-    FORALL(i,j,v) {
+    if (ipt==4) {
+
+        int amax=nz/2/10;
+
+	printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue, lnueb, sigma, amax);
+
+        std::vector<real> phi(nz/10+1);
+        const real pi2oL = 2.0*M_PI/(z0-z1);
+	#pragma omp parallel for
+        for(int k=-amax;k<=amax;k++){
+	    phi[k+amax]=2.0*M_PI*rand()/RAND_MAX;
+        }
+	#pragma omp parallel for reduction(+:ne0,nb0)
+        for (int j=0;j<nz; j++){
+	    real tmpr=0.0;
+            real tmpi=0.0;
+	    #pragma omp parallel for reduction(+:tmpr,tmpi),
+    	    for(int k=-amax;k<amax;k++) {
+        	if(k!=0){
+            	    tmpr += 1.e-7/std::abs(k)*std::cos(pi2oL*k*Z[j] + phi[k+amax]);
+        	    tmpi += 1.e-7/std::abs(k)*std::sin(pi2oL*k*Z[j] + phi[k+amax]);
+                }
+            }
+    	    real tmp2=std::sqrt(1.0-tmpr*tmpr-tmpi*tmpi);
+    	    for (int v=0;v<nv; v++){
+		auto jv = idx(0,j,v);
+		
+		// ELN profile
+		G0 [jv] =         g(vz[v], 1.0, lnue );
+		G0b[jv] = alpha * g(vz[v], 1.0, lnueb);
+
+            	v_stat->ee    [jv] =  0.5* G0 [jv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+                v_stat->xx    [jv] =  0.5* G0 [jv]*(1.0-tmp2);
+                v_stat->ex_re [jv] =  0.5* G0 [jv]*tmpr;//1e-6;
+                v_stat->ex_im [jv] =  0.5* G0 [jv]*tmpi;//random_amp(0.001);
+                v_stat->bee   [jv] =  0.5* G0b[jv]*(1.0+tmp2);
+                v_stat->bxx   [jv] =  0.5* G0b[jv]*(1.0-tmp2);
+                v_stat->bex_re[jv] =  0.5* G0b[jv]*tmpr;//1e-6;
+                v_stat->bex_im[jv] = -0.5* G0b[jv]*tmpi;//random_amp(0.001);
+                // initial nv_e
+                ne0 += vw[v]*v_stat->ee [jv];
+                nb0 += vw[v]*v_stat->bee[jv];
+            }
+        }
+
+    } else {
+    
+	printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
+
+	#pragma omp parallel for reduction(+:ne0,nb0) collapse(COLLAPSE_LOOP)
+        FORALL(i,j,v) {
     
 	    auto ijv = idx(i,j,v);
 	    
@@ -77,31 +124,33 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             G0 [ijv] =         g(vz[v], 1.0, lnue );
             G0b[ijv] = alpha * g(vz[v], 1.0, lnueb);
 
-            real tmp;
-            if      (ipt==0) { tmp = eps_c(Z[j],0.0,eps0,sigma); }   // center perturbation
-            else if (ipt==1) { tmp = eps_r(eps0); }                 // random
+            real tmpr;
+            if      (ipt==0) { tmpr = eps_c(Z[j],0.0,eps0,sigma); }   // center perturbation
+            else if (ipt==1) { tmpr = eps_r(eps0); }                 // random
             else             { assert(0); }                         // Not implemented
 
-            real p3o = std::sqrt(1.0-tmp*tmp);
+            real p3o = std::sqrt(1.0-tmpr*tmpr);
             v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
             v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
-            v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmp;
+            v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmpr;
             v_stat->ex_im [ijv] = 0.0;
             v_stat->bee   [ijv] = 0.5* G0b[ijv]*(1.0+p3o);
             v_stat->bxx   [ijv] = 0.5* G0b[ijv]*(1.0-p3o);
-            v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmp;
+            v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmpr;
             v_stat->bex_im[ijv] = 0.0;
 
             // initial nv_e
             ne0 += vw[v]*v_stat->ee [ijv];
             nb0 += vw[v]*v_stat->bee[ijv];
-    }
+	}
+    
+    } //  end select case (ipt)
+
     n_nue0  = ne0*dz/(z1-z0);   // initial n_nue
     n_nueb0 = nb0*dz/(z1-z0);   // initial n_nueb
 
     printf("      init number density of nu_e: %g %g\n", n_nue0, n_nueb0);
     
-
 #ifdef BC_PERI
     updatePeriodicBoundary(v_stat);
 #else
