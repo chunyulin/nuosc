@@ -49,15 +49,27 @@ int gen_v1d_trapezoidal(const int nv, real *& vw, real *& vz) {
 int gen_v1d_simpson(const int nv, real *& vw, real *& vz) {
     assert(nv%2==1);
     real dv = 2.0/(nv-1);
-    const real o3dv = 1./3.*dv;
     vz = new real[nv];
     vw = new real[nv];
+    const real o3dv = 1./3.*dv;
     for (int j=0;j<nv; j++) {
         vz[j] = j*dv - 1;
         vw[j] = 2*((j%2)+1)*o3dv;
     }
     vw[0]    = o3dv;
     vw[nv-1] = o3dv;
+    return nv;
+}
+
+int gen_v1d_cellcenter(const int nv, real *& vw, real *& vz) {
+    assert(nv%2==0);
+    real dv = 2.0/(nv);
+    vz = new real[nv];
+    vw = new real[nv];
+    for (int j=0;j<nv; j++) {
+        vz[j] = (j+0.5)*dv - 1;
+        vw[j] = dv;
+    }
     return nv;
 }
 

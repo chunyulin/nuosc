@@ -144,6 +144,7 @@ template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   
 int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
 int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
 int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
+int gen_v1d_cellcenter(const int nv_, real *& vw, real *& vz);
 
 
 class NuOsc {
@@ -228,10 +229,12 @@ class NuOsc {
             nv = gen_v2d_simple(nv_, vw, vy, vz);
             long size = (ny+2*gy)*(nz+2*gz)*nv;
 #else
-            #ifdef IM_SIMPSON
+            #if defined(IM_SIMPSON)
             nv = gen_v1d_simpson(nv_, vw, vz);
-            #else
+            #elif defined(IM_TRAPEZOIDAL)
             nv = gen_v1d_trapezoidal(nv_, vw, vz);
+            #else
+            nv = gen_v1d_cellcenter(nv_, vw, vz);
             #endif
             long size = (nz+2*gz)*nv;
 #endif
@@ -281,10 +284,13 @@ class NuOsc {
 #else
             printf("   Use open boundary\n");
 #endif
-#ifdef IM_SIMPSON
+
+#if defined(IM_SIMPSON)
             printf("   Use Simpson 1/3 integration.\n");
-#else
+#elif defined(IM_TRAPEZOIDAL)
             printf("   Use simple trapezoidal integration\n");
+#else
+            printf("   Use simple Riemann sum for cell-center v.\n");
 #endif
 
 #ifndef KO_ORD_3

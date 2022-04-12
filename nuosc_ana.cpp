@@ -188,18 +188,19 @@ void NuOsc::analysis() {
     survb /= norb;
     avgP  /= nor;
     avgPb /= norb;
-    real aM0    = std::sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz;
+    real aM0    = std::sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * dz / (z1-z0);
     //real aM1    = std::sqrt(aM11*aM11+aM12*aM12+aM13*aM13)/nor;
-    real ELNe = std::abs(n_nue0*(1-surv) - n_nueb0*(1-survb)) / (n_nue0 + n_nueb0);
+    real ELNe  = std::abs(n_nue0*(1.0-surv) - n_nueb0*(1.0-survb)) / (n_nue0 + n_nueb0);
+    real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
 
     printf("T= %15f ", phy_time);
     //printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
-    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, ELNe);
+    printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g %g\n",maxdP,surv,survb,avgP,avgPb,aM0, ELNe, ELNe2);
 
     anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
                         << surv << " " << survb << " " 
                         << avgP << " " << avgPb << " " 
-                        << aM0 << " " << aM03  << " " << ELNe << endl;
+                        << aM0 << " " << aM03  << " " << ELNe << " " << ELNe2 << endl;
 }
 
 
