@@ -1,27 +1,31 @@
 module purge
 
 host=`hostname`
+
 if [[ $host == *"twcc.ai" ]]; then
 
   echo "==== on TWCC"
-  module load miniconda3
+  module load miniconda3 ffmpeg
   conda activate /opt/ohpc/pkg/kagra/ENV/py37
   module load nvhpc/21.7
   
   export CXX=nvc++
-  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed"
+  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed -DCOSENU2D"
 
 
 else
   echo "==== on ARM"
   module load python/3.8.5
-  module load arm21/21.1
+  module load acfl/22.0.1 arm/gsl/2.7.1
+
   #module load gcc9/papi/6.0
   #export PAPI_MULTIPLEX=1
 
   export CXX=armclang++
-  export OPT="-Ofast -std=c++11 -fopenmp -DIM_SIMPSON"
+  export OPT="-Ofast -std=c++17 -fopenmp -DCOSENU2D"
+  export OPT="-Ofast -std=c++17 -fopenmp"
+  export OPT="-Ofast -std=c++17 -fopenmp -DADV_TEST"
   
 fi
 
-make
+make -j
