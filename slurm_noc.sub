@@ -1,0 +1,17 @@
+#! /bin/bash
+#SBATCH -J nuosc_noc
+#SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=128
+####SBATCH --hint=nomultithread
+####SBATCH --hint=multithread
+
+hostname
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+
+module purge
+module load arm21/21.1
+
+srun --cpu-bind=v,cores \
+ ./nuosc --ipt 4 --zmax 5120 --dz 1 --nv 200 --ko 0.1 --cfl 0.4 --ANA_EVERY_T 5 --DUMP_EVERY_T 99999 --END_STEP_T 5000
+
+
+echo "--- Walltime: ${SECONDS} sec."

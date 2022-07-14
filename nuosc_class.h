@@ -118,24 +118,29 @@ typedef struct stat {
     real std;
 } FieldStat;
 
-
-// A monitor is basically a data file at an iteration 
-// that contains reduced snapshot of multiple vaiables
-typedef struct skimshot {
-    std::list<real*> vlist;
+typedef struct SnapShot_struct {
+    std::list<real*> var_list;
     string fntpl;
     int every;
-    int nsz, nsv;   // reduced dimension
+    std::vector<int> y_slices;   // coordinate for the reduced dimension
+    std::vector<int> v_slices;
 
-    skimshot(std::list<real*> vlist_, string fntpl_, int every_, int nsz_, int nsv_) {
-        vlist = vlist_;
+    // init with specified v-coordinate
+    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_,  std::vector<int> v_slices_) {
+        var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
-        nsz = nsz_;
-        nsv = nsv_;
+        v_slices = v_slices_;
     }
-} SkimShot;
-
+    // init with specified y and v-coordinate
+    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, std::vector<int> y_slices_, std::vector<int> v_slices_) {
+        var_list = var_list_;
+        fntpl = fntpl_;
+        every = every_;
+        y_slices = y_slices_;
+        v_slices = v_slices_;
+    }
+} SnapShot;
 
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
@@ -183,13 +188,12 @@ class NuOsc {
         bool renorm = false;  // can be set by set_renorm()
 
         std::ofstream anafile;
-        std::list<SkimShot> skimshots;
-        
+        std::list<SnapShot> snapshots;
 
 #ifdef COSENU2D
-        inline unsigned long idx(const int i, const int j, const int v) { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
+        inline unsigned long idx(const int i, const int j, const int v) const { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
 #else
-        inline unsigned long idx(const int i, const int j, const int v) { return   (j+gz)*nv + v; }
+        inline unsigned long idx(const int i, const int j, const int v) const { return   (j+gz)*nv + v; }
 #endif
 
 #ifdef COSENU2D
@@ -342,47 +346,10 @@ class NuOsc {
             printf("   Setting renorm = %d\n", renorm);
         }
 
-        void addSkimShot(std::list<real*> var, char *fntpl, int dumpstep, int sz, int sv) {
-    	     SkimShot ss(var, fntpl, dumpstep, sz, sv);
-             skimshots.push_back(ss);
-
-             auto dsz = nz/sz;
-             auto dsv = (nv-1)/(sv-1);
-             //printf("[DEBUG] z: %d / %d / %d   v: %d / %d / %d\n", nz, sz, dsz, nv, sv, dsv);
-             assert(nz%sz==0);
-             assert((nv-1)%(sv-1)==0);
-
-
-             std::ofstream outfile;
-             char filename[32];
-             string tmp = string(fntpl) + ".meta";
-             sprintf(filename, tmp.c_str(), 0);
-             outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
-             if(!outfile) cout << "*** Open fails: " <<  filename << endl;
-
-	     // grid information
-	     outfile << nz << " " << sz << " " << dsz << " " << z0<< " " << z1 << " " << dt << endl;
-             outfile << nv << " " << sv << " " << dsv << endl;
-
-	     for(int j=0;j<nz; j+=dsz)   outfile << Z[j] << " ";
-	     outfile << endl;
-	     for(int v=0;v<nv; v+=dsv)   outfile << vz[v] << " ";
-	     outfile << endl;
-
-	     # if 0
-	     // mixed ascii and binary not working
-	     std::vector<real> tmpz(sz);
-	     std::vector<real> tmpv(sv);
-	     for(int j=0;j<nz; j+=dsz)   tmpz[j/dsz] = Z[j];
-	     for(int v=0;v<nv; v+=dsv)   tmpz[v/dsv] = vz[v];
-	     outfile.write((char *) tmpz.data(), sz*sizeof(real));
-	     outfile.write((char *) tmpv.data(), sv*sizeof(real));
-	     #endif
-         }
-
-        void checkSkimShots(const int t=0);
-
         void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real sigma);
+        void fillInitGaussian(real eps0, real sigma);
+        void fillInitSquare(real eps0, real sigma);
+        void fillInitTriangle(real eps0, real sigma);
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
         void step_rk4();
@@ -390,15 +357,17 @@ class NuOsc {
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
         void analysis();
-        FieldStat _analysis_v(const real var[]);
-        FieldStat _analysis_c(const real vr[], const real vi[]);
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
-        void snapshot(const int t = 0);
-        void checkpoint(const int t = 0);
+        // 1D output:
+        void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
+        void checkSnapShot(const int t=0) const;
         
-	void output_detail(const char* fn);
+        // deprecated
+        void output_detail(const char* fn);
         void __output_detail(const char* fn);
+        FieldStat _analysis_v(const real var[]);
+        FieldStat _analysis_c(const real vr[], const real vi[]);
 
 };
