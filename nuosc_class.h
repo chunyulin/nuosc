@@ -30,9 +30,6 @@
 #define BC_PERI
 #define KO_ORD_3
 
-
-//#define ADVEC_CENTER_FD  // no need
-//#define ADVEC_UPWIND  ## always blow-up
 //#define ADVEC_OFF
 
 using std::cout;
@@ -42,31 +39,31 @@ using std::string;
 
 
 #ifdef COSENU2D
-#define COLLAPSE_LOOP 3
+    #define COLLAPSE_LOOP 3
 
-#define PARFORALL(i,j,v) \
+    #define PARFORALL(i,j,v) \
     _Pragma("omp parallel for collapse(3)") \
     _Pragma("acc parallel loop collapse(3)") \
     for (int i=0;i<ny; i++) \
     for (int j=0;j<nz; j++) \
     for (int v=0;v<nv; v++)
 
-#define FORALL(i,j,v) \
+    #define FORALL(i,j,v) \
     for (int i=0;i<ny; i++) \
     for (int j=0;j<nz; j++) \
     for (int v=0;v<nv; v++)
 
 #else
-#define COLLAPSE_LOOP 2
+    #define COLLAPSE_LOOP 2
 
-#define PARFORALL(i,j,v) \
+    #define PARFORALL(i,j,v) \
     for (int i=0;i<1; i++) \
     _Pragma("omp parallel for collapse(2)") \
     _Pragma("acc parallel loop collapse(2)") \
     for (int j=0;j<nz; j++) \
     for (int v=0;v<nv; v++)
 
-#define FORALL(i,j,v) \
+    #define FORALL(i,j,v) \
     for (int i=0;i<1; i++) \
     for (int j=0;j<nz; j++) \
     for (int v=0;v<nv; v++)
@@ -95,10 +92,10 @@ typedef struct Vars {
         bxx    = new real[size]();
         bex_re = new real[size]();
         bex_im = new real[size]();
-#pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
+        //#pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
     }
     ~Vars() {
-#pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
+        //#pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
         delete[] ee;
         delete[] xx;
         delete[] ex_re;
@@ -151,6 +148,7 @@ int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
 int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
 int gen_v1d_cellcenter(const int nv_, real *& vw, real *& vz);
 
+std::vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in);
 
 class NuOsc {
     public:
@@ -180,10 +178,10 @@ class NuOsc {
         real CFL;
         real ko;
 
-        const real theta = 1e-6;
+        const real theta = 1e-4;  //1e-6;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
-        const int  pmo = 0; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
+        real pmo = 0.1; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
         real mu = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
@@ -259,6 +257,7 @@ class NuOsc {
             dN  = new real[size];
             dPb = new real[size];
             dNb = new real[size];
+            //#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
 
             // field variables~~
             v_stat = new FieldVar(size);
@@ -266,7 +265,7 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
             v_stat0 = new FieldVar(size);
-#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            //#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
 
 	    int ngpus = 0;	
 #ifdef _OPENACC
@@ -298,25 +297,28 @@ class NuOsc {
 #endif
 
 #ifndef KO_ORD_3
-            printf("   Use 5-th order KO dissipation\n");
+            printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
 #else
-            printf("   Use 3-th order KO dissipation\n");
+            printf("   Use 3-th order KO dissipation, KO eps = %g\n", ko);
 #endif
-            printf("   KO eps = %g\n", ko);
 
 #ifndef ADVEC_OFF
-#if defined(ADVEC_CENTER_FD)
-            printf("   Use center-FD for advaction\n");
-#elif defined(ADVEC_UPWIND)
-            printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
+            printf("   Advection ON. (Center-FD)\n");
+            //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
+            //printf("   Use lopsided FD for advaction\n");
 #else
-            printf("   Use lopsided FD for advaction\n");
+            printf("   Advection OFF.\n");
 #endif
+
+#ifdef VACUUM_OFF
+            printf("   Vacuum term OFF.\n");
+#else
+            printf("   Vacuum term ON: pmo= %g theta= %g.\n", pmo, theta);
 #endif
 
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
-	    anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0 ]" << endl;
+            anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
 
         }
 
@@ -325,11 +327,12 @@ class NuOsc {
 #ifdef COSENU2D
             delete[] Y;delete[] vy;
 #endif
+            //#pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
 
             anafile.close();
@@ -340,6 +343,10 @@ class NuOsc {
         void set_mu(real mu_) {
             mu = mu_;
             printf("   Setting mu = %f\n", mu);
+        }
+        void set_pmo(real pmo_) {
+            pmo = pmo_;
+            printf("   Setting pmo = %f\n", pmo);
         }
         void set_renorm(bool renorm_) {
             renorm = renorm_;

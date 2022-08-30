@@ -1,0 +1,47 @@
+#!/bin/bash 
+###  sudo nohup bash ./run.ncu > run.ncu.log 2>&1  &
+
+
+# Time
+metrics="sm__cycles_elapsed.avg,\
+sm__cycles_elapsed.avg.per_second,"
+
+# DP
+metrics+="sm__sass_thread_inst_executed_op_dadd_pred_on.sum,\
+sm__sass_thread_inst_executed_op_dfma_pred_on.sum,\
+sm__sass_thread_inst_executed_op_dmul_pred_on.sum,"
+
+# SP
+metrics+="sm__sass_thread_inst_executed_op_fadd_pred_on.sum,\
+sm__sass_thread_inst_executed_op_ffma_pred_on.sum,\
+sm__sass_thread_inst_executed_op_fmul_pred_on.sum,"
+
+# HP
+metrics+="sm__sass_thread_inst_executed_op_hadd_pred_on.sum,\
+sm__sass_thread_inst_executed_op_hfma_pred_on.sum,\
+sm__sass_thread_inst_executed_op_hmul_pred_on.sum,"
+
+# Tensor Core
+metrics+="sm__inst_executed_pipe_tensor.sum,"
+
+# DRAM, L2 and L1
+metrics+="dram__bytes.sum,\
+lts__t_bytes.sum,\
+l1tex__t_bytes.sum"
+
+
+# Baseline
+output=output.csv
+NCU="/opt/nvidia/nsight-compute/2022.2/ncu -f -o nuosc --csv --set full --section-folder ../section --section  SpeedOfLight_HierarchicalDo"
+NCU="/opt/nvidia/nsight-compute/2022.2/ncu -f --metrics $metrics --csv "
+
+export CUDA_VISIBLE_DEVICES=1
+${NCU} ./nuosc --ipt 0 --pmo 1e-5 --mu 1 --ko 1e-3 --zmax 1024 --dz 0.1 --nv 513 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 2 \
+               --ANA_EVERY 10 --DUMP_EVERY 24444440 --END_STEP 100
+
+echo "--- Walltime: ${SECONDS} sec."
+
+
+#module load python/3.7-anaconda-2019.10
+#cd $dir
+#srun -n1 python postprocess.py

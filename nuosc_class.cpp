@@ -1,5 +1,6 @@
 #include "nuosc_class.h"
 
+
 void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #ifdef NVTX
     nvtxRangePush(__FUNCTION__);
@@ -7,12 +8,14 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
 
-#pragma omp parallel for collapse(3)
-#pragma acc parallel loop collapse(3)
 #ifdef COSENU2D
+    #pragma omp parallel for collapse(3)
+    #pragma acc parallel loop collapse(3)
     for (int i=0;i<ny; i++)
 #else
-    for (int i=0;i<1; i++)
+    int i=0;
+    #pragma omp parallel for collapse(2)
+    #pragma acc parallel loop collapse(2)
 #endif
     for (int j=0;j<gz; j++)
     for (int v=0;v<nv; v++) {
@@ -35,7 +38,6 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
                 in->bex_re[idx(i,nz+j,v)] = in->bex_re[idx(i,j,v)];
                 in->bex_im[idx(i,nz+j,v)] = in->bex_im[idx(i,j,v)];
     }
-
 
 #ifdef COSENU2D
 #pragma omp parallel for collapse(3)
@@ -69,12 +71,10 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #endif
 }
 
-
 void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) { 
     cout << "Not implemented." << endl;
     assert(0);
 }
-
 
 void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #ifdef NVTX
@@ -83,26 +83,49 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
     const int nzv = nv*nz;
 
-#pragma omp parallel for collapse(3)
 #ifdef COSENU2D
+    #pragma omp parallel for collapse(2)
+    #pragma acc parallel loop independent collapse(2)
     for (int i=0;i<ny; i++)
 #else
-    for (int i=0;i<1; i++)
+    int i = 0;
+    #pragma omp parallel for
+    #pragma acc parallel loop num_gangs(8192)
 #endif
-#pragma acc parallel loop gang
-    for (int j=0;j<nz; j++)
-#pragma acc loop vector
+    for (int j=0;j<nz; j++) {
+
+        // common integral over vz'
+        real idv_bexR_m_exR  = 0;
+        real idv_bexI_p_exI  = 0;
+        real ivdv_bexR_m_exR = 0;
+        real ivdv_bexI_p_exI = 0;
+        real idv_bxx_m_bee_m_xx_p_ee  = 0;
+        real ivdv_bxx_m_bee_m_xx_p_ee = 0;
+
+        #pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee,ivdv_bexR_m_exR,ivdv_bexI_p_exI,ivdv_bxx_m_bee_m_xx_p_ee)
+        for (int k=0;k<nv; k++) {
+             idv_bexR_m_exR  += vw[k] *       (in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
+             idv_bexI_p_exI  += vw[k] *       (in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
+             ivdv_bexR_m_exR += vw[k] * vz[k]*(in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
+             ivdv_bexI_p_exI += vw[k] * vz[k]*(in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
+             idv_bxx_m_bee_m_xx_p_ee  += vw[k] *       (in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
+             ivdv_bxx_m_bee_m_xx_p_ee += vw[k] * vz[k]*(in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
+        }
+
+        #pragma acc loop
         for (int v=0;v<nv; v++) {
 
+            uint ijv = idx(i,j,v);
+
             // The base pointer for this stencil
-            real *ee    = &(in->ee    [idx(i,j,v)]);
-            real *xx    = &(in->xx    [idx(i,j,v)]);
-            real *exr   = &(in->ex_re [idx(i,j,v)]);
-            real *exi   = &(in->ex_im [idx(i,j,v)]);
-            real *bee   = &(in->bee   [idx(i,j,v)]);
-            real *bxx   = &(in->bxx   [idx(i,j,v)]);
-            real *bexr  = &(in->bex_re[idx(i,j,v)]);
-            real *bexi  = &(in->bex_im[idx(i,j,v)]);
+            real *ee    = &(in->ee    [ijv]);
+            real *xx    = &(in->xx    [ijv]);
+            real *exr   = &(in->ex_re [ijv]);
+            real *exi   = &(in->ex_im [ijv]);
+            real *bee   = &(in->bee   [ijv]);
+            real *bxx   = &(in->bxx   [ijv]);
+            real *bexr  = &(in->bex_re[ijv]);
+            real *bexi  = &(in->bex_im[ijv]);
 
             // prepare KO operator
 #ifndef KO_ORD_3
@@ -130,68 +153,51 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             // prepare advection FD operator
             //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
             real factor_z = -vz[v]/(12*dz);
-#ifdef COSENU2D
+#ifdef ADVEC_OFF
+            #define ADV_FD(x)     (0.0)
+#else
+  #ifdef COSENU2D
             real factor_y = -vy[v]/(12*dy);
             #define ADV_FD(x) ( factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv]  ) ) + \
                                   factor_y*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
-#else
-            #define ADV_FD(x)     factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv])  )
+  #else
+            #define ADV_FD(x)   factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv])  )
+  #endif
+
 #endif
-            // prepare vz-integral with a cubature rule
-            real Iee    = 0;
-            real Iexr   = 0;
-            real Iexi   = 0;
-            real Ibee   = 0;
-            real Ibexr  = 0;
-            real Ibexi  = 0;
-#pragma acc loop
-            for (int k=0;k<nv; k++) {   // vz' integral
-                real eep    = (in->ee    [idx(i,j,k)]);
-                real xxp    = (in->xx    [idx(i,j,k)]);
-                real expr   = (in->ex_re [idx(i,j,k)]);
-                real expi   = (in->ex_im [idx(i,j,k)]);
-                real beep   = (in->bee   [idx(i,j,k)]);
-                real bxxp   = (in->bxx   [idx(i,j,k)]);
-                real bexpr  = (in->bex_re[idx(i,j,k)]);
-                real bexpi  = (in->bex_im[idx(i,j,k)]);
 
-                // terms for -i* mu * [rho'-rho_bar', rho]
-                #ifdef COSENU2D
-		real fvdv = vw[k]*mu* (1-vy[v]*vy[k]-vz[v]*vz[k]);
-                #else
-                real fvdv = vw[k]*mu* (1-vz[v]*vz[k]);
-                #endif
-                Iee   +=  2* fvdv * (        exr[0] *(expi + bexpi) -  exi[0]*(expr- bexpr) );
-                Iexr  +=     fvdv * (  (xx[0]-ee[0])*(expi + bexpi) +  exi[0]*(eep - xxp - beep + bxxp) );
-                Iexi  +=     fvdv * ( -(xx[0]-ee[0])*(expr - bexpr) -  exr[0]*(eep - xxp - beep + bxxp) );
-                Ibee  +=  2* fvdv * (       bexr[0] *(expi + bexpi) + bexi[0]*(expr- bexpr) );
-                Ibexr +=     fvdv * ((bxx[0]-bee[0])*(expi + bexpi) - bexi[0]*(eep - xxp - beep + bxxp) );
-                Ibexi +=     fvdv * ((bxx[0]-bee[0])*(expr - bexpr) + bexr[0]*(eep - xxp - beep + bxxp) );
+            // interaction term
+            real Iee    = 2*mu* (         exr[0]  *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) +  exi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
+            real Iexr   =   mu* (   (xx[0]-ee[0]) *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) +  exi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Iexi   =   mu* (   (xx[0]-ee[0]) *(idv_bexR_m_exR - vz[v]*ivdv_bexR_m_exR ) -  exr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibee   = 2*mu* (        bexr[0]  *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) - bexi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
+            real Ibexr  =   mu* ( (bxx[0]-bee[0]) *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) - bexi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibexi  =   mu* ( (bee[0]-bxx[0]) *(idv_bexR_m_exR - vz[v]*ivdv_bexR_m_exR ) + bexr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
 
-            }
-
-#if 0
+#ifndef VACUUM_OFF
             // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-            out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
-            out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
-            out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr)  - pmo* 2*ct*exi [0];
-            out->ex_im [idx(i,j,v)] =  Iexi  + ADV_FD(exi)  + KO_FD(exi)  + pmo*(2*ct*exr [0] + st*( ee[0] - xx[0] ) );
-            out->bee   [idx(i,j,v)] =  Ibee  + ADV_FD(bee)  + KO_FD(bee)  - pmo* 2*st*bexi[0];
-            out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
-            out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
-            out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
+            out->ee    [ijv] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
+            out->xx    [ijv] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
+            out->ex_re [ijv] =  Iexr  + ADV_FD(exr)  + KO_FD(exr)  - pmo* 2*ct*exi [0];
+            out->ex_im [ijv] =  Iexi  + ADV_FD(exi)  + KO_FD(exi)  + pmo*(2*ct*exr [0] + st*( ee[0] - xx[0] ) );
+            out->bee   [ijv] =  Ibee  + ADV_FD(bee)  + KO_FD(bee)  - pmo* 2*st*bexi[0];
+            out->bxx   [ijv] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
+            out->bex_re[ijv] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
+            out->bex_im[ijv] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
 #else
             // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-            out->ee    [idx(i,j,v)] =  Iee   + ADV_FD(ee)   + KO_FD(ee);
-            out->xx    [idx(i,j,v)] = -Iee   + ADV_FD(xx)   + KO_FD(xx);
-            out->ex_re [idx(i,j,v)] =  Iexr  + ADV_FD(exr)  + KO_FD(exr);
-            out->ex_im [idx(i,j,v)] =  Iexi  + ADV_FD(exi)  + KO_FD(exi);
-            out->bee   [idx(i,j,v)] =  Ibee  + ADV_FD(bee)  + KO_FD(bee);
-            out->bxx   [idx(i,j,v)] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
-            out->bex_re[idx(i,j,v)] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
-            out->bex_im[idx(i,j,v)] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
+            out->ee    [ijv] =  Iee   + ADV_FD(ee)   + KO_FD(ee);
+            out->xx    [ijv] = -Iee   + ADV_FD(xx)   + KO_FD(xx);
+            out->ex_re [ijv] =  Iexr  + ADV_FD(exr)  + KO_FD(exr);
+            out->ex_im [ijv] =  Iexi  + ADV_FD(exi)  + KO_FD(exi);
+            out->bee   [ijv] =  Ibee  + ADV_FD(bee)  + KO_FD(bee);
+            out->bxx   [ijv] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
+            out->bex_re[ijv] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
+            out->bex_im[ijv] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
 #endif
         }
+    }
+
 #ifdef NVTX
     nvtxRangePop();
 #endif
@@ -296,5 +302,6 @@ void NuOsc::step_rk4() {
     nvtxRangePop();
 #endif
 }
+
 
 

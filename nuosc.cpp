@@ -1,4 +1,5 @@
 #include "nuosc_class.h"
+#include "utils.h"
 
 int main(int argc, char *argv[]) {
 
@@ -10,6 +11,7 @@ int main(int argc, char *argv[]) {
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 1.0;
+    real pmo = 1.0;
     bool renorm = false;
 
     // === initial value
@@ -43,6 +45,8 @@ int main(int argc, char *argv[]) {
             ko    = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--mu") == 0 )  {
             mu    = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--pmo") == 0 )  {
+            pmo   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--renorm") == 0 )  {
             renorm = bool(atoi(argv[t+1]));    t+=1;
 
@@ -98,6 +102,7 @@ int main(int argc, char *argv[]) {
     long size=(nz+2*state.gz)*(state.get_nv());
 #endif
     state.set_mu(mu);
+    state.set_pmo(pmo);
     state.set_renorm(renorm);
 
 #ifdef ADV_TEST
@@ -108,20 +113,23 @@ int main(int argc, char *argv[]) {
     state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 #endif
 
-    // ======  Setup 1D output  ========================
-    std::list<real*> vlist( { state.v_stat->ee } );
-    state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, std::vector<int>{state.get_nv()-1} );
-    state.checkSnapShot(0);
-    //std::list<real*> plist( { state.P3 } );
-    //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
-    //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
-    //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
-
     // === analysis for t=0
     state.analysis();
-    //state.checkSkimShots();
-    //state.snapshot();
-    //state.write_fz();
+
+    // ======  Setup 1D output  ========================
+    if (DUMP_EVERY <= END_STEP) {
+        std::list<real*> vlist( { state.P1, state.P2, state.P3 } );
+        state.addSnapShotAtV(vlist, "P%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
+        //std::list<real*> plist( { state.P3 } );
+        //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
+        //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
+        //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
+
+        state.checkSnapShot(0);
+        //state.checkSkimShots();
+        //state.snapshot();
+        //state.write_fz();
+    }    
 
     std::cout << std::flush;
     real stepms;
@@ -142,12 +150,13 @@ int main(int argc, char *argv[]) {
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
             auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("%d Walltime:  %.3f secs/T, %.3f us per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1000);
+    	    printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1e6);
         }
     }
 
     printf("Completed.\n");
+    printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
 
-    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1000);
+    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1e6);
     return 0;
 }
