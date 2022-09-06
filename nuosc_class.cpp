@@ -97,20 +97,29 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
         // common integral over vz'
         real idv_bexR_m_exR  = 0;
         real idv_bexI_p_exI  = 0;
-        real ivdv_bexR_m_exR = 0;
-        real ivdv_bexI_p_exI = 0;
         real idv_bxx_m_bee_m_xx_p_ee  = 0;
-        real ivdv_bxx_m_bee_m_xx_p_ee = 0;
-
+        real ivzdv_bexR_m_exR = 0;
+        real ivzdv_bexI_p_exI = 0;
+        real ivzdv_bxx_m_bee_m_xx_p_ee = 0;
+#ifdef COSENU2D
+        real ivxdv_bexR_m_exR = 0;
+        real ivxdv_bexI_p_exI = 0;
+        real ivxdv_bxx_m_bee_m_xx_p_ee = 0;
+#endif
         // OMP reduction not useful here
-        #pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee,ivdv_bexR_m_exR,ivdv_bexI_p_exI,ivdv_bxx_m_bee_m_xx_p_ee)
+        #pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee,ivxdv_bexR_m_exR,ivxdv_bexI_p_exI,ivxdv_bxx_m_bee_m_xx_p_ee,ivzdv_bexR_m_exR,ivzdv_bexI_p_exI,ivzdv_bxx_m_bee_m_xx_p_ee)
         for (int k=0;k<nv; ++k) {
-             idv_bexR_m_exR  += vw[k] *       (in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
-             idv_bexI_p_exI  += vw[k] *       (in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
-             ivdv_bexR_m_exR += vw[k] * vz[k]*(in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
-             ivdv_bexI_p_exI += vw[k] * vz[k]*(in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
+             idv_bexR_m_exR           += vw[k] *       (in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
+             idv_bexI_p_exI           += vw[k] *       (in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
              idv_bxx_m_bee_m_xx_p_ee  += vw[k] *       (in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
-             ivdv_bxx_m_bee_m_xx_p_ee += vw[k] * vz[k]*(in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
+             ivzdv_bexR_m_exR          += vw[k] * vz[k]*(in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
+             ivzdv_bexI_p_exI          += vw[k] * vz[k]*(in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
+             ivzdv_bxx_m_bee_m_xx_p_ee += vw[k] * vz[k]*(in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
+#ifdef COSENU2D
+             ivxdv_bexR_m_exR          += vw[k] * vx[k]*(in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
+             ivxdv_bexI_p_exI          += vw[k] * vx[k]*(in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
+             ivxdv_bxx_m_bee_m_xx_p_ee += vw[k] * vx[k]*(in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
+#endif
         }
 
         // OMP for not useful here
@@ -170,12 +179,21 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #endif
 
             // interaction term
-            real Iee    = 2*mu* (         exr[0]  *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) +  exi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
-            real Iexr   =   mu* (   (xx[0]-ee[0]) *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) +  exi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
-            real Iexi   =   mu* (   (xx[0]-ee[0]) *(idv_bexR_m_exR - vz[v]*ivdv_bexR_m_exR ) -  exr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
-            real Ibee   = 2*mu* (        bexr[0]  *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) - bexi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
-            real Ibexr  =   mu* ( (bxx[0]-bee[0]) *(idv_bexI_p_exI - vz[v]*ivdv_bexI_p_exI ) - bexi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
-            real Ibexi  =   mu* ( (bee[0]-bxx[0]) *(idv_bexR_m_exR - vz[v]*ivdv_bexR_m_exR ) + bexr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+#ifdef COSENU2D
+            real Iee    = 2*mu* (         exr[0]  *(idv_bexI_p_exI - vx[v]*ivxdv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bexR_m_exR          - vx[v]*ivxdv_bexR_m_exR          - vz[v]*ivzdv_bexR_m_exR )  );
+            real Iexr   =   mu* (   (xx[0]-ee[0]) *(idv_bexI_p_exI - vx[v]*ivxdv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bxx_m_bee_m_xx_p_ee - vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee - vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
+            real Iexi   =   mu* (   (xx[0]-ee[0]) *(idv_bexR_m_exR - vx[v]*ivxdv_bexR_m_exR - vz[v]*ivzdv_bexR_m_exR ) -  exr[0]*(idv_bxx_m_bee_m_xx_p_ee - vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee - vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibee   = 2*mu* (        bexr[0]  *(idv_bexI_p_exI - vx[v]*ivxdv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bexR_m_exR          - vx[v]*ivxdv_bexR_m_exR          - vz[v]*ivzdv_bexR_m_exR )  );
+            real Ibexr  =   mu* ( (bxx[0]-bee[0]) *(idv_bexI_p_exI - vx[v]*ivxdv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bxx_m_bee_m_xx_p_ee - vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee - vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibexi  =   mu* ( (bee[0]-bxx[0]) *(idv_bexR_m_exR - vx[v]*ivxdv_bexR_m_exR - vz[v]*ivzdv_bexR_m_exR ) + bexr[0]*(idv_bxx_m_bee_m_xx_p_ee - vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee - vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
+#else
+            real Iee    = 2*mu* (         exr[0]  *(idv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
+            real Iexr   =   mu* (   (xx[0]-ee[0]) *(idv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Iexi   =   mu* (   (xx[0]-ee[0]) *(idv_bexR_m_exR - vz[v]*ivzdv_bexR_m_exR ) -  exr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibee   = 2*mu* (        bexr[0]  *(idv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bexR_m_exR          - vz[v]*ivdv_bexR_m_exR )  );
+            real Ibexr  =   mu* ( (bxx[0]-bee[0]) *(idv_bexI_p_exI - vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+            real Ibexi  =   mu* ( (bee[0]-bxx[0]) *(idv_bexR_m_exR - vz[v]*ivzdv_bexR_m_exR ) + bexr[0]*(idv_bxx_m_bee_m_xx_p_ee - vz[v]*ivdv_bxx_m_bee_m_xx_p_ee) );
+#endif
 
 #ifndef VACUUM_OFF
             // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
