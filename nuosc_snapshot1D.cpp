@@ -1,3 +1,5 @@
+
+
 #include "nuosc_class.h"
 
 // Get coarse-grained v-index: just evenly spread nv_target pts over nv_in point..
@@ -19,7 +21,7 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     snapshots.push_back(ss);
     int sv  = vidx.size();
 
-    printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", nx, nz, sv, dumpstep);
+    printf("Add %d x %d x %d (ZxPxV) snapshot every %d steps.\n", nz, 1, sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];
@@ -29,17 +31,12 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
     // grid information
-    outfile << dt <<" "<< nx <<" "<< nz << " "<< sv << endl;
-    outfile << x0 <<" "<< x1 << endl;
+    outfile << dt <<" "<< nz <<" "<< -1 << " "<< sv << endl;
     outfile << z0 <<" "<< z1 << endl;
 
-    for (int i=0;i<nx; ++i) {
-        outfile << X[i]  << " ";
-    }   outfile << endl;
     for (int i=0;i<nz; ++i) {
         outfile << Z[i]  << " ";
     }   outfile << endl;
-    for(auto &v:vidx)       outfile << vx[v] << " ";   outfile << endl;
     for(auto &v:vidx)       outfile << vz[v] << " ";   outfile << endl;
 #ifdef NVTX
     nvtxRangePop();
@@ -64,23 +61,22 @@ void NuOsc::checkSnapShot(const int t) const {
         outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
         if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
-        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), nx,nz, sv, filename);
+        printf("		Writing %d vars of size %d x %d x %d (ZxPxV) into %s\n", ss.var_list.size(), nz,1, sv, filename);
 
         outfile.write((char *) &t,        sizeof(uint) );
         outfile.write((char *) &phy_time, sizeof(real) );
 
-        std::vector<real> carr(nz*nx*sv);
+        std::vector<real> carr(nz*sv);
         for (auto const& var : ss.var_list) {
 
-            #pragma omp parallel for collapse(3)
+            #pragma omp parallel for collapse(2)
             //#pragma acc parallel loop collapse(2)
-            for(int i=0; i<nx; ++i)
-            for(int j=0; j<nz; ++j)
+            for(int i=0; i<nz; ++i)
             for(int v=0; v<sv; ++v) {
-                carr[ (i*nz + j)*sv + v ] = var[ idx(i,j,vc[v]) ];
+                carr[ i*sv + v ] = var[ idx(0,i,vc[v]) ];
             }
 
-            outfile.write((char *) carr.data(),  nx*nz*sv*sizeof(real));
+            outfile.write((char *) carr.data(),  nz*sv*sizeof(real));
         }
         outfile.close();
     }

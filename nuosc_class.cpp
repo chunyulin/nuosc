@@ -3,7 +3,7 @@
 
 void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #ifdef NVTX
-    nvtxRangePush(__FUNCTION__);
+    nvtxRangePush("PeriodicBoundary");
 #endif
 
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
@@ -11,14 +11,14 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #ifdef COSENU2D
     #pragma omp parallel for collapse(3)
     #pragma acc parallel loop collapse(3)
-    for (int i=0;i<ny; i++)
+    for (int i=0;i<nx; ++i)
 #else
     int i=0;
     #pragma omp parallel for collapse(2)
     #pragma acc parallel loop collapse(2)
 #endif
-    for (int j=0;j<gz; j++)
-    for (int v=0;v<nv; v++) {
+    for (int j=0;j<gz; ++j)
+    for (int v=0;v<nv; ++v) {
                 //z lower side
                 in->ee    [idx(i,-j-1,v)] = in->ee    [idx(i,nz-j-1,v)];
                 in->xx    [idx(i,-j-1,v)] = in->xx    [idx(i,nz-j-1,v)];
@@ -40,29 +40,29 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
     }
 
 #ifdef COSENU2D
-#pragma omp parallel for collapse(3)
-#pragma acc parallel loop collapse(3)
-    for (int i=0;i<gy; i++)
-    for (int j=0;j<nz; j++)
-    for (int v=0;v<nv; v++) {
+    #pragma omp parallel for collapse(3)
+    #pragma acc parallel loop collapse(3)
+    for (int i=0;i<gx; ++i)
+    for (int j=0;j<nz; ++j)
+    for (int v=0;v<nv; ++v) {
                 //y lower side
-                in->ee    [idx(-i-1,j,v)] = in->ee    [idx(ny-i-1,j,v)];
-                in->xx    [idx(-i-1,j,v)] = in->xx    [idx(ny-i-1,j,v)];
-                in->ex_re [idx(-i-1,j,v)] = in->ex_re [idx(ny-i-1,j,v)];
-                in->ex_im [idx(-i-1,j,v)] = in->ex_im [idx(ny-i-1,j,v)];
-                in->bee   [idx(-i-1,j,v)] = in->bee   [idx(ny-i-1,j,v)];
-                in->bxx   [idx(-i-1,j,v)] = in->bxx   [idx(ny-i-1,j,v)];
-                in->bex_re[idx(-i-1,j,v)] = in->bex_re[idx(ny-i-1,j,v)];
-                in->bex_im[idx(-i-1,j,v)] = in->bex_im[idx(ny-i-1,j,v)];
+                in->ee    [idx(-i-1,j,v)] = in->ee    [idx(nx-i-1,j,v)];
+                in->xx    [idx(-i-1,j,v)] = in->xx    [idx(nx-i-1,j,v)];
+                in->ex_re [idx(-i-1,j,v)] = in->ex_re [idx(nx-i-1,j,v)];
+                in->ex_im [idx(-i-1,j,v)] = in->ex_im [idx(nx-i-1,j,v)];
+                in->bee   [idx(-i-1,j,v)] = in->bee   [idx(nx-i-1,j,v)];
+                in->bxx   [idx(-i-1,j,v)] = in->bxx   [idx(nx-i-1,j,v)];
+                in->bex_re[idx(-i-1,j,v)] = in->bex_re[idx(nx-i-1,j,v)];
+                in->bex_im[idx(-i-1,j,v)] = in->bex_im[idx(nx-i-1,j,v)];
                 //y upper side
-                in->ee    [idx(ny+i,j,v)] = in->ee    [idx(i,j,v)];
-                in->xx    [idx(ny+i,j,v)] = in->xx    [idx(i,j,v)];
-                in->ex_re [idx(ny+i,j,v)] = in->ex_re [idx(i,j,v)];
-                in->ex_im [idx(ny+i,j,v)] = in->ex_im [idx(i,j,v)];
-                in->bee   [idx(ny+i,j,v)] = in->bee   [idx(i,j,v)];
-                in->bxx   [idx(ny+i,j,v)] = in->bxx   [idx(i,j,v)];
-                in->bex_re[idx(ny+i,j,v)] = in->bex_re[idx(i,j,v)];
-                in->bex_im[idx(ny+i,j,v)] = in->bex_im[idx(i,j,v)];
+                in->ee    [idx(nx+i,j,v)] = in->ee    [idx(i,j,v)];
+                in->xx    [idx(nx+i,j,v)] = in->xx    [idx(i,j,v)];
+                in->ex_re [idx(nx+i,j,v)] = in->ex_re [idx(i,j,v)];
+                in->ex_im [idx(nx+i,j,v)] = in->ex_im [idx(i,j,v)];
+                in->bee   [idx(nx+i,j,v)] = in->bee   [idx(i,j,v)];
+                in->bxx   [idx(nx+i,j,v)] = in->bxx   [idx(i,j,v)];
+                in->bex_re[idx(nx+i,j,v)] = in->bex_re[idx(i,j,v)];
+                in->bex_im[idx(nx+i,j,v)] = in->bex_im[idx(i,j,v)];
             }
 #endif
 
@@ -78,21 +78,21 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) {
 
 void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #ifdef NVTX
-    nvtxRangePush(__FUNCTION__);
+    nvtxRangePush("calRHS");
 #endif
 
-    const int nzv = nv*nz;
+    #define nzv nv*(nz+2*gz)
 
 #ifdef COSENU2D
     #pragma omp parallel for collapse(2)
     #pragma acc parallel loop independent collapse(2)
-    for (int i=0;i<ny; i++)
+    for (int i=0;i<nx; ++i)
 #else
     int i = 0;
     #pragma omp parallel for
-    #pragma acc parallel loop num_gangs(8192)
+    #pragma acc parallel loop independent num_gangs(8192)
 #endif
-    for (int j=0;j<nz; j++) {
+    for (int j=0;j<nz; ++j) {
 
         // common integral over vz'
         real idv_bexR_m_exR  = 0;
@@ -102,8 +102,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
         real idv_bxx_m_bee_m_xx_p_ee  = 0;
         real ivdv_bxx_m_bee_m_xx_p_ee = 0;
 
+        // OMP reduction not useful here
         #pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee,ivdv_bexR_m_exR,ivdv_bexI_p_exI,ivdv_bxx_m_bee_m_xx_p_ee)
-        for (int k=0;k<nv; k++) {
+        for (int k=0;k<nv; ++k) {
              idv_bexR_m_exR  += vw[k] *       (in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
              idv_bexI_p_exI  += vw[k] *       (in->bex_im[idx(i,j,k)] + in->ex_im[idx(i,j,k)] );
              ivdv_bexR_m_exR += vw[k] * vz[k]*(in->bex_re[idx(i,j,k)] - in->ex_re[idx(i,j,k)] );
@@ -112,8 +113,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
              ivdv_bxx_m_bee_m_xx_p_ee += vw[k] * vz[k]*(in->bxx[idx(i,j,k)]-in->bee[idx(i,j,k)]+in->ee[idx(i,j,k)]-in->xx[idx(i,j,k)] );
         }
 
+        // OMP for not useful here
         #pragma acc loop
-        for (int v=0;v<nv; v++) {
+        for (int v=0;v<nv; ++v) {
 
             uint ijv = idx(i,j,v);
 
@@ -127,13 +129,14 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             real *bexr  = &(in->bex_re[ijv]);
             real *bexi  = &(in->bex_im[ijv]);
 
+
             // prepare KO operator
 #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
             real ko_eps_z = -ko/dz/64.0;
   #ifdef COSENU2D
-            real ko_eps_y = -ko/dy/64.0;
-            #define KO_FD(x) ( ko_eps_z*( x[-3*nv]  + x[3*nv]  - 6*(x[-2*nv]+x[2*nv])   + 15*(x[-nv]+x[nv])   - 20*x[0] ) + \
+            real ko_eps_y = -ko/dx/64.0;
+            #define KO_FD(x) ( ko_eps_z*( x[-3*nv]  + x[3*nv]  - 6*(x[-2*nv] +x[2*nv])  + 15*(x[-nv] +x[nv])  - 20*x[0] ) + \
                                ko_eps_y*( x[-3*nzv] + x[3*nzv] - 6*(x[-2*nzv]+x[2*nzv]) + 15*(x[-nzv]+x[nzv]) - 20*x[0] ) )
   #else
             #define KO_FD(x)   ko_eps_z*( x[-3*nv]  + x[3*nv]  - 6*(x[-2*nv]+x[2*nv])   + 15*(x[-nv]+x[nv])   - 20*x[0] )
@@ -142,11 +145,11 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             // Kreiss-Oliger dissipation (3-nd order)
             real ko_eps_z = -ko/dz/16.0;
   #ifdef COSENU2D
-            real ko_eps_y = -ko/dy/16.0;
+            real ko_eps_x = -ko/dx/16.0;
             #define KO_FD(x) ( ko_eps_z * ( x[-2*nv]  + x[2*nv]  - 4*(x[-nv] +x[nv])  + 6*x[0] ) + \
-                               ko_eps_y * ( x[-2*nzv] + x[2*nzv] - 4*(x[-nzv]+x[nzv]) + 6*x[0] ) )
+                               ko_eps_x * ( x[-2*nzv] + x[2*nzv] - 4*(x[-nzv]+x[nzv]) + 6*x[0] ) )
   #else
-	    #define KO_FD(x)   ko_eps_z * ( x[-2*nv]  + x[2*nv]  - 4*(x[-nv] +x[nv])  + 6*x[0] )
+            #define KO_FD(x)   ko_eps_z * ( x[-2*nv]  + x[2*nv]  - 4*(x[-nv] +x[nv])  + 6*x[0] )
   #endif
 #endif
 
@@ -157,9 +160,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             #define ADV_FD(x)     (0.0)
 #else
   #ifdef COSENU2D
-            real factor_y = -vy[v]/(12*dy);
+            real factor_x = -vx[v]/(12*dx);
             #define ADV_FD(x) ( factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv]  ) ) + \
-                                  factor_y*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
+                                factor_x*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
   #else
             #define ADV_FD(x)   factor_z*(  (x[-2*nv] -x[2*nv])  - 8.0*(x[-nv] -x[nv])  )
   #endif
@@ -206,7 +209,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 /* v0 = v1 + a * v2 */
 void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2) {
 #ifdef NVTX
-    nvtxRangePush(__FUNCTION__);
+    nvtxRangePush("vectorize");
 #endif
 
     PARFORALL(i,j,v) {
@@ -228,7 +231,7 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 // v0 = v1 + a * ( v2 + v3 )
 void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2, const FieldVar * __restrict v3) {
 #ifdef NVTX
-    nvtxRangePush(__FUNCTION__);
+    nvtxRangePush("vectorize");
 #endif
 
     PARFORALL(i,j,v) {
@@ -250,7 +253,7 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 
 void NuOsc::step_rk4() {
 #ifdef NVTX
-    nvtxRangePush(__FUNCTION__);
+    nvtxRangePush("step_rk4");
 #endif
 
     //Step-1

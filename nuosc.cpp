@@ -3,11 +3,11 @@
 
 int main(int argc, char *argv[]) {
 
-    real dz  = 0.1;
-    real dy  = 0.1;
-    real y0  = -0.4;     real y1  =  -y0;
-    real z0  = -10;      real z1  =  -z0;
-    int nv_in = 41;
+    real dz  =  0.1;
+    real dx  =  0.1;
+    real x0  = -0.05;     real x1  =  -x0;
+    real z0  = - 10;      real z1  =  -z0;
+    int nv_in = 33;
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 1.0;
@@ -30,10 +30,11 @@ int main(int argc, char *argv[]) {
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dz") == 0 )  {
             dz  = atof(argv[t+1]);     t+=1;
-            dy = dz;
-        } else if (strcmp(argv[t], "--ymax") == 0 )  {
-            y1   = atof(argv[t+1]);    t+=1;
-            y0   = -y1;
+        } else if (strcmp(argv[t], "--dx") == 0 )  {
+            dx  = atof(argv[t+1]);     t+=1;
+        } else if (strcmp(argv[t], "--xmax") == 0 )  {
+            x1   = atof(argv[t+1]);    t+=1;
+            x0   = -x1;
         } else if (strcmp(argv[t], "--zmax") == 0 )  {
             z1   = atof(argv[t+1]);    t+=1;
             z0   = -z1;
@@ -87,16 +88,12 @@ int main(int argc, char *argv[]) {
         }
     }
     int nz  = int((z1-z0)/dz);
-#ifdef COSENU2D
-    int ny  = int((y1-y0)/dy);
-#else
-    int ny  = 0;
-#endif
+    int nx  = int((x1-x0)/dx);
 
     // === Initialize simuation
 #ifdef COSENU2D
-    NuOsc state(nv_in, ny, nz, y0, y1, z0, z1, cfl, ko);
-    long size=(ny+2*state.gy)*(nz+2*state.gz)*(state.get_nv());
+    NuOsc state(nv_in, nx, nz, x0, x1, z0, z1, cfl, ko);
+    long size=(nx+2*state.gx)*(nz+2*state.gz)*(state.get_nv());
 #else
     NuOsc state(nv_in, nz, z0, z1, cfl, ko);
     long size=(nz+2*state.gz)*(state.get_nv());
@@ -106,9 +103,9 @@ int main(int argc, char *argv[]) {
     state.set_renorm(renorm);
 
 #ifdef ADV_TEST
-    if (ipt==10) state.fillInitGaussian( eps0, sigma);
-    if (ipt==20) state.fillInitSquare( eps0, sigma);
-    if (ipt==30) state.fillInitTriangle( eps0, sigma);
+    if      (ipt==10) state.fillInitGaussian( eps0, sigma);
+    else if (ipt==20) state.fillInitSquare( eps0, sigma);
+    else if (ipt==30) state.fillInitTriangle( eps0, sigma);
 #else
     state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
 #endif
@@ -118,14 +115,19 @@ int main(int argc, char *argv[]) {
 
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
-        std::list<real*> vlist( { state.P1, state.P2, state.P3 } );
-        state.addSnapShotAtV(vlist, "P%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
+        std::list<real*> vlist( { state.P3 } );
+        state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
         //std::list<real*> plist( { state.P3 } );
         //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
         //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
+#ifdef ADV_TEST
+        std::list<real*> vlist( { state.v_stat->ee } );
+        state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
+        //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
         state.checkSnapShot(0);
+#endif
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();
@@ -157,6 +159,6 @@ int main(int argc, char *argv[]) {
     printf("Completed.\n");
     printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
 
-    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), ny, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1e6);
+    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), nx, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1e6);
     return 0;
 }

@@ -1,10 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-MF=P3.mpg
+eval "$(conda shell.bash hook)"
+conda activate py39
 
-./plt_skimshotP3.py P3*.bin
-convert -delay 50 P*.png ${MF}
+MF=`pwd | sed -E "1s/^.{20}//" | sed -E "s/\//_/g"`.mp4
+
+echo Making ${MF} ...
+
+python3 /work/lin/nuosc_ben/plt_P3.py P*.bin
+convert -delay 5 P*.png ${MF}
 chmod a+r ${MF}
-#scp ${MF} lincy@arm.nchc.org.tw:~/public_html/cosenu/tmp/
-mv -f ${MF} *.png ~/public_html/nuosc/tmp/
+#scp ${MF} lincy@arm.nchc.org.tw:~/public_html/tmp/
+#mv -f ${MF} *.png ~/public_html/nuosc/tmp/
 

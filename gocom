@@ -1,6 +1,6 @@
 module purge
-host=`hostname`
 
+host=`hostname`
 if [[ $host == *"twcc.ai" ]]; then
 
   echo "==== on TWCC"
@@ -15,17 +15,18 @@ if [[ $host == *"twcc.ai" ]]; then
 elif [[ $host == "node1" ]]; then
   
   echo "==== on N1 A100"
+  module purge
   module load nvhpc/22.2
 
   export CUDA_VISIBLE_DEVICES=0
+  export LD_LIBRARY_PATH=/pkg/gsl-2.7.1/lib:${LD_LIBRARY_PATH}
+
   unset CFLAGS
-  #export CFLAGS=-DNVTX
-  #export LIBS="-L/usr/local/cuda/lib64 -lnvToolsExt -lcufft"
-  #export LIBS="-L/usr/local/cuda/lib64 -lcufft"
 
   export CXX=nvc++
-  export OPT="-mp -O4 -Minfo=mp  -DIM_SIMPSON"
-  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed"
+  export OPT="-mp -O4 -Minfo=mp -DADV_TEST -DVACUUM_OFF"
+  export OPT="-O2 -acc=gpu -Minfo=acc -gpu=manage"
+
 
 else
   echo "==== on ARM"
@@ -35,9 +36,13 @@ else
   #export PAPI_MULTIPLEX=1
 
   export CXX=armclang++
+  export OPT="-Ofast -std=c++11 -fopenmp"
+  export OPT="-Ofast -std=c++11 -fopenmp -DIM_TRAPEZOIDAL"
   export OPT="-Ofast -std=c++11 -fopenmp -DIM_SIMPSON -fsave-optimization-record"
+  export OPT="-Ofast -std=c++11 -fopenmp -DIM_SIMPSON -DADVEC_TEST"
   export OPT="-Ofast -std=c++11 -fopenmp -armpl -DIM_SIMPSON"
   ## -DADVEC_OFF"
+
 fi
 
 make

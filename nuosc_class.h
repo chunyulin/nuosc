@@ -1,7 +1,12 @@
 #pragma once
 
 //#define COSENU2D
-//#define IM_SIMPSON
+//#define IM_V2D_ELL_GL
+//#define IM_V2D_ELL
+//#define IM_V2D_POLAR
+
+#define IM_SIMPSON
+//#define IM_GL
 
 #ifdef NVTX
 #include <nvToolsExt.h>
@@ -27,9 +32,11 @@
 #include <algorithm>
 #include <list>
 
+#include "jacobi_poly.h"
+
+
 #define BC_PERI
 #define KO_ORD_3
-
 //#define ADVEC_OFF
 
 using std::cout;
@@ -37,40 +44,46 @@ using std::endl;
 using std::cin;
 using std::string;
 
+using std::sqrt;
+using std::abs;
+using std::max;
+using std::min;
+using std::cos;
+using std::sin;
+
 
 #ifdef COSENU2D
     #define COLLAPSE_LOOP 3
-
     #define PARFORALL(i,j,v) \
     _Pragma("omp parallel for collapse(3)") \
     _Pragma("acc parallel loop collapse(3)") \
-    for (int i=0;i<ny; i++) \
-    for (int j=0;j<nz; j++) \
-    for (int v=0;v<nv; v++)
+    for (int i=0;i<nx; ++i) \
+    for (int j=0;j<nz; ++j) \
+    for (int v=0;v<nv; ++v)
 
     #define FORALL(i,j,v) \
-    for (int i=0;i<ny; i++) \
-    for (int j=0;j<nz; j++) \
-    for (int v=0;v<nv; v++)
+    for (int i=0;i<nx; ++i) \
+    for (int j=0;j<nz; ++j) \
+    for (int v=0;v<nv; ++v)
 
 #else
     #define COLLAPSE_LOOP 2
-
     #define PARFORALL(i,j,v) \
-    for (int i=0;i<1; i++) \
+    for (int i=0;i<1; ++i) \
     _Pragma("omp parallel for collapse(2)") \
     _Pragma("acc parallel loop collapse(2)") \
-    for (int j=0;j<nz; j++) \
-    for (int v=0;v<nv; v++)
+    for (int j=0;j<nz; ++j) \
+    for (int v=0;v<nv; ++v)
 
     #define FORALL(i,j,v) \
-    for (int i=0;i<1; i++) \
-    for (int j=0;j<nz; j++) \
-    for (int v=0;v<nv; v++)
+    for (int i=0;i<1;  ++i) \
+    for (int j=0;j<nz; ++j) \
+    for (int v=0;v<nv; ++v)
 
 #endif
 
 typedef double real;
+typedef std::vector<double> Vec;
 
 
 typedef struct Vars {
@@ -92,10 +105,10 @@ typedef struct Vars {
         bxx    = new real[size]();
         bex_re = new real[size]();
         bex_im = new real[size]();
-        //#pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
+        #pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
     }
     ~Vars() {
-        //#pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
+        #pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
         delete[] ee;
         delete[] xx;
         delete[] ex_re;
@@ -143,7 +156,11 @@ inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b =
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
-int gen_v2d_simple(const int nv_, real *& vw, real *& vy, real *& vz);
+int gen_v2d_polar_grid(const int nvr, const int nvt, real *& vw, real *& vx, real *& vz);
+int gen_v2d_elliptical_unigrid(const int nv_, real *& vw, real *& vx, real *& vz);
+int gen_v2d_elliptical_GL_grid(const int nv_, real *& vw, real *& vx, real *& vz);
+int gen_v2d_simple(const int nv_, real *& vw, real *& vx, real *& vz);
+int gen_v1d_GL(const int nv, real *& vw, real *& vz);
 int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
 int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
 int gen_v1d_cellcenter(const int nv_, real *& vw, real *& vz);
@@ -154,18 +171,16 @@ class NuOsc {
     public:
         real phy_time, dt;
 
-        real  *vw;                 // integral quadrature
+        real *vw;                 // integral quadrature
         int nv;       // # of v cubature points.
 
         real  *vz, *Z;             // coordinates
         real z0,  z1, dz;
         int nz, gz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
 
-#ifdef COSENU2D
-        real  *vy, *Y;                    // coordinates
-        real y0,  y1, dy;
-        int ny, gy;  // Dim of y
-#endif
+        real  *vx, *X;             // 2D coordinates
+        real x0,  x1, dx;
+        int nx, gx;  // Dim of y
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
         FieldVar *v_stat0;   // NOT used.
@@ -182,59 +197,75 @@ class NuOsc {
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
         real pmo = 0.1; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
-        real mu = 1.0;      // can be set by set_mu()
+        real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
 #ifdef COSENU2D
-        inline unsigned long idx(const int i, const int j, const int v) const { return   ( (i+gy)*(nz+2*gz) + j+gz)*nv + v; }    //  i:y j:z
+        inline unsigned long idx(const int i, const int j, const int v) const { return   ( (i+gx)*(nz+2*gz) + j+gz)*nv + v; }    //  i:x j:z
 #else
         inline unsigned long idx(const int i, const int j, const int v) const { return   (j+gz)*nv + v; }
 #endif
 
 #ifdef COSENU2D
-        NuOsc(const int  nv_, 
-                const int   ny_, const int   nz_, 
-                const real  y0_, const real  y1_, const real  z0_, const real  z1_,
+        NuOsc(const int  nv_,
+                const int   nx_, const int   nz_, 
+                const real  x0_, const real  x1_, const real  z0_, const real  z1_,
                 const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
 #else
-        NuOsc(const int  nv_, 
+        NuOsc(const int  nv_,
                 const int   nz_, const real  z0_, const real  z1_,
                 const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
 #endif
 
-            // coordinates~~
+	    int ngpus = 0;
+#ifdef _OPENACC
+            printf("\n\nOpenACC Enabled.\n" );
+            acc_device_t dev_type = acc_get_device_type();
+    	    ngpus = acc_get_num_devices( dev_type ); 
+#endif
+            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
 
+            // coordinates~~
             nz  = nz_;  z0  = z0_;  z1 = z1_;
             Z      = new real[nz];
             dz = (z1-z0)/nz;       // cell-center
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
 #ifndef KO_ORD_3
             gz  = 3;
+            gx  = 3;
 #else
             gz  = 2;
+            gx  = 2;
 #endif
 
 #ifdef COSENU2D
-            ny  = ny_;  y0  = y0_;  y1 = y1_;
-            Y   = new real[ny];
-            dy = (y1-y0)/ny;       // cell-center
-            for (int i=0;i<ny;  i++)	Y[i]  =  y0 + (i+0.5)*dy;
-#ifndef KO_ORD_3
-            gy  = 3;
+            nx  = nx_;  x0  = x0_;  x1 = x1_;
+            X   = new real[nx];
+            dx = (x1-x0)/nx;
+            for (int i=0;i<nx;  ++i)	X[i] = x0 + (i+0.5)*dx;
+
+            #if defined(IM_V2D_POLAR)
+            nv = gen_v2d_polar_grid(nv_, nv_, vw, vx, vz);
+            #elif defined(IM_V2D_ELL_GL)
+            nv = gen_v2d_elliptical_GL_grid(nv_, vw, vx, vz);
+            #elif defined(IM_V2D_ELL)
+            nv = gen_v2d_elliptical_unigrid(nv_, vw, vx, vz);
+            #else
+            nv = gen_v2d_simple(nv_, vw, vx, vz);
+            #endif
+            long size = (nx+2*gx)*(nz+2*gz)*nv;
 #else
-            gy  = 2;
-#endif
-            // v cubature
-            nv = gen_v2d_simple(nv_, vw, vy, vz);
-            long size = (ny+2*gy)*(nz+2*gz)*nv;
-#else
+            dx = dz;  x1 = 0.5*dz;  x0 = -x1;
+
             #if defined(IM_SIMPSON)
             nv = gen_v1d_simpson(nv_, vw, vz);
             #elif defined(IM_TRAPEZOIDAL)
             nv = gen_v1d_trapezoidal(nv_, vw, vz);
+            #elif defined(IM_GL)
+            nv = gen_v1d_GL(nv_, vw, vz);
             #else
             nv = gen_v1d_cellcenter(nv_, vw, vz);
             #endif
@@ -244,42 +275,13 @@ class NuOsc {
             CFL = CFL_;
             dt = dz*CFL;
 
-            // field variables for analysis~~
-            G0     = new real[size];
-            G0b    = new real[size];
-            P1    = new real[size];
-            P2    = new real[size];
-            P3    = new real[size];
-            P1b   = new real[size];
-            P2b   = new real[size];
-            P3b   = new real[size];
-            dP  = new real[size];
-            dN  = new real[size];
-            dPb = new real[size];
-            dNb = new real[size];
-            //#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
-
-            // field variables~~
-            v_stat = new FieldVar(size);
-            v_rhs  = new FieldVar(size);
-            v_pre  = new FieldVar(size);
-            v_cor  = new FieldVar(size);
-            v_stat0 = new FieldVar(size);
-            //#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-
-	    int ngpus = 0;	
-#ifdef _OPENACC
-            printf("\n\nOpenACC Enabled.\n" );
-            acc_device_t dev_type = acc_get_device_type();
-    	    ngpus = acc_get_num_devices( dev_type ); 
-#endif
-            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
             printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/(nv_-1) );
 #ifdef COSENU2D
-            printf("            y:( %12f %12f )  ny  = %5d    buffer zone =%2d  dy = %g\n", y0,y1, ny, gy, dy);
+            printf("            x:( %12f %12f )  nx  = %5d    buffer zone =%2d  dx = %g\n", x0,x1, nx, gx, dx);
 #endif
             printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
-            printf("   Size per field var = %.1f MB\n", size*8/1024./1024.);
+            real mem_per_var = size*8/1024./1024./1024;
+            printf("   Size per field var = %.2f GB, totol memory roughly %.2f GB\n", mem_per_var, mem_per_var*50);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 
 #ifdef BC_PERI
@@ -288,13 +290,28 @@ class NuOsc {
             printf("   Use open boundary\n");
 #endif
 
-#if defined(IM_SIMPSON)
-            printf("   Use Simpson 1/3 integration.\n");
-#elif defined(IM_TRAPEZOIDAL)
-            printf("   Use simple trapezoidal integration\n");
+#ifdef COSENU2D
+            #if defined(IM_V2D_POLAR)
+            printf("   Use V2D POLAR coorninates.\n");
+            #elif defined(IM_V2D_ELL_GL)
+            printf("   Use V2D affine mapping from square to 2D disk on GL points.\n");
+            #elif defined(IM_V2D_ELL)
+            printf("   Use V2D affine mapping from square to 2D disk on uniform points.\n");
+            #else
+            printf("   Use V2D simple.\n");
+            #endif
 #else
+            #if defined(IM_SIMPSON)
+            printf("   Use Simpson 1/3 integration.\n");
+            #elif defined(IM_TRAPEZOIDAL)
+            printf("   Use simple trapezoidal integration\n");
+            #elif defined(IM_GL)
+            printf("   Use Gauss-Lobatto quadrature.\n");
+            #else
             printf("   Use simple Riemann sum for cell-center v.\n");
+            #endif
 #endif
+
 
 #ifndef KO_ORD_3
             printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
@@ -313,8 +330,31 @@ class NuOsc {
 #ifdef VACUUM_OFF
             printf("   Vacuum term OFF.\n");
 #else
-            printf("   Vacuum term ON: pmo= %g theta= %g.\n", pmo, theta);
+            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
 #endif
+
+            // field variables for analysis~~
+            G0  = new real[size];
+            G0b = new real[size];
+            P1  = new real[size];
+            P2  = new real[size];
+            P3  = new real[size];
+            P1b = new real[size];
+            P2b = new real[size];
+            P3b = new real[size];
+            dP  = new real[size];
+            dN  = new real[size];
+            dPb = new real[size];
+            dNb = new real[size];
+            #pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
+
+            // field variables~~
+            v_stat = new FieldVar(size);
+            v_rhs  = new FieldVar(size);
+            v_pre  = new FieldVar(size);
+            v_cor  = new FieldVar(size);
+            v_stat0 = new FieldVar(size);
+            #pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
 
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
@@ -325,14 +365,14 @@ class NuOsc {
         ~NuOsc() {
             delete[] Z; delete[] vz; delete[] vw;
 #ifdef COSENU2D
-            delete[] Y;delete[] vy;
+            delete[] X;delete[] vx;
 #endif
-            //#pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
+            #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-            //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
 
             anafile.close();
@@ -370,7 +410,7 @@ class NuOsc {
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
-        
+
         // deprecated
         void output_detail(const char* fn);
         void __output_detail(const char* fn);

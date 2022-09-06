@@ -1,9 +1,10 @@
-A typical workflow on ARM/TWCC/A100 cluster
+A typical workflow on ARM/TWCC cluster
 
 1) Use ". ./gocom" to make.
-2) Submit multiple runs with "run*.sh" into slurm. Each set of runs is in the `runtag` folder.
+2) Sinale run by ./nuosc <argument>
+3) Multiple runs by "run*.sh" submitting to Slurm or nohup. Each set of runs is in the `runtag` folder.
 3) Make plots:
     a) In each runtag folder, use `plt_analysis.py` to compare statistics quantities like `|P|-1, Pee, M0` for different runs.
-    b) In each run, use `plt_P3.py *.bin` to generate P3 snapshots.
-    c) The movie can be generated via `makemovie.P3`.
+    b) In each run, use `plt_P3.py *.bin` to generate P3 plots.
+    c) The animation can be generated via `makemovie`.
 ---
