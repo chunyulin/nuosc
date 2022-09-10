@@ -1,5 +1,6 @@
 #include "nuosc_class.h"
 #include "utils.h"
+#include <limits>
 
 int main(int argc, char *argv[]) {
 
@@ -7,7 +8,7 @@ int main(int argc, char *argv[]) {
     real dx  =  0.1;
     real x0  = -0.05;     real x1  =  -x0;
     real z0  = - 10;      real z1  =  -z0;
-    int nv_in = 33;
+    int nv_in = 33, nphi = 32;
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 1.0;
@@ -15,10 +16,11 @@ int main(int argc, char *argv[]) {
     bool renorm = false;
 
     // === initial value
-    real alpha = 0.9;     // nuebar-nue asymmetric parameter
-    real lnue  = 0.6;     // width_nue
-    real lnueb = 0.53;    // width_nuebar
-    real ipt   = 0;       // 0: central_z_perturbation; 1:random
+    real alpha = 0.9;                   // nuebar-nue asymmetric parameter
+    real lnue  = 0.6,   lnueb  = 0.53;  // width of nu/nubar in z
+    real lnuex  = std::numeric_limits<real>::max();
+    real lnuebx = std::numeric_limits<real>::max();
+    real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
     real eps0  = 0.1;
     real sigma  = 100.0;    // lzpt = 2*simga**2
 
@@ -42,6 +44,8 @@ int main(int argc, char *argv[]) {
             cfl   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--nv") == 0 )  {
             nv_in   = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--nphi") == 0 )  {
+            nphi    = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ko") == 0 )  {
             ko    = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--mu") == 0 )  {
@@ -72,8 +76,13 @@ int main(int argc, char *argv[]) {
             cout << " ** END_STEP: " << END_STEP << endl;
             // for intial data
         } else if (strcmp(argv[t], "--lnue") == 0 )  {
-            lnue  = atof(argv[t+1]);
-            lnueb = atof(argv[t+2]);    t+=2;
+            lnue   = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--lnueb") == 0 )  {
+            lnueb  = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--lnuex") == 0 )  {
+            lnuex   = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--lnuebx") == 0 )  {
+            lnuebx  = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--sigma") == 0 )  {
             sigma = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--eps0") == 0 )  {
@@ -92,7 +101,7 @@ int main(int argc, char *argv[]) {
 
     // === Initialize simuation
 #ifdef COSENU2D
-    NuOsc state(nv_in, nx, nz, x0, x1, z0, z1, cfl, ko);
+    NuOsc state(nv_in, nphi, nx, nz, x0, x1, z0, z1, cfl, ko);
     long size=(nx+2*state.gx)*(nz+2*state.gz)*(state.get_nv());
 #else
     NuOsc state(nv_in, nz, z0, z1, cfl, ko);
@@ -107,7 +116,7 @@ int main(int argc, char *argv[]) {
     else if (ipt==20) state.fillInitSquare( eps0, sigma);
     else if (ipt==30) state.fillInitTriangle( eps0, sigma);
 #else
-    state.fillInitValue(ipt, alpha, lnue, lnueb,eps0, sigma);
+    state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb, lnuex, lnuebx);
 #endif
 
     // === analysis for t=0
@@ -116,7 +125,12 @@ int main(int argc, char *argv[]) {
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
         std::list<real*> vlist( { state.P3 } );
-        state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
+        std::vector<int> vslice;
+        for (int v=0;v<nv_in;++v) {
+            vslice.push_back( int((nv_in-1)/2)*nv_in + v );
+        }
+        //state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslize );
+        state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
         //std::list<real*> plist( { state.P3 } );
         //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
         //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
@@ -126,8 +140,8 @@ int main(int argc, char *argv[]) {
         std::list<real*> vlist( { state.v_stat->ee } );
         state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
         //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
-        state.checkSnapShot(0);
 #endif
+        state.checkSnapShot(0);
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();

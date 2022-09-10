@@ -1,11 +1,11 @@
 #pragma once
 
-//#define COSENU2D
-//#define IM_V2D_ELL_GL
-//#define IM_V2D_ELL
-//#define IM_V2D_POLAR
+#define COSENU2D
 
-#define IM_SIMPSON
+//#define IM_V2D_POLAR_GL_Z
+
+//#define IM_SIMPSON
+//#define IM_TRAPEZOIDAL
 //#define IM_GL
 
 #ifdef NVTX
@@ -132,7 +132,7 @@ typedef struct SnapShot_struct {
     std::list<real*> var_list;
     string fntpl;
     int every;
-    std::vector<int> y_slices;   // coordinate for the reduced dimension
+    std::vector<int> x_slices;   // coordinate for the reduced dimension
     std::vector<int> v_slices;
 
     // init with specified v-coordinate
@@ -143,11 +143,11 @@ typedef struct SnapShot_struct {
         v_slices = v_slices_;
     }
     // init with specified y and v-coordinate
-    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, std::vector<int> y_slices_, std::vector<int> v_slices_) {
+    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
-        y_slices = y_slices_;
+        x_slices = x_slices_;
         v_slices = v_slices_;
     }
 } SnapShot;
@@ -156,10 +156,9 @@ inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b =
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
-int gen_v2d_polar_grid(const int nvr, const int nvt, real *& vw, real *& vx, real *& vz);
-int gen_v2d_elliptical_unigrid(const int nv_, real *& vw, real *& vx, real *& vz);
-int gen_v2d_elliptical_GL_grid(const int nv_, real *& vw, real *& vx, real *& vz);
-int gen_v2d_simple(const int nv_, real *& vw, real *& vx, real *& vz);
+int gen_v2d_GL_zphi(const int nvz_, const int nphi_, real *& vw, real *& vx, real *& vy, real *& vz);
+int gen_v2d_rsum_zphi(const int nvz_, const int nphi_, real *& vw, real *& vx, real *& vy, real *& vz);
+
 int gen_v1d_GL(const int nv, real *& vw, real *& vz);
 int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
 int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
@@ -172,13 +171,13 @@ class NuOsc {
         real phy_time, dt;
 
         real *vw;                 // integral quadrature
-        int nv;       // # of v cubature points.
+        int nv, nphi;       // # of v cubature points.
 
         real  *vz, *Z;             // coordinates
         real z0,  z1, dz;
         int nz, gz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
 
-        real  *vx, *X;             // 2D coordinates
+        real  *vx, *vy, *X;             // 2D coordinates
         real x0,  x1, dx;
         int nx, gx;  // Dim of y
 
@@ -193,7 +192,7 @@ class NuOsc {
         real CFL;
         real ko;
 
-        const real theta = 1e-4;  //1e-6;
+        const real theta = 37 * M_PI / 180.;  //1e-6;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
         real pmo = 0.1; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
@@ -210,10 +209,10 @@ class NuOsc {
 #endif
 
 #ifdef COSENU2D
-        NuOsc(const int  nv_,
+        NuOsc(const int  nv_, const int  nphi_,
                 const int   nx_, const int   nz_, 
                 const real  x0_, const real  x1_, const real  z0_, const real  z1_,
-                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
+                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_), nphi(nphi_)  {
 #else
         NuOsc(const int  nv_,
                 const int   nz_, const real  z0_, const real  z1_,
@@ -247,14 +246,10 @@ class NuOsc {
             dx = (x1-x0)/nx;
             for (int i=0;i<nx;  ++i)	X[i] = x0 + (i+0.5)*dx;
 
-            #if defined(IM_V2D_POLAR)
-            nv = gen_v2d_polar_grid(nv_, nv_, vw, vx, vz);
-            #elif defined(IM_V2D_ELL_GL)
-            nv = gen_v2d_elliptical_GL_grid(nv_, vw, vx, vz);
-            #elif defined(IM_V2D_ELL)
-            nv = gen_v2d_elliptical_unigrid(nv_, vw, vx, vz);
+            #if defined(IM_V2D_POLAR_GL_Z)
+            nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
             #else
-            nv = gen_v2d_simple(nv_, vw, vx, vz);
+            nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
             #endif
             long size = (nx+2*gx)*(nz+2*gz)*nv;
 #else
@@ -275,7 +270,7 @@ class NuOsc {
             CFL = CFL_;
             dt = dz*CFL;
 
-            printf("   Domain:  v: nv = %5d points within units disk. dv = %g\n", nv, 2.0/(nv_-1) );
+            printf("   Domain:  v: nv = %5d  nphi = %5d  on S2.\n", nv_, nphi );
 #ifdef COSENU2D
             printf("            x:( %12f %12f )  nx  = %5d    buffer zone =%2d  dx = %g\n", x0,x1, nx, gx, dx);
 #endif
@@ -291,14 +286,10 @@ class NuOsc {
 #endif
 
 #ifdef COSENU2D
-            #if defined(IM_V2D_POLAR)
-            printf("   Use V2D POLAR coorninates.\n");
-            #elif defined(IM_V2D_ELL_GL)
-            printf("   Use V2D affine mapping from square to 2D disk on GL points.\n");
-            #elif defined(IM_V2D_ELL)
-            printf("   Use V2D affine mapping from square to 2D disk on uniform points.\n");
+            #if defined(IM_V2D_POLAR_GL_Z)
+            printf("   Use Gauss-Lobatto z-grid and uniform phi-grid.\n");
             #else
-            printf("   Use V2D simple.\n");
+            printf("   Use uniform z- and phi- grid.\n");
             #endif
 #else
             #if defined(IM_SIMPSON)
@@ -365,7 +356,7 @@ class NuOsc {
         ~NuOsc() {
             delete[] Z; delete[] vz; delete[] vw;
 #ifdef COSENU2D
-            delete[] X;delete[] vx;
+            delete[] X;delete[] vx;delete[] vy;
 #endif
             #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
@@ -393,7 +384,7 @@ class NuOsc {
             printf("   Setting renorm = %d\n", renorm);
         }
 
-        void fillInitValue(int ipt, real alpha, real lnue, real lnueb, real eps0, real sigma);
+        void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue, real lnueb, real lnuex, real lnuebx);
         void fillInitGaussian(real eps0, real sigma);
         void fillInitSquare(real eps0, real sigma);
         void fillInitTriangle(real eps0, real sigma);
@@ -410,6 +401,9 @@ class NuOsc {
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
+        // 2D output:
+        void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
+
 
         // deprecated
         void output_detail(const char* fn);

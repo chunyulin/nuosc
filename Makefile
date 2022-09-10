@@ -1,7 +1,7 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o  nuosc_snapshot1D.o jacobi_poly.o
+OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o  nuosc_snapshot.o jacobi_poly.o
 
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"
@@ -44,12 +44,12 @@ test_tri:
 
 test:
 	export CUDA_VISIBLE_DEVICES=0; \
-          ./nuosc --ipt 0 --pmo 0 --mu 1 --ko 1e-3 --zmax 1024 --dz 0.05 --nv 400 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 2 --ANA_EVERY 100 --DUMP_EVERY_T 999 --END_STEP 500
+          ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 128 --dz 0.1                     --nv 32 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY_T 5 --DUMP_EVERY_T 9999999 --END_STEP_T 300
 	### |dP|_max ~ 1e-7 for at T~20
 
 test2d:
-	export CUDA_VISIBLE_DEVICES=1; \
-          ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 256 --xmax 0.5 --dz 0.1 --dx 0.1 --nv 33 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 2 --ANA_EVERY 10 --DUMP_EVERY_T 999 --END_STEP 500
+	export CUDA_VISIBLE_DEVICES=0; \
+          ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 128 --xmax 0.4 --dz 0.1 --dx 0.1 --nv 32 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY_T 5 --DUMP_EVERY_T 10000 --END_STEP_T 300
 	### |dP|_max ~ 1e-7 for at T~20
 
 test_fft: test_fft.o

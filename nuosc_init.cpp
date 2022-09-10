@@ -5,88 +5,52 @@ inline real eps_c(real z, real z0, real eps0, real sigma){return eps0*std::exp(-
 inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 inline real eps_p(real z, real z0, real eps0, real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
-double g(double vx, double vz, double vx0, double vz0, double sx, double sz){
+double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
     return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
 }
-double g(double v, double v0, double sigma){
+double g(double v, double sigma, double v0 = 1.0){
     double N = sigma*std::sqrt(0.5*M_PI)*(std::erf((1.0+v0)/sigma/std::sqrt(2.0))+std::erf((1.0-v0)/sigma/std::sqrt(2.0)));
     //cout << "== Checking A : " << 1/N << endl;
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
-// v quaduture on 2D unit disk
-int gen_v2d_polar_grid(const int nvr, const int nvt, real *& vw, real *& vx, real *& vz) {
-    real dvr = 1.0/(nvr);
-    real dvt = 2.0*M_PI/(nvt);
-    vx = new real[nvr*nvt];
-    vz = new real[nvr*nvt];
-    vw = new real[nvr*nvt];
-    for (int i=0;i<nvr; ++i)
-    for (int j=0;j<nvt; ++j) {
-        real r = (i+0.5)*dvr;
-        real t = j*dvt;
-        vx[i*nvt+j] = r*sin(t);
-        vz[i*nvt+j] = r*cos(t);
-        vw[i*nvt+j] = dvr*dvt*r;
-    }
-    return nvr*nvt;
-}
-
-int gen_v2d_elliptical_unigrid(const int nv, real *& vw, real *& vx, real *& vz) {
-    real dv = 2.0/(nv-1);
-    vx = new real[nv*nv];
-    vz = new real[nv*nv];
-    vw = new real[nv*nv];
-    for (int i=0;i<nv; i++)
-    for (int j=0;j<nv; j++) {
-        real y = i*dv-1;
-        real z = j*dv-1;
-        vx[i*nv+j] = y*sqrt(1.0-0.5*z*z);
-        vz[i*nv+j] = z*sqrt(1.0-0.5*y*y);
-        vw[i*nv+j] = (2-z*z-y*y)/sqrt((2-z*z)*(2-y*y))   *dv*dv/(1<<(int(i==0)+int(j==0)));
-    }
-    return nv*nv;  // co < nv*nv
-}
-
-int gen_v2d_elliptical_GL_grid(const int nv, real *& vw, real *& vx, real *& vz) {
+int gen_v2d_GL_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
     Vec r(nv);
     Vec w(nv);
     JacobiGL(nv-1,0,0,r,w);
-    vx = new real[nv*nv];
-    vz = new real[nv*nv];
-    vw = new real[nv*nv];
-    for (int i=0;i<nv; i++)
-    for (int j=0;j<nv; j++) {
-        real x = r[i];
-        real z = r[j];
-        vx[i*nv+j] = x*sqrt(1.0-0.5*z*z);
-        vz[i*nv+j] = z*sqrt(1.0-0.5*x*x);
-        vw[i*nv+j] = (2-z*z-x*x)/sqrt((2-z*z)*(2-x*x))  * w[i]*w[j];
-//cout << vx[i*nv+j] <<" " << vz[i*nv+j] << " "<< vw[i*nv+j] << endl;
+    vx = new real[nv*nphi];
+    vy = new real[nv*nphi];
+    vz = new real[nv*nphi];
+    vw = new real[nv*nphi];
+    real dp = 2*M_PI/nphi;
+    for (int j=0;j<nphi; ++j)
+    for (int i=0;i<nv;   ++i)   {
+        vz[j*nv+i] = sqrt(1-r[i]*r[i]);
+        vx[j*nv+i] = cos(j*dp)*vz[j*nv+i];
+        vy[j*nv+i] = sin(j*dp)*vz[j*nv+i];
+        vz[j*nv+i] = r[i];
+        vw[j*nv+i] = dp*w[i];
     }
-    return nv*nv;  // co < nv*nv
+    return nv*nphi;
 }
 
-// v quaduture on 2D unit disk
-int gen_v2d_simple(const int nv, real *& vw, real *& vx, real *& vz) {
-    assert(nv%2==0);
-    real dv = 2.0/nv;
-    vx = new real[nv*nv];
-    vz = new real[nv*nv];
-    vw = new real[nv*nv];
-    uint co = 0;
-    for (int i=0;i<nv; ++i)
-    for (int j=0;j<nv; ++j) {
-        real x = (0.5+i)*dv - 1;
-        real z = (0.5+j)*dv - 1;
-        if ((x*x+z*z) <= 1.0) {
-            vx[co] = x;
-            vz[co] = z;
-            vw[co] = dv*dv;
-            co++;
-        }
+int gen_v2d_rsum_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
+    vx = new real[nv*nphi];
+    vy = new real[nv*nphi];
+    vz = new real[nv*nphi];
+    vw = new real[nv*nphi];
+    real dp = 2*M_PI/nphi;
+    real dv = 2.0/(nv);
+    for (int j=0;j<nphi; ++j)
+    for (int i=0;i<nv;   ++i)   {
+        real tmp = (i+0.5)*dv - 1;
+        vz[j*nv+i] = sqrt(1-tmp*tmp);
+        vx[j*nv+i] = cos(j*dp)*vz[j*nv+i];
+        vy[j*nv+i] = sin(j*dp)*vz[j*nv+i];
+        vz[j*nv+i] = tmp;
+        vw[j*nv+i] = dv*dp;
     }
-    return co;  // co < nv*nv
+    return nv*nphi;
 }
 
 int gen_v1d_GL(const int nv, real *& vw, real *& vz) {
@@ -146,7 +110,7 @@ int gen_v1d_cellcenter(const int nv, real *& vw, real *& vz) {
 }
 
 
-void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, real sigma) {
+void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue, real lnueb, real lnue_x, real lnueb_x) {
 #ifdef NVTX
     nvtxRangePush(__FUNCTION__);
 #endif
@@ -180,8 +144,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
 		auto jv = idx(0,j,v);
 		
 		// ELN profile
-		G0 [jv] =         g(vz[v], 1.0, lnue );
-		G0b[jv] = alpha * g(vz[v], 1.0, lnueb);
+		G0 [jv] =         g(vz[v], lnue );
+		G0b[jv] = alpha * g(vz[v], lnueb);
 
                 v_stat->ee    [jv] =  0.5* G0 [jv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
                 v_stat->xx    [jv] =  0.5* G0 [jv]*(1.0-tmp2);
@@ -199,15 +163,16 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
 
     } else {
 
-	printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g\n", ipt==0? "Point-like pertur":"Random pertur", eps0, alpha, lnue, lnueb, sigma);
+	printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu_z= %g %g lnu_x= %g %g\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue, lnueb, lnue_x, lnueb_x);
 
         #ifdef COSENU2D
+        // calulate normalization factor numerically...
 	Vec ng(nv), ngb(nv);
         real ing = 0, ingb = 0;
 	#pragma omp parallel for reduction(+:ing, ingb)
 	for (int v=0;v<nv;++v) {
-	    ng [v] = g(vx[v], vz[v], 1.0, 1.0, lnue,  lnue );
-	    ngb[v] = g(vx[v], vz[v], 1.0, 1.0, lnueb, lnueb );
+	    ng [v] = g(vx[v], vz[v], lnue_x,  lnue );   // large vx sigma to reduce to 1D case (axi-symmetric case)
+	    ngb[v] = g(vx[v], vz[v], lnueb_x, lnueb );
             ing  += vw[v]*ng [v];
             ingb += vw[v]*ngb[v];
 	}
@@ -225,13 +190,13 @@ void NuOsc::fillInitValue(int ipt, real alpha, real lnue, real lnueb,real eps0, 
             G0 [ijv] =         ng [v] * ing;
             G0b[ijv] = alpha * ngb[v] * ingb;
             #else
-            G0 [ijv] =         g(vz[v], 1.0, lnue );
-            G0b[ijv] = alpha * g(vz[v], 1.0, lnueb);
+            G0 [ijv] =         g(vz[v], lnue , 1.0);
+            G0b[ijv] = alpha * g(vz[v], lnueb, 1.0);
             #endif
 
             real tmpr;
-            if      (ipt==0) { tmpr = eps_c(Z[j],0.0,eps0,sigma); }   // center perturbation
-            else if (ipt==1) { tmpr = eps_r(eps0); }                 // random
+            if      (ipt==0) { tmpr = eps_c(Z[j],0.0,eps0,sigma); }                              // center perturbation
+            else if (ipt==1) { tmpr = eps_r(eps0); }                  // random
             else if (ipt==2) { tmpr = eps_p(Z[j],0.0,eps0,sigma);}
             else if (ipt==3) { tmpr = eps0;}
             else             { assert(0); }                         // Not implemented
