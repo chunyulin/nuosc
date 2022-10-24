@@ -1,89 +1,19 @@
 #pragma once
+#include "common.h"
+#include "CartGrid.h"
 
-#define COSENU2D
-
-//#define IM_V2D_POLAR_GL_Z
-
-//#define IM_SIMPSON
-//#define IM_TRAPEZOIDAL
-//#define IM_GL
-
-#ifdef NVTX
-#include <nvToolsExt.h>
-#endif
-#ifdef _OPENACC
-#include <openacc.h>
-#endif
-
-#include <chrono>
-#include <vector>
-#include <cstdlib>
-#include <cstring>
-#include <cassert>
-#include <iostream>
-#include <fstream>
-#include <iomanip>
-#include <cmath>
-#include <omp.h>
-#ifdef PAPI
-#include <papi.h>
-#endif
-
-#include <algorithm>
-#include <list>
-
-#include "jacobi_poly.h"
-
-
-#define BC_PERI
-#define KO_ORD_3
-//#define ADVEC_OFF
-
-using std::cout;
-using std::endl;
-using std::cin;
-using std::string;
-
-using std::sqrt;
-using std::abs;
-using std::max;
-using std::min;
-using std::cos;
-using std::sin;
-
-
-#ifdef COSENU2D
     #define COLLAPSE_LOOP 3
     #define PARFORALL(i,j,v) \
     _Pragma("omp parallel for collapse(3)") \
     _Pragma("acc parallel loop collapse(3)") \
-    for (int i=0;i<nx; ++i) \
-    for (int j=0;j<nz; ++j) \
-    for (int v=0;v<nv; ++v)
+    for (int i=0;i<grid.nx; ++i) \
+    for (int j=0;j<grid.nz; ++j) \
+    for (int v=0;v<grid.nv; ++v)
 
     #define FORALL(i,j,v) \
-    for (int i=0;i<nx; ++i) \
-    for (int j=0;j<nz; ++j) \
-    for (int v=0;v<nv; ++v)
-
-#else
-    #define COLLAPSE_LOOP 2
-    #define PARFORALL(i,j,v) \
-    for (int i=0;i<1; ++i) \
-    _Pragma("omp parallel for collapse(2)") \
-    _Pragma("acc parallel loop collapse(2)") \
-    for (int j=0;j<nz; ++j) \
-    for (int v=0;v<nv; ++v)
-
-    #define FORALL(i,j,v) \
-    for (int i=0;i<1;  ++i) \
-    for (int j=0;j<nz; ++j) \
-    for (int v=0;v<nv; ++v)
-
-#endif
-
-typedef double real;
-typedef std::vector<double> Vec;
+    for (int i=0;i<grid.nx; ++i) \
+    for (int j=0;j<grid.nz; ++j) \
+    for (int v=0;v<grid.nv; ++v)
 
 
 typedef struct Vars {
@@ -120,14 +50,6 @@ typedef struct Vars {
     }
 } FieldVar;
 
-typedef struct stat {
-    real min;
-    real max;
-    real sum;
-    real avg;
-    real std;
-} FieldStat;
-
 typedef struct SnapShot_struct {
     std::list<real*> var_list;
     string fntpl;
@@ -136,14 +58,14 @@ typedef struct SnapShot_struct {
     std::vector<int> v_slices;
 
     // init with specified v-coordinate
-    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_,  std::vector<int> v_slices_) {
+    SnapShot_struct(std::list<real*> var_list_, string fntpl_, int every_,  std::vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
         v_slices = v_slices_;
     }
     // init with specified y and v-coordinate
-    SnapShot_struct(std::list<real*> var_list_, string fntpl_, uint every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
+    SnapShot_struct(std::list<real*> var_list_, string fntpl_, int every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
@@ -156,30 +78,16 @@ inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b =
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
 template <typename T> int sgn(T val) {    return (T(0) < val) - (val < T(0));   }
 
-int gen_v2d_GL_zphi(const int nvz_, const int nphi_, real *& vw, real *& vx, real *& vy, real *& vz);
-int gen_v2d_rsum_zphi(const int nvz_, const int nphi_, real *& vw, real *& vx, real *& vy, real *& vz);
-
-int gen_v1d_GL(const int nv, real *& vw, real *& vz);
-int gen_v1d_trapezoidal(const int nv_, real *& vw, real *& vz);
-int gen_v1d_simpson(const int nv_, real *& vw, real *& vz);
-int gen_v1d_cellcenter(const int nv_, real *& vw, real *& vz);
-
-std::vector<int> gen_skimmed_vslice_index(uint nv_target, uint nv_in);
+std::vector<int> gen_skimmed_vslice_index(int nv_target, int nv_in);
 
 class NuOsc {
     public:
-        real phy_time, dt;
+        const int nvar = 8;
+        int myrank = 0;
+        real phy_time, dt, dx, dz;
 
-        real *vw;                 // integral quadrature
-        int nv, nphi;       // # of v cubature points.
-
-        real  *vz, *Z;             // coordinates
-        real z0,  z1, dz;
-        int nz, gz;  // Dim of z  (the last dimension, the one with derivatives. Cell-center grid used.)
-
-        real  *vx, *vy, *X;             // 2D coordinates
-        real x0,  x1, dx;
-        int nx, gx;  // Dim of y
+        CartGrid grid;   // grid geometry of a MPI rank   // FIXME: why uniqie_ptr fail on MPI?
+        real ds_L;       // = dx*dz/(z1-z0)/(x1-x0)
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
         FieldVar *v_stat0;   // NOT used.
@@ -187,7 +95,7 @@ class NuOsc {
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
         real *G0,*G0b;
-        real n_nue0,n_nueb0;   // initial number density for nue
+        real n_nue0[2];   // initial number density for nue/nueb
 
         real CFL;
         real ko;
@@ -195,169 +103,18 @@ class NuOsc {
         const real theta = 37 * M_PI / 180.;  //1e-6;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
-        real pmo = 0.1; // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
+        real pmo = 0.1;      // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
-#ifdef COSENU2D
-        inline unsigned long idx(const int i, const int j, const int v) const { return   ( (i+gx)*(nz+2*gz) + j+gz)*nv + v; }    //  i:x j:z
-#else
-        inline unsigned long idx(const int i, const int j, const int v) const { return   (j+gz)*nv + v; }
-#endif
-
-#ifdef COSENU2D
-        NuOsc(const int  nv_, const int  nphi_,
-                const int   nx_, const int   nz_, 
-                const real  x0_, const real  x1_, const real  z0_, const real  z1_,
-                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_), nphi(nphi_)  {
-#else
-        NuOsc(const int  nv_,
-                const int   nz_, const real  z0_, const real  z1_,
-                const real CFL_, const real  ko_) : phy_time(0.), ko(ko_)  {
-#endif
-
-	    int ngpus = 0;
-#ifdef _OPENACC
-            printf("\n\nOpenACC Enabled.\n" );
-            acc_device_t dev_type = acc_get_device_type();
-    	    ngpus = acc_get_num_devices( dev_type ); 
-#endif
-            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
-
-            // coordinates~~
-            nz  = nz_;  z0  = z0_;  z1 = z1_;
-            Z      = new real[nz];
-            dz = (z1-z0)/nz;       // cell-center
-            for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
-#ifndef KO_ORD_3
-            gz  = 3;
-            gx  = 3;
-#else
-            gz  = 2;
-            gx  = 2;
-#endif
-
-#ifdef COSENU2D
-            nx  = nx_;  x0  = x0_;  x1 = x1_;
-            X   = new real[nx];
-            dx = (x1-x0)/nx;
-            for (int i=0;i<nx;  ++i)	X[i] = x0 + (i+0.5)*dx;
-
-            #if defined(IM_V2D_POLAR_GL_Z)
-            nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
-            #else
-            nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
-            #endif
-            long size = (nx+2*gx)*(nz+2*gz)*nv;
-#else
-            dx = dz;  x1 = 0.5*dz;  x0 = -x1;
-
-            #if defined(IM_SIMPSON)
-            nv = gen_v1d_simpson(nv_, vw, vz);
-            #elif defined(IM_TRAPEZOIDAL)
-            nv = gen_v1d_trapezoidal(nv_, vw, vz);
-            #elif defined(IM_GL)
-            nv = gen_v1d_GL(nv_, vw, vz);
-            #else
-            nv = gen_v1d_cellcenter(nv_, vw, vz);
-            #endif
-            long size = (nz+2*gz)*nv;
-#endif
-
-            CFL = CFL_;
-            dt = dz*CFL;
-
-            printf("   Domain:  v: nv = %5d  nphi = %5d  on S2.\n", nv_, nphi );
-#ifdef COSENU2D
-            printf("            x:( %12f %12f )  nx  = %5d    buffer zone =%2d  dx = %g\n", x0,x1, nx, gx, dx);
-#endif
-            printf("            z:( %12f %12f )  nz  = %5d    buffer zone =%2d  dz = %g\n", z0,z1, nz, gz, dz);
-            real mem_per_var = size*8/1024./1024./1024;
-            printf("   Size per field var = %.2f GB, totol memory roughly %.2f GB\n", mem_per_var, mem_per_var*50);
-            printf("   dt = %g     CFL = %g\n", dt, CFL);
-
-#ifdef BC_PERI
-            printf("   Use Periodic boundary\n");
-#else
-            printf("   Use open boundary\n");
-#endif
-
-#ifdef COSENU2D
-            #if defined(IM_V2D_POLAR_GL_Z)
-            printf("   Use Gauss-Lobatto z-grid and uniform phi-grid.\n");
-            #else
-            printf("   Use uniform z- and phi- grid.\n");
-            #endif
-#else
-            #if defined(IM_SIMPSON)
-            printf("   Use Simpson 1/3 integration.\n");
-            #elif defined(IM_TRAPEZOIDAL)
-            printf("   Use simple trapezoidal integration\n");
-            #elif defined(IM_GL)
-            printf("   Use Gauss-Lobatto quadrature.\n");
-            #else
-            printf("   Use simple Riemann sum for cell-center v.\n");
-            #endif
-#endif
-
-
-#ifndef KO_ORD_3
-            printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
-#else
-            printf("   Use 3-th order KO dissipation, KO eps = %g\n", ko);
-#endif
-
-#ifndef ADVEC_OFF
-            printf("   Advection ON. (Center-FD)\n");
-            //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
-            //printf("   Use lopsided FD for advaction\n");
-#else
-            printf("   Advection OFF.\n");
-#endif
-
-#ifdef VACUUM_OFF
-            printf("   Vacuum term OFF.\n");
-#else
-            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
-#endif
-
-            // field variables for analysis~~
-            G0  = new real[size];
-            G0b = new real[size];
-            P1  = new real[size];
-            P2  = new real[size];
-            P3  = new real[size];
-            P1b = new real[size];
-            P2b = new real[size];
-            P3b = new real[size];
-            dP  = new real[size];
-            dN  = new real[size];
-            dPb = new real[size];
-            dNb = new real[size];
-            #pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
-
-            // field variables~~
-            v_stat = new FieldVar(size);
-            v_rhs  = new FieldVar(size);
-            v_pre  = new FieldVar(size);
-            v_cor  = new FieldVar(size);
-            v_stat0 = new FieldVar(size);
-            #pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-
-            anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
-            if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
-            anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
-
-        }
+        NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const int gx_,const int gz_,
+                const real  x0_, const real  x1_, const real  z0_, const real  z1_, const real dx_, const real dz_, 
+                const real CFL_, const real  ko_);
 
         ~NuOsc() {
-            delete[] Z; delete[] vz; delete[] vw;
-#ifdef COSENU2D
-            delete[] X;delete[] vx;delete[] vy;
-#endif
             #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
@@ -370,19 +127,20 @@ class NuOsc {
 
         }
 
-        int get_nv() { return nv;   }
         void set_mu(real mu_) {
             mu = mu_;
-            printf("   Setting mu = %f\n", mu);
+            if (myrank==0) printf("   Setting mu = %f\n", mu);
         }
         void set_pmo(real pmo_) {
             pmo = pmo_;
-            printf("   Setting pmo = %f\n", pmo);
+            if (myrank==0) printf("   Setting pmo = %f\n", pmo);
         }
         void set_renorm(bool renorm_) {
             renorm = renorm_;
-            printf("   Setting renorm = %d\n", renorm);
+            if (myrank==0) printf("   Setting renorm = %d\n", renorm);
         }
+        ulong get_lpts() const {  return grid.get_lpts();  }
+        int  get_nv() const {  return grid.get_nv();  }
 
         void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue, real lnueb, real lnuex, real lnuebx);
         void fillInitGaussian(real eps0, real sigma);
@@ -398,17 +156,14 @@ class NuOsc {
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
+        void pack_buffer(const FieldVar* v0);
+        void unpack_buffer(FieldVar* v0);
+        void sync_boundary(FieldVar* v0);
+
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
         // 2D output:
         void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
-
-
-        // deprecated
-        void output_detail(const char* fn);
-        void __output_detail(const char* fn);
-        FieldStat _analysis_v(const real var[]);
-        FieldStat _analysis_c(const real vr[], const real vi[]);
 
 };

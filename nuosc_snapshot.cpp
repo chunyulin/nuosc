@@ -20,7 +20,7 @@ void NuOsc::addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std
     int sx  = xidx.size();
     int sv  = vidx.size();
 
-    printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", sx, nz, sv, dumpstep);
+    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", sx, nz, sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];
@@ -52,7 +52,7 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     snapshots.push_back(ss);
     int sv  = vidx.size();
 
-    printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", nx, nz, sv, dumpstep);
+    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", nx, nz, sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];

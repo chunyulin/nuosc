@@ -4,9 +4,12 @@
 
 int main(int argc, char *argv[]) {
 
+    int px = 1;
+    int pz = 1;
+
     real dz  =  0.1;
     real dx  =  0.1;
-    real x0  = -0.05;     real x1  =  -x0;
+    real x0  = - 0.5;     real x1  =  -x0;
     real z0  = - 10;      real z1  =  -z0;
     int nv_in = 33, nphi = 32;
     real cfl = 0.4;      real ko = 0.0;
@@ -91,25 +94,41 @@ int main(int argc, char *argv[]) {
             alpha = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ipt") == 0 )  {
             ipt = atoi(argv[t+1]);    t+=1;
+
+        } else if (strcmp(argv[t], "--np") == 0 )  {
+            px = atoi(argv[t+1]);    t+=1;
+            pz = atoi(argv[t+1]);    t+=1;
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
         }
     }
-    int nz  = int((z1-z0)/dz);
-    int nx  = int((x1-x0)/dx);
 
-    // === Initialize simuation
-#ifdef COSENU2D
-    NuOsc state(nv_in, nphi, nx, nz, x0, x1, z0, z1, cfl, ko);
-    long size=(nx+2*state.gx)*(nz+2*state.gz)*(state.get_nv());
+    int ranks = 1, myrank = 0;
+    #ifdef COSENU_MPI
+    // THINK: consider to initialze MPI inside CartGrid, whcih need passing argc argv into.
+    int provided;
+    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    #endif
+
+#ifndef KO_ORD_3
+    int gz = 3, gx = 3;
 #else
-    NuOsc state(nv_in, nz, z0, z1, cfl, ko);
-    long size=(nz+2*state.gz)*(state.get_nv());
+    int gz = 2, gx = 2;
 #endif
+    
+    // === create simuation
+    NuOsc state(px, pz, nv_in, nphi, gx, gz, x0, x1, z0, z1, dx, dz, cfl, ko);
+    long lpts = state.grid.get_lpts();
     state.set_mu(mu);
     state.set_pmo(pmo);
     state.set_renorm(renorm);
+
+    uint nx = (x1-x0)/dx;
+    uint nz = (z1-z0)/dz;
 
 #ifdef ADV_TEST
     if      (ipt==10) state.fillInitGaussian( eps0, sigma);
@@ -122,6 +141,7 @@ int main(int argc, char *argv[]) {
     // === analysis for t=0
     state.analysis();
 
+/*
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
         std::list<real*> vlist( { state.P3 } );
@@ -145,15 +165,25 @@ int main(int argc, char *argv[]) {
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();
-    }    
+    }
+*/
 
     std::cout << std::flush;
     real stepms;
+
+#ifdef COSENU_MPI
+    double t1;
+#else
     std::chrono::time_point<std::chrono::high_resolution_clock> t1;
+#endif
     const int cooltime = 5;
     for (int t=1; t<=END_STEP; t++) {
 
+#ifdef COSENU_MPI
+        if (t==cooltime)  t1 = MPI_Wtime();
+#else
         if (t==cooltime)  t1 = std::chrono::high_resolution_clock::now();
+#endif
         //cout << t << "..." << endl;
         state.step_rk4();
 
@@ -161,18 +191,24 @@ int main(int argc, char *argv[]) {
             state.analysis();
         }
 
-        state.checkSnapShot(t);
+        //state.checkSnapShot(t);
 
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
-            auto t2 = std::chrono::high_resolution_clock::now();
-            stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1e6);
+#ifdef COSENU_MPI
+            stepms = (MPI_Wtime() - t1)*1e3;
+#else
+            stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
+#endif
+            if (myrank==0) printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/lpts*1e6);
         }
     }
 
-    printf("Completed.\n");
-    printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
+    if (myrank==0) printf("Completed.\n");
+    if (myrank==0) printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
+    if (myrank==0) printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), nx, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/lpts*1e6);
 
-    printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), nx, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/size*1e6);
+    #ifdef COSENU_MPI
+    MPI_Finalize();    // error because this is called before the deconstructor of CartGrid
+    #endif
     return 0;
 }
