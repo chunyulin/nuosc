@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH -A ENT211349
+#SBATCH -p gp1d
+#SBATCH -J baseline
+#SBATCH --nodes=4 --ntasks-per-node=1 --cpus-per-task=4
+#SBATCH --gres=gpu:1
+
+module purge
+module load nvhpc
+
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+#source /opt/ohpc/pkg/kagra/nv/openmpi-3.1.6.min/env.sh
+
+#SRUN="srun --cpu_bind=v"
+#MPIRUN="mpirun -np ${SLURM_NTASKS}"
+hostname
+export|grep GPU
+
+mpirun -np 4 ./nuosc --np 2 2 \
+                --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 16 --xmax 4 --dz 0.1 --dx 0.1 \
+                --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 20
+
+mpirun -np 2 ./nuosc --np 2 1 \
+                --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 16 --xmax 4 --dz 0.1 --dx 0.1 \
+                --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 20
+
+mpirun -np 2 ./nuosc --np 1 2 \
+                --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 16 --xmax 4 --dz 0.1 --dx 0.1 \
+                --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 20
+
+mpirun -np 1 ./nuosc --np 1 1 \
+                --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 16 --xmax 4 --dz 0.1 --dx 0.1 \
+                --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 20
+
+
+
+echo "--- Walltime: ${SECONDS} sec."

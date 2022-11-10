@@ -1,6 +1,7 @@
 
-MPI_ROOT=/opt/nvidia/hpc_sdk/Linux_aarch64/22.2/comm_libs/openmpi/openmpi-3.1.5
-
+MPI_ROOT?=/opt/nvidia/hpc_sdk/Linux_aarch64/22.2/comm_libs/openmpi/openmpi-3.1.5
+GSL_ROOT?=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
+  
 #CXX=g++
 #CXX=armclang++
 CXX ?= armclang++
@@ -8,10 +9,10 @@ CXX ?= armclang++
 #CXX=nvc++
 
 #INCLUDE=-I${ARMPL_INCLUDES}
-INCLUDE=-I/pkg/gsl-2.7.1/include -I${MPI_ROOT}/include
+INCLUDE=-I${GSL_ROOT}/include -I${MPI_ROOT}/include
 
-LIBS=-L/pkg/gsl-2.7.1/lib -lgsl -lgslcblas \
-     -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi_cxx -lmpi
+LIBS=-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \
+     -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi
 
 #DEBUG=-DPAPI
 #OPT=-Ofast -std=c++11 -fopenmp ${COSENU_OPT}

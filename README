@@ -1,3 +1,14 @@
+# Baseline test on Twnia-2:
+
+1. Compile on Twina-2 by ". ./gocom"
+2. sbatch t2.sub
+3. See example output slurm*.out 
+
+
+
+
+
+---
 A typical workflow on ARM/TWCC cluster
 
 1) Use ". ./gocom" to make.

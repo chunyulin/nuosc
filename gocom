@@ -8,7 +8,8 @@ if [[ $host == *"twcc.ai" ]]; then
   conda activate /opt/ohpc/pkg/kagra/ENV/py37
   module load nvhpc/21.7
   
-  export CXX=nvc++
+  export CXX=mpic++
+  export GSL_ROOT=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
   export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed"
 
 
