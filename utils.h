@@ -12,3 +12,5 @@ double getMemoryUsage() {
   getrusage(RUSAGE_SELF, &r);
   return r.ru_maxrss;
 }
+
+

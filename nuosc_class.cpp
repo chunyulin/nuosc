@@ -236,7 +236,7 @@ void NuOsc::step_rk4() {
 NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const int gx_,const int gz_,
         const real  x0_, const real  x1_, const real  z0_, const real  z1_, const real dx_, const real dz_, 
         const real CFL_, const real  ko_) : phy_time(0.), ko(ko_), dx(dx_), dz(dz_), 
-    grid(px_,pz_,nv_,nphi_,gx_,gz_,x0_,x1_,z0_,z1_,dx_,dz_)  {
+        grid(px_,pz_,nv_,nphi_,gx_,gz_,x0_,x1_,z0_,z1_,dx_,dz_) {
 
         auto size = grid.get_lpts();
         real mem_per_var = size*8/1024./1024./1024;
@@ -247,18 +247,13 @@ NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const
 
 #ifdef COSENU_MPI
         MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-#endif
-        int ngpus = 0;
-#ifdef _OPENACC
-        if (myrank==0) printf("\n\nOpenACC Enabled.\n" );
-        auto dev_type = acc_get_device_type();
-        ngpus = acc_get_num_devices( dev_type );
-        acc_set_device_num( myrank, dev_type );
-#endif
 
-        if (myrank==0) {
+#endif
+ 
+    //MPI_Barrier(MPI_COMM_WORLD);
 
-            printf("NuOsc2D with max OpenMP core: %d    GPU: %d\n\n", omp_get_max_threads(), ngpus );
+    if (myrank==0) {
+            printf("\nNuOsc2D on %d MPI ranks: %d core per rank.\n", grid.ranks, omp_get_max_threads() );
             printf("   Domain:  v: nv = %5d  nphi = %5d  on S2.\n", grid.get_nv(), grid.get_nphi() );
             printf("            x:( %12f %12f )  dx = %g\n", x0_,x1_, dx);
             printf("            z:( %12f %12f )  dz = %g\n", z0_,z1_, dz);

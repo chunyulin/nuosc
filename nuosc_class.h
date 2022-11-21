@@ -2,15 +2,15 @@
 #include "common.h"
 #include "CartGrid.h"
 
-    #define COLLAPSE_LOOP 3
-    #define PARFORALL(i,j,v) \
+#define COLLAPSE_LOOP 3
+#define PARFORALL(i,j,v) \
     _Pragma("omp parallel for collapse(3)") \
     _Pragma("acc parallel loop collapse(3)") \
     for (int i=0;i<grid.nx; ++i) \
     for (int j=0;j<grid.nz; ++j) \
     for (int v=0;v<grid.nv; ++v)
 
-    #define FORALL(i,j,v) \
+#define FORALL(i,j,v) \
     for (int i=0;i<grid.nx; ++i) \
     for (int j=0;j<grid.nz; ++j) \
     for (int v=0;v<grid.nv; ++v)

@@ -1,7 +1,8 @@
 
-MPI_ROOT?=/opt/nvidia/hpc_sdk/Linux_aarch64/22.2/comm_libs/openmpi/openmpi-3.1.5
-GSL_ROOT?=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
-  
+MPI_ROOT?=
+GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
+
+
 #CXX=g++
 #CXX=armclang++
 CXX ?= armclang++
@@ -13,7 +14,7 @@ INCLUDE=-I${GSL_ROOT}/include -I${MPI_ROOT}/include
 
 LIBS=-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \
      -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi
-
+## -lmpi_cxx   ## Intel2021 no need
 #DEBUG=-DPAPI
 #OPT=-Ofast -std=c++11 -fopenmp ${COSENU_OPT}
 OPT ?= -Ofast -std=c++11 -fopenmp -armpl

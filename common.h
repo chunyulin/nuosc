@@ -11,11 +11,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+#include <unistd.h>
+
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <vector>
 #include <list>
+#include <algorithm>
+#include <string>
 
 using std::cout;
 using std::endl;

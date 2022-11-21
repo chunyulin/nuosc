@@ -53,11 +53,21 @@ test2d:
           ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 512 --xmax 0.5 --dz 0.1 --dx 0.1 --nv 33 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY_T 10 --DUMP_EVERY_T 10000 --END_STEP_T 3000
 	### |dP|_max ~ 1e-7 for at T~20
 
-PARAM=--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 8 --xmax 0.5 --dz 0.1 --dx 0.1 \
-       --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 5
+PARAM=--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 32 --xmax 32 --dz 0.1 --dx 0.1 \
+       --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10
 test2d_mpi:
 	mpirun -np 1 ./nuosc --np 1 1 ${PARAM}
+	mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
+	mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
+	mpirun -np 4 ./nuosc --np 2 2 ${PARAM}
+	mpirun -np 4 ./nuosc --np 4 1 ${PARAM}
+	mpirun -np 4 ./nuosc --np 1 4 ${PARAM}
+	mpirun -np 8 ./nuosc --np 4 2 ${PARAM}
+	mpirun -np 8 ./nuosc --np 2 4 ${PARAM}
 
+testmpi: testmpi.o
+	mpic++ -acc -Minfo=acc testmpi.cpp -o testmpi
+	
 test_fft: test_fft.o
 	$(CXX) $(OPT) $^ -o $@ $(LIBS)
 	

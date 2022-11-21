@@ -86,17 +86,18 @@ void NuOsc::analysis() {
 
 #ifdef COSENU_MPI
     // TODO: pack multiple MPI_reduce into one.
+// TODO: pack multiple MPI_reduce into one.
 #define REDUCE(x, op) \
-    if (myrank==0)  MPI_Reduce(MPI_IN_PLACE, &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM); \
-    else            MPI_Reduce(&x,           &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM);
+    if (!myrank)  MPI_Reduce(MPI_IN_PLACE, &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM); \
+    else          MPI_Reduce(&x,           &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM);
+        
     //MPI_Allreduce(MPI_IN_PLACE, &x, 1, MPI_DOUBLE, op, grid.CartCOMM);
-
     REDUCE(surv,MPI_SUM);   REDUCE(survb,MPI_SUM);
     REDUCE(avgP,MPI_SUM);   REDUCE(avgPb,MPI_SUM);
     REDUCE(nor, MPI_SUM);   REDUCE(norb, MPI_SUM);
     REDUCE(aM01,MPI_SUM);   REDUCE(aM02, MPI_SUM);    REDUCE(aM03,MPI_SUM);
     REDUCE(maxdP,MPI_MAX);  /// !!!
-#undef REDUCE(x,op)
+#undef REDUCE
 #endif
 
 

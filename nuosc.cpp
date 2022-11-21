@@ -2,6 +2,20 @@
 #include "utils.h"
 #include <limits>
 
+// Handling OpenACC error.
+typedef void (*exitroutinetype)(char *err_msg);
+void acc_set_error_routine(exitroutinetype callback_routine);
+void handle_gpu_errors(char *err_msg) {
+    std::cout << "GPU Error: " << err_msg << std::endl;
+    std::cout << "Exiting..." << std::endl << std::endl;
+    #ifdef COSENU_MPI
+    MPI_Abort(MPI_COMM_WORLD, 1);
+    #endif
+    exit(-1);
+}
+
+
+
 int main(int argc, char *argv[]) {
 
     int px = 1;
@@ -30,6 +44,18 @@ int main(int argc, char *argv[]) {
     int ANAL_EVERY = 5;    // 10.0  / (cfl*dz) + 1;
     int END_STEP   = 5;    // 900.0 / (cfl*dz) + 1;
     int DUMP_EVERY = 99999999;
+
+    int ranks = 1, myrank = 0;
+    #ifdef COSENU_MPI
+    // THINK: consider to initialze MPI inside CartGrid, whcih need passing argc argv into.
+    int provided;
+    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    //MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    #endif
+
 
     // Parse input argument --------------------------------------------
     for (int t = 1; argv[t] != 0; t++) {
@@ -61,22 +87,22 @@ int main(int argc, char *argv[]) {
             // for monitoring
         } else if (strcmp(argv[t], "--ANA_EVERY") == 0 )  {
             ANAL_EVERY = atoi(argv[t+1]);    t+=1;
-            cout << " ** ANAL_EVERY: " << ANAL_EVERY << endl;
+            if (!myrank) cout << " ** ANAL_EVERY: " << ANAL_EVERY << endl;
         } else if (strcmp(argv[t], "--DUMP_EVERY") == 0 )  {
             DUMP_EVERY = atoi(argv[t+1]);    t+=1;
-            cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
+            if (!myrank) cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
         } else if (strcmp(argv[t], "--END_STEP") == 0 )  {
             END_STEP = atoi(argv[t+1]);    t+=1;
-            cout << " ** END_STEP: " << END_STEP << endl;
+            if (!myrank) cout << " ** END_STEP: " << END_STEP << endl;
         } else if (strcmp(argv[t], "--ANA_EVERY_T") == 0 )  {
             ANAL_EVERY = int( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
-            cout << " ** ANAL_EVERY: " << ANAL_EVERY << endl;
+            if (!myrank) cout << " ** ANAL_EVERY: " << ANAL_EVERY << endl;
         } else if (strcmp(argv[t], "--DUMP_EVERY_T") == 0 )  {
             DUMP_EVERY = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
-            cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
+            if (!myrank) cout << " ** DUMP_EVERY: " << DUMP_EVERY << endl;
         } else if (strcmp(argv[t], "--END_STEP_T") == 0 )  {
             END_STEP = int ( atof(argv[t+1]) / (cfl*dz) + 0.5 );    t+=1;
-            cout << " ** END_STEP: " << END_STEP << endl;
+            if (!myrank) cout << " ** END_STEP: " << END_STEP << endl;
             // for intial data
         } else if (strcmp(argv[t], "--lnue") == 0 )  {
             lnue   = atof(argv[t+1]);    t+=1;
@@ -104,15 +130,9 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    int ranks = 1, myrank = 0;
-    #ifdef COSENU_MPI
-    // THINK: consider to initialze MPI inside CartGrid, whcih need passing argc argv into.
-    int provided;
-    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
-    MPI_Comm_size(MPI_COMM_WORLD, &ranks);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    #endif
+#ifdef _OPENACC
+    //acc_set_error_routine(&handle_gpu_errors);  // undefined 
+#endif
 
 #ifndef KO_ORD_3
     int gz = 3, gx = 3;
@@ -170,7 +190,8 @@ int main(int argc, char *argv[]) {
 
     std::cout << std::flush;
     real stepms;
-
+    real stepms_max, stepms_min;
+    
 #ifdef COSENU_MPI
     double t1;
 #else
@@ -184,7 +205,7 @@ int main(int argc, char *argv[]) {
 #else
         if (t==cooltime)  t1 = std::chrono::high_resolution_clock::now();
 #endif
-        //cout << t << "..." << endl;
+        //cout << "At t = " << t << "..." << endl;
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
@@ -196,17 +217,27 @@ int main(int argc, char *argv[]) {
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
 #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
+            MPI_Reduce(&stepms, &stepms_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+            MPI_Reduce(&stepms, &stepms_min, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
 #else
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
+            stepms_max = stepms_min = stepms;
 #endif
-            if (myrank==0) printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/lpts*1e6);
+            if (myrank==0) {
+               printf("%d Walltime: (Min) %.3f s/T, %.2f ns/step-grid.    (Max) %.3f s/T, %.2f ns/step-grid.\n", t,
+               stepms_min/state.phy_time/1000,  stepms_min/(t-cooltime+1)/lpts*1e6,
+               stepms_max/state.phy_time/1000,  stepms_max/(t-cooltime+1)/lpts*1e6 );
+            }
         }
     }
 
-    if (myrank==0) printf("Completed.\n");
-    if (myrank==0) printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
-    if (myrank==0) printf("[Summ] %d %d %d %d %f\n",  omp_get_max_threads(), nx, nz, state.get_nv(), stepms/(END_STEP-cooltime+1)/lpts*1e6);
-
+    if (myrank==0) {
+       double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
+       printf("Completed.\n");
+       printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
+       printf("[Summ] %d %d %d %d %d %d %f\n", omp_get_max_threads(), px, pz, nx, nz, state.get_nv(), ns_per_stepgrid);
+    }
+    
     #ifdef COSENU_MPI
     MPI_Finalize();    // error because this is called before the deconstructor of CartGrid
     #endif

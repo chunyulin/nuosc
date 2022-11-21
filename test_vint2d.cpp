@@ -17,9 +17,8 @@ class Disk {
         int nvr, nvt;       // # of v cubature points.
         int nv;       // # of v cubature points.
         Vec vw;                 // integral quadrature
-        Vec vx;
-        Vec vy;
         Vec vz;
+        Vec vy;
         Vec f;
         double sum;
 

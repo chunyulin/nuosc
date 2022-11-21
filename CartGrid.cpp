@@ -97,3 +97,254 @@ int gen_v1d_cellcenter(const int nv, Vec vw, Vec vz) {
 }
 
 
+// calculates local box and cartesian communicator given global box and processor shape
+CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real x0_, real x1_, real z0_, real z1_, real dx_, real dz_) 
+: px(px_), pz(pz_), nphi(nphi_), gx(gx_), gz(gz_), dx(dx_), dz(dz_), nvar(8)
+{
+#ifdef COSENU_MPI
+    MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+    // create Cartesian topology
+    int periods[2] = {1,1};
+    int pdims[2] = {px, pz};
+
+    MPI_Cart_create(MPI_COMM_WORLD, 2, pdims, periods, 0, &CartCOMM);
+
+    // calcute local geometry from computational domain (x0_, x1_, z0_, z1_)
+    int coords[2];
+    MPI_Cart_coords(CartCOMM, myrank, 2, coords);
+    rx = coords[0];
+    rz = coords[1];
+
+    MPI_Cart_shift(CartCOMM, 0, 1, &lowerX, &upperX);
+    MPI_Cart_shift(CartCOMM, 1, 1, &lowerZ, &upperZ);
+    
+    //
+    // Get shared comm
+    //
+    MPI_Comm scomm;
+    MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &scomm);
+    MPI_Comm_rank(scomm, &srank);
+
+    // set GPU
+    #ifdef _OPENACC
+    auto dev_type = acc_get_device_type();
+    ngpus = acc_get_num_devices( dev_type );
+    acc_set_device_num( srank, dev_type );
+    #ifdef GDR_OFF
+    if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = OFF)\n", ngpus );
+    #else
+    if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = ON)\n", ngpus );
+    #endif
+    
+    #endif
+
+#endif
+
+    x0 = x0_ + (x1_-x0_)*rx    /px;
+    x1 = x0_ + (x1_-x0_)*(rx+1)/px;  if (rx+1 == px)  x1 = x1_;
+    z0 = z0_ + (z1_-z0_)*rz    /pz;
+    z1 = z0_ + (z1_-z0_)*(rz+1)/pz;  if (rz+1 == pz)  z1 = z1_;
+
+    nx  = int((x1-x0)/dx);
+    nz  = int((z1-z0)/dz);
+
+    X.reserve(nx);   for(int i=0;i<nx; ++i)    X[i] = x0 + (i+0.5)*dx;
+    Z.reserve(nz);   for(int i=0;i<nz; ++i)    Z[i] = z0 + (i+0.5)*dz;
+
+#if defined(IM_V2D_POLAR_GL_Z)
+    nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
+#else
+    nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
+#endif
+
+
+    lpts = (nx+2*gx)*(nz+2*gz)*nv;
+    //lpts_x = gx*nz
+    //lpts_z = gz*nx
+
+    // prepare datatype for ghostzone block of each dimension
+    const auto npbX = nvar*gx*nz*nv;
+    const auto npbZ = nvar*nx*gz*nv;
+
+#ifdef COSENU_MPI
+    MPI_Type_contiguous(npbX, MPI_DOUBLE, &t_pbX);  MPI_Type_commit(&t_pbX);
+    MPI_Type_contiguous(npbZ, MPI_DOUBLE, &t_pbZ);  MPI_Type_commit(&t_pbZ);
+
+    // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
+    int ierr = 0;
+    ierr = MPI_Win_allocate(4*npbX*sizeof(real), npbX*sizeof(real), MPI_INFO_NULL, CartCOMM, &pbX, &w_pbX);
+    ierr = MPI_Win_allocate(4*npbZ*sizeof(real), npbZ*sizeof(real), MPI_INFO_NULL, CartCOMM, &pbZ, &w_pbZ);
+    if (ierr!=MPI_SUCCESS) {  cout << " !! MPI error " << ierr << " at " << __FILE__ << ":" << __LINE__ << endl; }
+#else
+    pbX = new real[4*npbX];
+    pbZ = new real[4*npbZ];
+#endif
+#pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
+
+    for (int i=0;i<ranks;++i) {
+       if (myrank==i)  {
+          print_info();
+          MPI_Barrier(MPI_COMM_WORLD);
+       } else {
+          MPI_Barrier(MPI_COMM_WORLD);
+       }
+    }
+    //test_win();
+}
+
+CartGrid::~CartGrid() {
+    //MPI_Win_free(&w_pbX);   // will free by the MPI_Finalize() anyway.
+    //MPI_Win_free(&w_pbZ);
+    //MPI_Type_free(&t_pbX);
+    //MPI_Type_free(&t_pbZ);
+
+#pragma acc exit data delete(pbX,pbZ)
+
+#ifndef COSENU_MPI
+    delete[] pbX;
+    delete[] pbZ;
+#endif
+}
+
+
+void CartGrid::sync_buffer() {
+    const auto npbX = nvar*gx*nz*nv;
+    const auto npbZ = nvar*nx*gz*nv;
+#ifdef COSENU_MPI
+
+#if 0
+    for (int i=0;i<5;i++) { pbX[i]= i+1; pbX[i+npbX]= i+10; }
+    for (int i=0;i<5;i++) { pbZ[i]= i+1; pbZ[i+npbZ]= i+10; }
+    for (int i=0;i<5;i++) pbX[i+2*npbX]= 0;
+    for (int i=0;i<5;i++) pbZ[i+2*npbZ]= 0;
+
+    cout << "== BeforeX: ";
+    for (int i=0;i<5;i++) {
+        cout << pbX[i+2*npbX] << " ";
+    }
+    cout << "\t Z: ";
+    for (int i=0;i<5;i++) {
+        cout << pbZ[i+2*npbZ] << " ";
+    } cout << endl;
+#endif
+#pragma omp parallel sections
+    {
+#pragma omp section
+        #ifdef GDR_OFF
+            #pragma acc update self( pbX[0:2*npbX] )
+        #else
+            #pragma acc host_data use_device(pbX)
+        #endif
+        {
+            MPI_Win_fence(0, w_pbX);
+            MPI_Put(&pbX[0],    1, t_pbX, lowerX, 2 /* skip old X block */, 1, t_pbX, w_pbX);
+            MPI_Put(&pbX[npbX], 1, t_pbX, upperX, 3 /* skip old X block */, 1, t_pbX, w_pbX);
+            MPI_Win_fence(0, w_pbX);
+        }
+        #ifdef GDR_OFF
+        //#pragma acc update device( pbX[2*nvar*gx*nz*nv:4*nvar*gx*nz*nv] )    // THINK: why fail !!
+        #pragma acc update device( pbX[0:4*npbX] )
+        #endif
+#pragma omp section
+        #ifdef GDR_OFF
+            #pragma acc update self( pbZ[0:2*npbZ] )
+        #else
+            #pragma acc host_data use_device(pbZ)
+        #endif
+        {
+            MPI_Win_fence(0, w_pbZ);
+            MPI_Put(&pbZ[0],    1, t_pbZ, lowerZ, 2 /* skip old Z block */, 1, t_pbZ, w_pbZ);
+            MPI_Put(&pbZ[npbZ], 1, t_pbZ, upperZ, 3 /* skip old Z block */, 1, t_pbZ, w_pbZ);
+            MPI_Win_fence(0, w_pbZ);
+        }
+        #ifdef GDR_OFF
+        //#pragma acc update device( pbX[2*nvar*gx*nz*nv:4*nvar*gx*nz*nv] )    // THINK: why fail !!
+        #pragma acc update device( pbZ[0:4*npbZ] )
+        #endif
+    }
+
+#if 0
+    cout << "== AfterX: ";
+    for (int i=0;i<5;i++) {
+        cout << pbX[i+2*npbX] << " ";
+    } cout << "\t Z: ";
+    for (int i=0;i<5;i++) {
+        cout << pbZ[i+2*npbZ] << " ";
+    } cout << endl;
+#endif
+#endif
+}
+
+void CartGrid::sync_buffer_isend() {
+#ifdef COSENU_MPI
+#if 0
+    for (int i=0;i<5;i++) {
+        pbX[i] = i;     pbX[i+2*nvar*gx*nz*nv] = 0;
+        pbZ[i] = i;     pbZ[i+2*nvar*nx*gz*nv] = 0;
+    }
+    cout << "== BeforeX: ";
+    for (int i=0;i<5;i++) {
+        cout << pbX[i+2*nvar*gx*nz*nv] << " ";
+    } cout << "\t Z: ";
+    for (int i=0;i<5;i++) {
+        cout << pbZ[i+2*nvar*nx*gz*nv] << " ";
+    } cout << endl;
+#endif
+
+    MPI_Request reqs[8];
+    MPI_Comm comm = CartCOMM; //MPI_COMM_WORLD;
+    const auto npbX = nvar*gx*nz*nv;
+    const auto npbZ = nvar*nx*gz*nv;
+#pragma omp parallel sections
+    {
+#pragma omp section
+        #ifdef GDR_OFF
+          #pragma acc update self( pbX[0:2*npbX] )
+        #else
+          #pragma acc host_data use_device(pbX)
+        #endif
+        {
+            MPI_Isend(&pbX[     0], 1, t_pbX, lowerX, 9, comm, &reqs[0]);
+            MPI_Isend(&pbX[  npbX], 1, t_pbX, upperX, 9, comm, &reqs[1]);
+            MPI_Irecv(&pbX[2*npbX], 1, t_pbX, upperX, 9, comm, &reqs[2]);
+            MPI_Irecv(&pbX[3*npbX], 1, t_pbX, lowerX, 9, comm, &reqs[3]);
+        }
+#pragma omp section
+        #ifdef GDR_OFF
+          #pragma acc update self( pbZ[0:2*npbZ] )
+        #else
+          #pragma acc host_data use_device(pbZ)
+        #endif
+        {
+            MPI_Isend(&pbZ[     0], 1, t_pbZ, lowerZ, 9, comm, &reqs[4]);
+            MPI_Isend(&pbZ[  npbZ], 1, t_pbZ, upperZ, 9, comm, &reqs[5]);
+            MPI_Irecv(&pbZ[2*npbZ], 1, t_pbZ, upperZ, 9, comm, &reqs[6]);
+            MPI_Irecv(&pbZ[3*npbZ], 1, t_pbZ, lowerZ, 9, comm, &reqs[7]);
+        }
+    }
+
+    MPI_Waitall(8, reqs, MPI_STATUSES_IGNORE);
+    #ifdef GDR_OFF
+    #pragma acc update device( pbX[(2*npbX):(4*npbX)], pbZ[(2*npbZ):(4*npbZ)] )
+    // why pbZ[2*npbZ:4*npbZ] fail !
+    #endif
+    
+#if 0
+    cout << "== AfterX: ";
+    for (int i=0;i<5;i++) {
+        cout << pbX[i+2*nvar*gx*nz*nv] << " ";
+    } cout << "\t Z: ";
+    for (int i=0;i<5;i++) {
+        cout << pbZ[i+2*nvar*nx*gz*nv] << " ";
+    } cout << endl;
+#endif
+#endif
+}
+
+void CartGrid::sync_buffer_copy() {   // Only for single-node test
+    memcpy(&pbX[2*gx*nz*nv*nvar], &pbX[0], 2*gx*nz*nv*nvar*sizeof(real));
+    memcpy(&pbZ[2*nx*gz*nv*nvar], &pbZ[0], 2*nx*gz*nv*nvar*sizeof(real));
+}
+
