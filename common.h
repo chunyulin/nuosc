@@ -1,10 +1,19 @@
 #pragma once
 
-//==== Global flag
-#define COSENU_MPI
+//==== Start of global flags
+#define DIM 3
+#if DIM != 3
+#error Only DIM=3 is supported
+#endif
 
+#define COSENU_MPI
 #define KO_ORD_3
 #define BC_PERI
+
+//#define ADV_TEST
+
+//==== End of global flags
+
 
 #include <chrono>
 #include <cmath>

@@ -2,17 +2,19 @@
 #include "common.h"
 #include "CartGrid.h"
 
-#define COLLAPSE_LOOP 3
-#define PARFORALL(i,j,v) \
-    _Pragma("omp parallel for collapse(3)") \
-    _Pragma("acc parallel loop collapse(3)") \
-    for (int i=0;i<grid.nx; ++i) \
-    for (int j=0;j<grid.nz; ++j) \
+#define COLLAPSE_LOOP 4
+#define PARFORALL(i,j,k,v) \
+    _Pragma("omp parallel for collapse(4)") \
+    _Pragma("acc parallel loop collapse(4)") \
+    for (int i=0;i<grid.nx[0]; ++i) \
+    for (int j=0;j<grid.nx[1]; ++j) \
+    for (int k=0;k<grid.nx[2]; ++k) \
     for (int v=0;v<grid.nv; ++v)
 
-#define FORALL(i,j,v) \
-    for (int i=0;i<grid.nx; ++i) \
-    for (int j=0;j<grid.nz; ++j) \
+#define FORALL(i,j,k,v) \
+    for (int i=0;i<grid.nx[0]; ++i) \
+    for (int j=0;j<grid.nx[1]; ++j) \
+    for (int k=0;k<grid.nx[2]; ++k) \
     for (int v=0;v<grid.nv; ++v)
 
 
@@ -84,7 +86,8 @@ class NuOsc {
     public:
         const int nvar = 8;
         int myrank = 0;
-        real phy_time, dt, dx, dz;
+        real phy_time;
+        real dt, dx;
 
         CartGrid grid;   // grid geometry of a MPI rank   // FIXME: why uniqie_ptr fail on MPI?
         real ds_L;       // = dx*dz/(z1-z0)/(x1-x0)
@@ -110,9 +113,8 @@ class NuOsc {
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
-        NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const int gx_,const int gz_,
-                const real  x0_, const real  x1_, const real  z0_, const real  z1_, const real dx_, const real dz_, 
-                const real CFL_, const real  ko_);
+        NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
+              const real bbox[][2], const real dx_, const real CFL_, const real  ko_);
 
         ~NuOsc() {
             #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)

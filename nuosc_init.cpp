@@ -6,6 +6,7 @@ inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 inline real eps_p(real z, real z0, real eps0, real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
 double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
+    // ELN for vx,vz
     return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
 }
 double g(double v, double sigma, double v0 = 1.0){
@@ -21,49 +22,49 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
     real n00=0, n01=0;
 
-    if (ipt==4) {
+    if (ipt==4) {   // init data for the code comparison ptoject.
 
-        int amax=grid.nz/2/10;
+        int amax=grid.nx[DIM-1]/2/10;
 
 	if (myrank==0) printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue, lnueb, sigma, amax);
 
-        Vec phi(grid.nz/10+1);
-        const real pi2oL = 2.0*M_PI/(grid.z0-grid.z1);
+        Vec phi(grid.nx[DIM-1]/10+1);
+        const real pi2oL = 2.0*M_PI/(grid.bbox[DIM-1][1]-grid.bbox[DIM-1][0]);
 	#pragma omp parallel for
         for(int k=-amax;k<=amax;++k){
 	    phi[k+amax]=2.0*M_PI*rand()/RAND_MAX;
         }
    
 	#pragma omp parallel for reduction(+:n00,n01)
-        for (int j=0;j<grid.nz; ++j){
+        for (int k=0;k<grid.nx[DIM-1]; ++k){
 	    real tmpr=0.0;
             real tmpi=0.0;
 	    #pragma omp parallel for reduction(+:tmpr,tmpi)
-    	    for(int k=-amax;k<amax;++k) {
-        	if(k!=0){
-            	    tmpr += 1.e-7/abs(k)*cos(pi2oL*k*grid.Z[j] + phi[k+amax]);
-        	    tmpi += 1.e-7/abs(k)*sin(pi2oL*k*grid.Z[j] + phi[k+amax]);
+    	    for(int q=-amax;q<amax;++q) {
+        	if(q!=0){
+            	    tmpr += 1.e-7/abs(q)*cos(pi2oL*q*grid.X[DIM-1][k] + phi[q+amax]);
+        	    tmpi += 1.e-7/abs(q)*sin(pi2oL*q*grid.X[DIM-1][k] + phi[q+amax]);
                 }
             }
     	    real tmp2=sqrt(1.0-tmpr*tmpr-tmpi*tmpi);
     	    for (int v=0;v<grid.nv; ++v){
-		auto jv = grid.idx(0,j,v);
-		
-		// ELN profile
-		G0 [jv] =         g(grid.vz[v], lnue );
-		G0b[jv] = alpha * g(grid.vz[v], lnueb);
+		auto kv = grid.idx(0,0,k,v);
 
-                v_stat->ee    [jv] =  0.5* G0 [jv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-                v_stat->xx    [jv] =  0.5* G0 [jv]*(1.0-tmp2);
-                v_stat->ex_re [jv] =  0.5* G0 [jv]*tmpr;//1e-6;
-                v_stat->ex_im [jv] =  0.5* G0 [jv]*tmpi;//random_amp(0.001);
-                v_stat->bee   [jv] =  0.5* G0b[jv]*(1.0+tmp2);
-                v_stat->bxx   [jv] =  0.5* G0b[jv]*(1.0-tmp2);
-                v_stat->bex_re[jv] =  0.5* G0b[jv]*tmpr;//1e-6;
-                v_stat->bex_im[jv] = -0.5* G0b[jv]*tmpi;//random_amp(0.001);
+		// ELN profile
+		G0 [kv] =         g(grid.vz[v], lnue );
+		G0b[kv] = alpha * g(grid.vz[v], lnueb);
+
+                v_stat->ee    [kv] =  0.5* G0 [kv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+                v_stat->xx    [kv] =  0.5* G0 [kv]*(1.0-tmp2);
+                v_stat->ex_re [kv] =  0.5* G0 [kv]*tmpr;//1e-6;
+                v_stat->ex_im [kv] =  0.5* G0 [kv]*tmpi;//random_amp(0.001);
+                v_stat->bee   [kv] =  0.5* G0b[kv]*(1.0+tmp2);
+                v_stat->bxx   [kv] =  0.5* G0b[kv]*(1.0-tmp2);
+                v_stat->bex_re[kv] =  0.5* G0b[kv]*tmpr;//1e-6;
+                v_stat->bex_im[kv] = -0.5* G0b[kv]*tmpi;//random_amp(0.001);
                 // initial nv_e
-                n00 += grid.vw[v]*v_stat->ee [jv];
-                n01 += grid.vw[v]*v_stat->bee[jv];
+                n00 += grid.vw[v]*v_stat->ee [kv];
+                n01 += grid.vw[v]*v_stat->bee[kv];
             }
         }
 
@@ -87,34 +88,34 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	ing1 = 1.0/ing1;
 
 	#pragma omp parallel for reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
-        FORALL(i,j,v) {
+        FORALL(i,j,k,v) {
 
-            uint ijv = grid.idx(i,j,v);
+            uint ijkv = grid.idx(i,j,k,v);
 
             // ELN profile
-            G0 [ijv] =         ng [v] * ing0;
-            G0b[ijv] = alpha * ngb[v] * ing1;
+            G0 [ijkv] =         ng [v] * ing0;
+            G0b[ijkv] = alpha * ngb[v] * ing1;
 
             real tmpr;
-            if      (ipt==0) { tmpr = eps_c(grid.Z[j],0.0,eps0,sigma); }                              // center perturbation
-            else if (ipt==1) { tmpr = eps_r(eps0); }                  // random
-            else if (ipt==2) { tmpr = eps_p(grid.Z[j],0.0,eps0,sigma);}
+            if      (ipt==0) { tmpr = eps_c(grid.X[DIM-1][k],0.0,eps0,sigma); }      // center Z perturbation
+            else if (ipt==1) { tmpr = eps_r(eps0); }                                 // random
+            else if (ipt==2) { tmpr = eps_p(grid.X[DIM-1][k],0.0,eps0,sigma);}       // periodic Z perturbation
             else if (ipt==3) { tmpr = eps0;}
             else             { assert(0); }                         // Not implemented
 
             real p3o = sqrt(1.0-tmpr*tmpr);
-            v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
-            v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
-            v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmpr;
-            v_stat->ex_im [ijv] = 0.0;
-            v_stat->bee   [ijv] = 0.5* G0b[ijv]*(1.0+p3o);
-            v_stat->bxx   [ijv] = 0.5* G0b[ijv]*(1.0-p3o);
-            v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmpr;
-            v_stat->bex_im[ijv] = 0.0;
+            v_stat->ee    [ijkv] = 0.5* G0[ijkv]*(1.0+p3o);
+            v_stat->xx    [ijkv] = 0.5* G0[ijkv]*(1.0-p3o);
+            v_stat->ex_re [ijkv] = 0.5* G0[ijkv]*tmpr;
+            v_stat->ex_im [ijkv] = 0.0;
+            v_stat->bee   [ijkv] = 0.5* G0b[ijkv]*(1.0+p3o);
+            v_stat->bxx   [ijkv] = 0.5* G0b[ijkv]*(1.0-p3o);
+            v_stat->bex_re[ijkv] = 0.5* G0b[ijkv]*tmpr;
+            v_stat->bex_im[ijkv] = 0.0;
 
             // initial nv_e
-            n00 += grid.vw[v]*v_stat->ee [ijv];
-            n01 += grid.vw[v]*v_stat->bee[ijv];
+            n00 += grid.vw[v]*v_stat->ee [ijkv];
+            n01 += grid.vw[v]*v_stat->bee[ijkv];
         }
 
         real n0[] = {n00, n01};
@@ -136,28 +137,27 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 #endif
 }
 
-
 void NuOsc::fillInitGaussian(real eps0, real sigma) {
 
     if (myrank==0) printf("   Init Gaussian eps0= %g sigma= %g for testing.\n", eps0, sigma);
 
-    PARFORALL(i,j,v) {
+    PARFORALL(i,j,k,v) {
     
-            auto ipv = grid.idx(i,j,v);
+            auto ijkv = grid.idx(i,j,k,v);
 
-            G0 [ipv] = 1.0;
-            G0b[ipv] = 1.0;
+            G0 [ijkv] = 1.0;
+            G0b[ijkv] = 1.0;
 
-            eps0 = 1.0/(sqrt(2.0*M_PI)*sigma);
-            real tmp = eps0* exp( - ((grid.X[i]-0.2)*(grid.X[i]-0.2))/(1.0*sigma*sigma) - ((grid.Z[j]+0.05)*(grid.Z[j]+0.05))/(2.0*sigma*sigma) );
-            v_stat->ee    [ipv] = tmp;
-            v_stat->xx    [ipv] = 0;
-            v_stat->ex_re [ipv] = 0;
-            v_stat->ex_im [ipv] = 0;
-            v_stat->bee   [ipv] = 0;
-            v_stat->bxx   [ipv] = 0;
-            v_stat->bex_re[ipv] = 0;
-            v_stat->bex_im[ipv] = 0;
+            real tmp = eps0* exp( - ((grid.X[0][i])*(grid.X[0][i]))/(1.0*sigma*sigma)
+                                  - ((grid.X[2][k])*(grid.X[2][k]))/(1.0*sigma*sigma)  );
+            v_stat->ee    [ijkv] = tmp;
+            v_stat->xx    [ijkv] = 0;
+            v_stat->ex_re [ijkv] = 0;
+            v_stat->ex_im [ijkv] = 0;
+            v_stat->bee   [ijkv] = 0;
+            v_stat->bxx   [ijkv] = 0;
+            v_stat->bex_re[ijkv] = 0;
+            v_stat->bex_im[ijkv] = 0;
     }
 }
 
@@ -165,22 +165,22 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
 
     if (myrank==0) printf("   Init Square eps0= %g sigma= %g for testing.\n", eps0, sigma);
 
-    PARFORALL(i,j,v) {
-	    auto ijv = grid.idx(i,j,v);
+    PARFORALL(i,j,k,v) {
+	    auto ijkv = grid.idx(i,j,k,v);
 
-            G0 [ijv] = 1.0;
-            G0b[ijv] = 1.0;
-	    
+            G0 [ijkv] = 1.0;
+            G0b[ijkv] = 1.0;
+
             real tmp = 0;
-            if (grid.Z[j]*grid.Z[j]+grid.X[i]*grid.X[i] <= sigma*sigma) tmp = eps0;
-            v_stat->ee    [ijv] = tmp;
-            v_stat->xx    [ijv] = 0;
-            v_stat->ex_re [ijv] = 0;
-            v_stat->ex_im [ijv] = 0;
-            v_stat->bee   [ijv] = 0;
-            v_stat->bxx   [ijv] = 0;
-            v_stat->bex_re[ijv] = 0;
-            v_stat->bex_im[ijv] = 0;
+            if (grid.X[DIM-1][k]*grid.X[DIM-1][k]+grid.X[0][i]*grid.X[0][i] <= sigma*sigma) tmp = eps0;
+            v_stat->ee    [ijkv] = tmp;
+            v_stat->xx    [ijkv] = 0;
+            v_stat->ex_re [ijkv] = 0;
+            v_stat->ex_im [ijkv] = 0;
+            v_stat->bee   [ijkv] = 0;
+            v_stat->bxx   [ijkv] = 0;
+            v_stat->bex_re[ijkv] = 0;
+            v_stat->bex_im[ijkv] = 0;
     }
 }
 
@@ -188,22 +188,21 @@ void NuOsc::fillInitTriangle(real eps0, real sigma) {
 
     printf("   Init Triangle eps0= %g sigma= %g for testing.\n", eps0, sigma);
 
-    PARFORALL(i,j,v) {
-	    auto ipv = grid.idx(i,j,v);
+    PARFORALL(i,j,k,v) {
+	    auto ijkv = grid.idx(i,j,k,v);
 
-            G0 [ipv] = 1.0;
-            G0b[ipv] = 1.0;
-	    
-            if      (grid.Z[j]<0  && grid.Z[j] > -sigma)  v_stat->ee[ipv] = ( sigma + grid.Z[j] ) * eps0 / sigma;
-            else if (grid.Z[j]>=0 && grid.Z[j] <  sigma)  v_stat->ee[ipv] = ( sigma - grid.Z[j] ) * eps0 / sigma;
-            else                                    v_stat->ee[ipv] = 0.0;
-            v_stat->xx    [ipv] = 0;
-            v_stat->ex_re [ipv] = 0;
-            v_stat->ex_im [ipv] = 0;
-            v_stat->bee   [ipv] = 0;
-            v_stat->bxx   [ipv] = 0;
-            v_stat->bex_re[ipv] = 0;
-            v_stat->bex_im[ipv] = 0;
+            G0 [ijkv] = 1.0;
+            G0b[ijkv] = 1.0;
+
+            if      (grid.X[DIM-1][k]<0  && grid.X[DIM-1][k] > -sigma)  v_stat->ee[ijkv] = ( sigma + grid.X[DIM-1][k] ) * eps0 / sigma;
+            else if (grid.X[DIM-1][k]>=0 && grid.X[DIM-1][k] <  sigma)  v_stat->ee[ijkv] = ( sigma - grid.X[DIM-1][k] ) * eps0 / sigma;
+            else    v_stat->ee[ijkv] = 0.0;
+            v_stat->xx    [ijkv] = 0;
+            v_stat->ex_re [ijkv] = 0;
+            v_stat->ex_im [ijkv] = 0;
+            v_stat->bee   [ijkv] = 0;
+            v_stat->bxx   [ijkv] = 0;
+            v_stat->bex_re[ijkv] = 0;
+            v_stat->bex_im[ijkv] = 0;
     }
 }
-
