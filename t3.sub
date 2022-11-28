@@ -1,0 +1,31 @@
+#! /bin/bash
+#SBATCH -A GOV109092
+#SBATCH -p ctest
+#SBATCH -J nuosc
+#SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=56
+
+module purge
+module load compiler/intel/2021 IntelMPI/2021
+##OpenMPI/4.1.1
+#module load compiler/nvhpc/21.5
+#module load compiler/gcc/10.2.0 OpenMPI/4.0.5
+module load libs/GSL/2.6
+
+
+#export I_MPI_DEBUG=100
+export I_MPI_FABRICS=shm:ofi
+#export I_MPI_FABRICS=ofi
+#export I_MPI_PMI_LIBRARY=/usr/lib64/libpmi.so
+SRUN="mpiexec.hydra -bootstrap slurm" ## -np ${SLURM_NTASKS}"
+#SRUN="srun --cpu_bind=v"
+#SRUN="mpirun -np ${SLURM_NTASKS}"
+
+export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+${SRUN} -np 1 ./nuosc --np 1 1 \
+                --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 16 --xmax 2 --dz 0.1 --dx 0.1 \
+                --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 1 --END_STEP 100
+
+
+
+
+echo "--- Walltime: ${SECONDS} sec."

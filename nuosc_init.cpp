@@ -136,7 +136,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 #endif
 }
 
-
 void NuOsc::fillInitGaussian(real eps0, real sigma) {
 
     if (myrank==0) printf("   Init Gaussian eps0= %g sigma= %g for testing.\n", eps0, sigma);
@@ -148,8 +147,7 @@ void NuOsc::fillInitGaussian(real eps0, real sigma) {
             G0 [ipv] = 1.0;
             G0b[ipv] = 1.0;
 
-            eps0 = 1.0/(sqrt(2.0*M_PI)*sigma);
-            real tmp = eps0* exp( - ((grid.X[i]-0.2)*(grid.X[i]-0.2))/(1.0*sigma*sigma) - ((grid.Z[j]+0.05)*(grid.Z[j]+0.05))/(2.0*sigma*sigma) );
+            real tmp = eps0* exp( - ((grid.X[i])*(grid.X[i]))/(1.0*sigma*sigma) - ((grid.Z[j])*(grid.Z[j]))/(1.0*sigma*sigma) );
             v_stat->ee    [ipv] = tmp;
             v_stat->xx    [ipv] = 0;
             v_stat->ex_re [ipv] = 0;

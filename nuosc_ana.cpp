@@ -39,7 +39,7 @@ void NuOsc::analysis() {
     eval_conserved(v_stat);
 
     real maxdP = 0.0;
-    real maxdN = 0.0;
+    //real maxdN = 0.0;
     real avgP  = 0.0, avgPb = 0.0;
     real surv  = 0.0, survb  = 0.0;
     real s0  = 0.0, s1  = 0.0;
@@ -50,8 +50,8 @@ void NuOsc::analysis() {
     real I1=0., I2=0.;
 #endif
     // integral over (vz,z): assume dz=dy=const.
-#pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP,maxdN) collapse(COLLAPSE_LOOP)
-#pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP,maxdN) collapse(COLLAPSE_LOOP)
+#pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
+#pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
     FORALL(i,j,v)  {
         int ijv = grid.idx(i,j,v);
 
@@ -97,6 +97,10 @@ void NuOsc::analysis() {
     REDUCE(nor, MPI_SUM);   REDUCE(norb, MPI_SUM);
     REDUCE(aM01,MPI_SUM);   REDUCE(aM02, MPI_SUM);    REDUCE(aM03,MPI_SUM);
     REDUCE(maxdP,MPI_MAX);  /// !!!
+#ifdef ADV_TEST
+    REDUCE(I1,MPI_SUM);   REDUCE(I2,MPI_SUM);
+#endif
+
 #undef REDUCE
 #endif
 

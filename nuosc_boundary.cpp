@@ -254,10 +254,9 @@ void NuOsc::unpack_buffer(FieldVar* out) {
 void NuOsc::sync_boundary(FieldVar* v0) {
 
     pack_buffer(v0);
-#define SYNC_MPI_PUT
 #if defined(SYNC_COPY)
     grid.sync_buffer_copy();
-#elif defined(SYNC_MPI_PUT)
+#elif defined(SYNC_MPI_ONESIDE_COPY)
     grid.sync_buffer();
 #else
     grid.sync_buffer_isend();

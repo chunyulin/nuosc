@@ -137,7 +137,14 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     #else
     if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = ON)\n", ngpus );
     #endif
-    
+    #endif
+
+    #if defined(SYNC_COPY)
+    if (!myrank) printf("SYNC_COPY for test.\n");
+    #elif defined(SYNC_MPI_ONESIDE_COPY)
+    if (!myrank) printf("MPI One-side copy.\n");
+    #else
+    if (!myrank) printf("MPI Isend/recv.\n");
     #endif
 
 #endif
@@ -172,11 +179,17 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     MPI_Type_contiguous(npbX, MPI_DOUBLE, &t_pbX);  MPI_Type_commit(&t_pbX);
     MPI_Type_contiguous(npbZ, MPI_DOUBLE, &t_pbZ);  MPI_Type_commit(&t_pbZ);
 
+    #ifdef SYNC_MPI_ONESIDE_COPY
     // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
     int ierr = 0;
     ierr = MPI_Win_allocate(4*npbX*sizeof(real), npbX*sizeof(real), MPI_INFO_NULL, CartCOMM, &pbX, &w_pbX);
     ierr = MPI_Win_allocate(4*npbZ*sizeof(real), npbZ*sizeof(real), MPI_INFO_NULL, CartCOMM, &pbZ, &w_pbZ);
     if (ierr!=MPI_SUCCESS) {  cout << " !! MPI error " << ierr << " at " << __FILE__ << ":" << __LINE__ << endl; }
+    #else
+    pbX = new real[4*npbX];
+    pbZ = new real[4*npbZ];
+    #endif
+
 #else
     pbX = new real[4*npbX];
     pbZ = new real[4*npbZ];
@@ -244,8 +257,7 @@ void CartGrid::sync_buffer() {
             MPI_Win_fence(0, w_pbX);
         }
         #ifdef GDR_OFF
-        //#pragma acc update device( pbX[2*nvar*gx*nz*nv:4*nvar*gx*nz*nv] )    // THINK: why fail !!
-        #pragma acc update device( pbX[0:4*npbX] )
+        #pragma acc update device( pbX[2*npbX:4*npbX] )
         #endif
 #pragma omp section
         #ifdef GDR_OFF
@@ -260,8 +272,7 @@ void CartGrid::sync_buffer() {
             MPI_Win_fence(0, w_pbZ);
         }
         #ifdef GDR_OFF
-        //#pragma acc update device( pbX[2*nvar*gx*nz*nv:4*nvar*gx*nz*nv] )    // THINK: why fail !!
-        #pragma acc update device( pbZ[0:4*npbZ] )
+        #pragma acc update device( pbZ[2*npbZ:4*npbZ] )
         #endif
     }
 
@@ -306,10 +317,10 @@ void CartGrid::sync_buffer_isend() {
           #pragma acc host_data use_device(pbX)
         #endif
         {
-            MPI_Isend(&pbX[     0], 1, t_pbX, lowerX, 9, comm, &reqs[0]);
-            MPI_Isend(&pbX[  npbX], 1, t_pbX, upperX, 9, comm, &reqs[1]);
-            MPI_Irecv(&pbX[2*npbX], 1, t_pbX, upperX, 9, comm, &reqs[2]);
-            MPI_Irecv(&pbX[3*npbX], 1, t_pbX, lowerX, 9, comm, &reqs[3]);
+            MPI_Isend(&pbX[     0], 1, t_pbX, lowerX,  9, comm, &reqs[0]);
+            MPI_Isend(&pbX[  npbX], 1, t_pbX, upperX, 10, comm, &reqs[1]);
+            MPI_Irecv(&pbX[2*npbX], 1, t_pbX, upperX,  9, comm, &reqs[2]);
+            MPI_Irecv(&pbX[3*npbX], 1, t_pbX, lowerX, 10, comm, &reqs[3]);
         }
 #pragma omp section
         #ifdef GDR_OFF
@@ -318,17 +329,16 @@ void CartGrid::sync_buffer_isend() {
           #pragma acc host_data use_device(pbZ)
         #endif
         {
-            MPI_Isend(&pbZ[     0], 1, t_pbZ, lowerZ, 9, comm, &reqs[4]);
-            MPI_Isend(&pbZ[  npbZ], 1, t_pbZ, upperZ, 9, comm, &reqs[5]);
-            MPI_Irecv(&pbZ[2*npbZ], 1, t_pbZ, upperZ, 9, comm, &reqs[6]);
-            MPI_Irecv(&pbZ[3*npbZ], 1, t_pbZ, lowerZ, 9, comm, &reqs[7]);
+            MPI_Isend(&pbZ[     0], 1, t_pbZ, lowerZ, 19, comm, &reqs[4]);
+            MPI_Isend(&pbZ[  npbZ], 1, t_pbZ, upperZ, 20, comm, &reqs[5]);
+            MPI_Irecv(&pbZ[2*npbZ], 1, t_pbZ, upperZ, 19, comm, &reqs[6]);
+            MPI_Irecv(&pbZ[3*npbZ], 1, t_pbZ, lowerZ, 20, comm, &reqs[7]);
         }
     }
 
     MPI_Waitall(8, reqs, MPI_STATUSES_IGNORE);
     #ifdef GDR_OFF
     #pragma acc update device( pbX[(2*npbX):(4*npbX)], pbZ[(2*npbZ):(4*npbZ)] )
-    // why pbZ[2*npbZ:4*npbZ] fail !
     #endif
     
 #if 0

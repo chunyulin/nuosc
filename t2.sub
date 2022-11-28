@@ -10,6 +10,7 @@ module purge
 module load nvhpc
 
 export OMPI_MCA_btl_openib_warn_default_gid_prefix=0
+export OMPI_MCA_btl_openib_want_cuda_gdr=1
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export NVCOMPILER_ACC_TIME=0
 export NVCOMPILER_ACC_NOTIFY=0
@@ -32,9 +33,11 @@ MPIRUN="mpirun -np ${SLURM_NTASKS}"
 #mpirun -np 4 ./nuosc --np 1 4 ${PARAM}
 #mpirun -np 4 ./nuosc --np 2 2 ${PARAM}
 
-PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 64 --xmax 32 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
-mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
-mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
+make test2d_mpi
+
+#PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 64 --xmax 32 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
+#mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
+#mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
 
 #PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 32 --xmax 32 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
 #mpirun -np 1 ./nuosc --np 1 1 ${PARAM}

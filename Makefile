@@ -9,16 +9,21 @@ OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o nuosc_boundary.cpp jacobi
 
 all: ${TARGET}
 
-${OBJS}: nuosc_class.h CartGrid.h
+${OBJS}: nuosc_class.h CartGrid.h common.h
 
 ${TARGET}: ${OBJS}
 	$(CXX) $(OPT) $(LIBS) $^ -o $@
 
+test2d:
+	mpirun -np 1 ./nuosc --np 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 5 --xmax 5 --dz 0.1 --dx 0.1 --nv 8 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 5 --END_STEP 10
+
 test2d_gaussian:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 10 --nv 16 --dx 0.01 --xmax 1 --dz 0.01 --zmax 1 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T 10 --END_STEP_T 50 --ANA_EVERY_T 1
-	python3 ./plt_XZ.py ee*.bin
-	scp *.png lincy@arm.nchc.org.tw:~/public_html/tmp/tmp/
+	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
+	mpirun -np 2 ./nuosc --np 2 1 --ipt 10 --nv 3 --dx 0.05 --xmax 1 --dz 0.05 --zmax 1 --mu 0 --pmo 0 --eps0 1 --sigma 100 --ko 1e-3 --cfl 0.5 --END_STEP 10 --ANA_EVERY 1
+	##mpirun -np 1 ./nuosc --ipt 10 --nv 3 --dx 0.05 --xmax 1 --dz 0.05 --zmax 1 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --END_STEP 10 --ANA_EVERY 1
+	#python3 ./plt_XZ.py ee*.bin
+	#scp *.png lincy@arm.nchc.org.tw:~/public_html/tmp/tmp/
+
 test2d_square:
 	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
 	./nuosc --ipt 20 --nv 8 --dx 0.01 --xmax 0.5 --dz 0.01 --zmax 0.8 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T .2 --END_STEP_T 2 --ANA_EVERY_T .2
@@ -48,22 +53,11 @@ test:
           ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 512 --dz 0.1                     --nv 33 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY_T 10 --DUMP_EVERY_T 9999999 --END_STEP_T 1000
 	### |dP|_max ~ 1e-7 for at T~20
 
-test2d:
-	export CUDA_VISIBLE_DEVICES=0; \
-          ./nuosc --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 512 --xmax 0.5 --dz 0.1 --dx 0.1 --nv 33 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY_T 10 --DUMP_EVERY_T 10000 --END_STEP_T 3000
-	### |dP|_max ~ 1e-7 for at T~20
-
-PARAM=--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 32 --xmax 32 --dz 0.1 --dx 0.1 \
-       --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10
+PARAM=--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 2 --xmax 2 --dz 0.1 --dx 0.1 \
+       --nv 7 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 2 --END_STEP 10
 test2d_mpi:
 	mpirun -np 1 ./nuosc --np 1 1 ${PARAM}
-	mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
 	mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
-	mpirun -np 4 ./nuosc --np 2 2 ${PARAM}
-	mpirun -np 4 ./nuosc --np 4 1 ${PARAM}
-	mpirun -np 4 ./nuosc --np 1 4 ${PARAM}
-	mpirun -np 8 ./nuosc --np 4 2 ${PARAM}
-	mpirun -np 8 ./nuosc --np 2 4 ${PARAM}
 
 testmpi: testmpi.o
 	mpic++ -acc -Minfo=acc testmpi.cpp -o testmpi

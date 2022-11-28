@@ -1,10 +1,17 @@
 #pragma once
 
 //==== Global flag
-#define COSENU_MPI
-
 #define KO_ORD_3
 #define BC_PERI
+
+#define COSENU_MPI
+//#define GDR_OFF
+//#define SYNC_MPI_ONESIDE_COPY
+
+
+//#define ADV_TEST
+
+
 
 #include <chrono>
 #include <cmath>

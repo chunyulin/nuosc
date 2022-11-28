@@ -1,7 +1,7 @@
 #pragma once
 #include "common.h"
 
-#define IM_V2D_POLAR_GL_Z
+//#define IM_V2D_POLAR_GL_Z
 //#define IM_V2D_POLAR_RSUM
 
 //#define IM_SIMPSON
@@ -62,7 +62,7 @@ class CartGrid {
 
         inline void print_info() {
             char s[20] = {0};
-            if(gethostname(s,sizeof(s)) < 0) { cout << "Error in gethostname" << endl; }
+            if(0!=gethostname(s,sizeof(s))) { cout << "Error in gethostname" << endl; }
             
             if (ngpus > 0)
               printf("[ Rank %2d on GPU-%d %s ]  My coor:( %d %d )  nbX:( %d %d ) nbZ:( %d %d )   Box: X ( %g %g ) %d  Z ( %g %g ) %d  V: %d %d\n",

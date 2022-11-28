@@ -231,10 +231,18 @@ int main(int argc, char *argv[]) {
         }
     }
 
+
+    // Get total memory
+    float tmem = getMemoryUsage()/1024.;
+    float tmem_max = tmem, tmem_min = tmem;
+    #ifdef COSENU_MPI
+    MPI_Reduce(&tmem_max, &tmem, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&tmem_min, &tmem, 1, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD);
+    #endif
     if (myrank==0) {
        double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
        printf("Completed.\n");
-       printf("Memory usage (MB): %.2f\n", getMemoryUsage()/1024.0);
+       printf("Memory usage (MB) per node: %.2f ~ %.2f\n", tmem_min, tmem_max );
        printf("[Summ] %d %d %d %d %d %d %f\n", omp_get_max_threads(), px, pz, nx, nz, state.get_nv(), ns_per_stepgrid);
     }
     
