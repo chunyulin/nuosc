@@ -8,14 +8,13 @@ OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o nuosc_boundary.cpp jacobi
 
 all: ${TARGET}
 
-${OBJS}: nuosc_class.h CartGrid.h
+${OBJS}: nuosc_class.h CartGrid.h common.h
 
 ${TARGET}: ${OBJS}
 	$(CXX) $(OPT) $(LIBS) $^ -o $@
 
-LONG=--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 2 2 8 --dx 0.1 --nv 7 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 2 --END_STEP 10
 test3d:
-	mpirun -np 4 ./nuosc --np 1 1 4 ${LONG}
+	mpirun -np 1 ./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 5 .2 5 --dx 0.1 --nv 8 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 5 --END_STEP 10
 
 test3d_gaussian:
 	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f

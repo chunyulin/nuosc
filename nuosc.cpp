@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Get total memory
-    float tmem = getMemoryUsage()/1024.;
+    float tmem = getMemoryUsage()/1024./1024;
     float tmem_max = tmem, tmem_min = tmem;
     #ifdef COSENU_MPI
     MPI_Reduce(&tmem_max, &tmem, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -243,9 +243,10 @@ int main(int argc, char *argv[]) {
     #endif
     if (myrank==0) {
        double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
-       printf("Completed.\n");
-       printf("Memory usage (MB) per node: %.2f ~ %.2f\n", tmem_min, tmem_max );
-       printf("[Summ] %d %d %d %d %d %d %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid);
+       double s_per_phytime   = stepms_max/state.phy_time/1000;
+       printf("Completed.\n\n");
+       printf("Memory usage (GB) per rank: %.2f ~ %.2f\n", tmem_min, tmem_max );
+       printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
     }
 
     #ifdef COSENU_MPI

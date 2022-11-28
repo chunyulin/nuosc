@@ -7,7 +7,7 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) {
 
 void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
 #ifdef NVTX
-    nvtxRangePush("PeriodicBoundary");
+    nvtxRangePush("Periodic Boundary");
 #endif
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
 
@@ -119,8 +119,9 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
  #define NPBZ grid.nx[0]*grid.nx[1]*grid.gx[2]*grid.nv*nvar
 #endif
 void NuOsc::pack_buffer(const FieldVar* in) {
-
-    //cout << "[DEBUG] packing X lower ..." << endl;
+#ifdef NVTX
+    nvtxRangePush("Pack Buffer");
+#endif
     { // X lower side
         real *pbuf = &(grid.pb[0][0]);
         #pragma omp parallel for collapse(4)
@@ -244,14 +245,20 @@ void NuOsc::pack_buffer(const FieldVar* in) {
                 }
     }
     #pragma acc wait
+#ifdef NVTX
+    nvtxRangePop();
+#endif
 }
 
 void NuOsc::unpack_buffer(FieldVar* out) {
+#ifdef NVTX
+    nvtxRangePush("Unpack Buffer");
+#endif
 
     { // recovery X upper halo from the neighbor lower side
         real *pbuf = &(grid.pb[0][2*NPBX]);    // THINK: OpenACC error w/o this (ie., offset inside pragma)!!
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.gx[0]; ++i)
         for (int j=0;j<grid.nx[1]; ++j)
         for (int k=0;k<grid.nx[2]; ++k)
@@ -271,7 +278,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // recovery X lower halo from the neighbor upper side
         real *pbuf = &(grid.pb[0][3*NPBX]);
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.gx[0]; ++i)
         for (int j=0;j<grid.nx[1]; ++j)
         for (int k=0;k<grid.nx[2]; ++k)
@@ -292,7 +299,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // recovery Y upper halo from the neighbor lower side
         real *pbuf = &(grid.pb[1][2*NPBY]);
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.nx[0]; ++i)
         for (int j=0;j<grid.gx[1]; ++j)
         for (int k=0;k<grid.nx[2]; ++k)
@@ -312,7 +319,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // recovery Y lower halo from the neighbor upper side
         real *pbuf = &(grid.pb[1][3*NPBY]);
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.nx[0]; ++i)
         for (int j=0;j<grid.gx[1]; ++j)
         for (int k=0;k<grid.nx[2]; ++k)
@@ -333,7 +340,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // Z lower side
         real *pbuf = &(grid.pb[2][2*NPBZ]);
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.nx[0]; ++i)
         for (int j=0;j<grid.nx[1]; ++j)
         for (int k=0;k<grid.gx[2]; ++k)
@@ -353,7 +360,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // Z upper side
         real *pbuf = &(grid.pb[2][3*NPBZ]);
         #pragma omp parallel for collapse(4)
-        #pragma acc parallel loop collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<grid.nx[0]; ++i)
         for (int j=0;j<grid.nx[1]; ++j)
         for (int k=0;k<grid.gx[2]; ++k)
@@ -370,20 +377,23 @@ void NuOsc::unpack_buffer(FieldVar* out) {
                     out->bex_im[l0] = pbuf[tid8+7];
         }
     }
-    //#pragma acc wait
+    #pragma acc wait
+#ifdef NVTX
+    nvtxRangePop();
+#endif
 }
 
 void NuOsc::sync_boundary(FieldVar* v0) {
 
     pack_buffer(v0);
-//#define SYNC_COPY
-//#define SYNC_MPI_PUT
 #if defined(SYNC_COPY)
-    grid.sync_buffer_copy();
-#elif defined(SYNC_MPI_PUT)
-    grid.sync_buffer();
+    grid.sync_copy();
+#elif defined(SYNC_MPI_ONESIDE_COPY)
+    grid.sync_put();
+#elif defined(SYNC_MPI_ISENDRECV)
+    grid.sync_isendrecv();
 #else
-    grid.sync_buffer_isend();
+    grid.sync_isend();
 #endif
     unpack_buffer(v0);
 }

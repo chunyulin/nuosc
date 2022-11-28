@@ -4,30 +4,47 @@ host=`hostname`
 if [[ $host == *"twcc.ai" ]]; then
 
   echo "==== on TWCC"
-  module load miniconda3
-  conda activate /opt/ohpc/pkg/kagra/ENV/py37
-  module load nvhpc/21.7
-  
+  #module load miniconda3
+  #conda activate /opt/ohpc/pkg/kagra/ENV/py37
+  module load nvhpc
+
   export CXX=mpic++
   export GSL_ROOT=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
-  export OPT="-acc=gpu -O3 -Minfo=acc -ta=tesla:managed"
+  export OPT="-acc=gpu -O3 -Minfo=acc -gpu=manage -DNVTX"
+
+
+elif [[ $host == "lgn"* ]]; then
+
+  echo "==== on Twnia-3"
+  module purge
+  #module load compiler/intel/2020u4 OpenMPI/4.1.1
+  module load compiler/intel/2021 IntelMPI/2021
+  module load libs/GSL/2.6
+
+  unset CFLAGS
+  ##export CXX=mpic++
+  export CXX=mpiicpc
+  export OPT="-qopenmp -O3 -std=c++14"
 
 
 elif [[ $host == "node1" ]]; then
-  
+
+
   echo "==== on N1 A100"
   module purge
   module load nvhpc/22.2
 
+  conda activate py39
+
   export CUDA_VISIBLE_DEVICES=0
-  export LD_LIBRARY_PATH=/pkg/gsl-2.7.1/lib:${LD_LIBRARY_PATH}
+  ##export LD_LIBRARY_PATH=/pkg/gsl-2.7.1/lib:${LD_LIBRARY_PATH}
 
   unset CFLAGS
 
-  export CXX=nvc++
-  export OPT="-mp -O4 -Minfo=mp -DADV_TEST -DVACUUM_OFF"
-  export OPT="-O2 -acc=gpu -Minfo=acc -gpu=manage"
-
+  export GSL_ROOT=/pkg/gsl-2.7.1
+  export CXX=mpic++
+  export OPT="-mp -O4 -Minfo=mp"
+  export OPT="-O1 -acc=gpu -Minfo=acc -gpu=manage"
 
 else
   echo "==== on ARM"

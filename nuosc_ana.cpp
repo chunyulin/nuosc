@@ -2,7 +2,7 @@
 
 void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
 #ifdef NVTX
-    nvtxRangePush("eval_conserved");
+    nvtxRangePush("Eval conserved");
 #endif
 
     PARFORALL(i,j,k,v)   {
@@ -33,7 +33,7 @@ void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
 
 void NuOsc::analysis() {
 #ifdef NVTX
-    nvtxRangePush("analysis");
+    nvtxRangePush("Analysis");
 #endif
 
     eval_conserved(v_stat);

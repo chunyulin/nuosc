@@ -12,7 +12,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
     auto vz = grid.vz.data();
     const int nzv  = grid.nv*(grid.nx[2]+2*grid.gx[2]);
     const int nyzv = nzv*(grid.nx[1] + 2*grid.gx[1]);
-
+// gang worker num_workers(64)
 #pragma omp parallel for collapse(3)
 #pragma acc parallel loop independent collapse(3)
     for (int i=0;i<grid.nx[0]; ++i)
@@ -141,7 +141,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 /* v0 = v1 + a * v2 */
 void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2) {
 #ifdef NVTX
-    nvtxRangePush("vectorize");
+    nvtxRangePush("VecMA");
 #endif
 
     PARFORALL(i,j,k,v) {
@@ -163,7 +163,7 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 // v0 = v1 + a * ( v2 + v3 )
 void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2, const FieldVar * __restrict v3) {
 #ifdef NVTX
-    nvtxRangePush("vectorize");
+    nvtxRangePush("Vec");
 #endif
 
     PARFORALL(i,j,k,v) {
@@ -184,9 +184,8 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 
 void NuOsc::step_rk4() {
 #ifdef NVTX
-    nvtxRangePush("step_rk4");
+    nvtxRangePush("Step");
 #endif
-
     //Step-1
 #ifdef COSENU_MPI
     sync_boundary(v_stat);

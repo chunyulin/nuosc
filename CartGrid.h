@@ -2,7 +2,7 @@
 #include "common.h"
 
 //#define IM_V2D_POLAR_GL_Z
-//#define IM_V2D_POLAR_RSUM
+//#define IM_V2D_POLAR_RSUM   // uniform vz-/phi- as default
 
 int gen_v2d_GL_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
 int gen_v2d_rsum_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
@@ -53,22 +53,20 @@ class CartGrid {
 
         ~CartGrid();
         inline void print_info() {
-            char s[20] = {0};
-            if(0!=gethostname(s,sizeof(s))) { cout << "Error in gethostname" << endl; }
+            char hname[20];
+            char tag[50];
+            if(0!=gethostname(hname,sizeof(hname))) { cout << "Error in gethostname" << endl; }
 
-            string tag;
-            if (ngpus > 0)
-               sprintf(&tag[0], "GPU %d %s", srank, s);
-            else
-               tag = s;
+            if (ngpus > 0) sprintf(tag, "GPU %d %s", srank%ngpus, hname);
+            else           sprintf(tag, "%s", hname);
 
             printf("[ Rank %2d ( %d %d %d ) on %s ]  nber:( %d %d )( %d %d )( %d %d )  N:[ %d %d %d %d ](nphi:%d)   bbox:( %g %g )( %g %g )( %g %g ) ]\n",
-            myrank, rx[0],rx[1],rx[2], tag.c_str(), nb[0][0],nb[0][1],nb[1][0],nb[1][1],nb[2][0],nb[2][1], nx[0],nx[1],nx[2], nv,nphi, bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1],bbox[2][0],bbox[2][1]);
+            myrank, rx[0],rx[1],rx[2], tag, nb[0][0],nb[0][1],nb[1][0],nb[1][1],nb[2][0],nb[2][1], nx[0],nx[1],nx[2], nv,nphi, bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1],bbox[2][0],bbox[2][1]);
         }
 
-        void sync_buffer();
-        void sync_buffer_isend();
-        void sync_buffer_copy();
+        void sync_isend();
+        void sync_put();
+        void sync_copy();
 
         int  get_nv()    const {  return nv;   }
         int  get_nphi()  const  {  return nphi;   }

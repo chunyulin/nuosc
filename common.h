@@ -6,10 +6,13 @@
 #error Only DIM=3 is supported
 #endif
 
-#define COSENU_MPI
 #define KO_ORD_3
 #define BC_PERI
 
+#define COSENU_MPI
+//#define GDR_OFF
+//#define SYNC_COPY
+//#define SYNC_MPI_ONESIDE_COPY
 //#define ADV_TEST
 
 //==== End of global flags
