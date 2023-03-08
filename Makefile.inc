@@ -10,11 +10,13 @@ CXX ?= armclang++
 #CXX=nvc++
 
 #INCLUDE=-I${ARMPL_INCLUDES}
-INCLUDE=-I${GSL_ROOT}/include -I${MPI_ROOT}/include
+INCLUDE=
+#-I${GSL_ROOT}/include -I${MPI_ROOT}/include
 
-LIBS=-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \
-     -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi
-## -lmpi_cxx   ## Intel2021 no need
+LIBS=
+#-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \
+#     -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi
+
 #DEBUG=-DPAPI
 #OPT=-Ofast -std=c++11 -fopenmp ${COSENU_OPT}
 OPT ?= -Ofast -std=c++11 -fopenmp -armpl

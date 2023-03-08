@@ -4,7 +4,7 @@
 #define KO_ORD_3
 #define BC_PERI
 
-#define COSENU_MPI
+//#define COSENU_MPI
 //#define GDR_OFF
 //#define SYNC_MPI_ONESIDE_COPY
 

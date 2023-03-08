@@ -16,6 +16,8 @@ using std::endl;
 using std::vector;
 using std::string;
 
+#include "Point.h"
+
 typedef double real;
 typedef vector<real> Vec;
 typedef vector<uint> IVec;
@@ -23,14 +25,28 @@ typedef vector<uint> IVec;
 class Sphere {
     public:
         uint N;
+        real exact;
         Vec vx,vy,vz,vw, f;
+
         Sphere() {};
-        void init_f() {
+
+        void init_f_s4() {
             #pragma omp parallel for
-            for (uint i=0;i<N; ++i) {
-                f[i] = vx[i]*vy[i]*vz[i]*vx[i]*vy[i]*vz[i];  // exact: 4 * M_PI /105
-            }
+            for (uint i=0;i<N; ++i)  f[i] = vx[i]*vy[i]*vz[i]*vx[i]*vy[i]*vz[i];  // exact: 4 * M_PI /105
+            exact = 4.0 * M_PI / 5005.0;
         }
+        void init_f_s2() {
+            #pragma omp parallel for
+            for (uint i=0;i<N; ++i)  f[i] = vx[i]*vy[i]*vz[i]*vx[i]*vy[i]*vz[i];  // exact: 4 * M_PI /105
+            exact = 4.0 * M_PI / 105.0;
+        }
+        void init_f_s0() {
+            #pragma omp parallel for
+            for (uint i=0;i<N; ++i)  f[i] = 1.0;
+            exact = 4.0 * M_PI;
+        }
+        void init_f() { init_f_s2();  }
+
         real integral() {
             real sum = 0;
             #pragma omp parallel for reduction(+:sum)
@@ -40,6 +56,201 @@ class Sphere {
             return sum;
         }
 };
+
+/****
+// generate refined NxN elements for each patch, with cornor(A,B,C,D).
+//     B   N
+// j n/ \ / \
+//   A 0 D 2 x 4...
+// i n\ / \ / \
+//     C 1 x 3 x 5 ...
+//      \ / \ / 
+//       S   x
+**/
+class IcosahedronVoronoi : public Sphere {
+    public:
+        const uint NP = 5;
+        const IVec IB = { 1, 0, 2,  6,   6, 2, 7, 11,   2, 0, 3,  7,   7, 3, 8, 11,  3, 0, 4,  8, 
+                          8, 4, 9, 11,   4, 0,  5,  9,   9, 5, 10, 11,   5, 0, 1, 10,  10, 1, 6, 11  };
+        const real lambda = 1.10714871779409;
+        uint nn;
+
+        void BasePoints() {
+            bp.reserve(2*NP+2);
+            for (int i=1; i<=NP; ++i) {
+                bp[i].x = cos(2*i*M_PI/NP)*sin(lambda);
+                bp[i].y = sin(2*i*M_PI/NP)*sin(lambda);
+                bp[i].z = cos(lambda);
+                bp[i+NP].x = cos((2*i+1)*M_PI/NP)*sin(lambda);
+                bp[i+NP].y = sin((2*i+1)*M_PI/NP)*sin(lambda);
+                bp[i+NP].z = -bp[i].z;
+            }
+            bp[0]      = Point(0,0,1);
+            bp[2*NP+1] = Point(0,0,-1);
+            
+            // refined coordinates in based patch
+            X.reserve(N);   // all unique Delaunay points
+            X[0]    = bp[0];
+            X[N-1] = bp[2*NP+1];
+            #pragma omp parallel for
+            for (int p=0; p<2*NP; ++p) {
+                // cornor of the basis patch.
+                uint a = IB[  4*p];
+                uint b = IB[1+4*p];
+                uint c = IB[2+4*p];
+                uint d = IB[3+4*p];
+
+                for (int i=0; i<nn; ++i)
+                for (int j=0; j<nn; ++j) {
+                    uint pij = p*nn*nn + i*nn + j + 1;
+                    X[pij] = i*(j*bp[c]+(nn-j)*bp[d]) + (nn-i)*(j*bp[b]+(nn-j)*bp[a]);
+                    real iL = 1.0 / X[pij].norm();
+                    X[pij] = iL * X[pij];
+                }
+            }
+        }
+
+        void dumpBasePoints() {
+    	    for(int i=0;i<8*NP;++i)  bb << bp[IB[i]] << endl;
+        }
+        
+        void showIcosaExact() {
+            real a2 = 2*(1.0 - cos(lambda));
+            printf("Exact number for icosahedron: a = %.10g  Surface area = %.10g\n", sqrt(a2), 5.0*std::sqrt(3.0)*a2);
+        }
+
+        IcosahedronVoronoi(uint nn_) : nn(nn_) {
+
+            N = 2*NP*nn*nn+2;
+
+            pp.open("p.dat", std::ofstream::out | std::ofstream::trunc);
+            bb.open("b.dat", std::ofstream::out | std::ofstream::trunc);
+            vv.open("v.dat", std::ofstream::out | std::ofstream::trunc);
+
+            BasePoints();
+
+            vx.reserve(N);
+            vy.reserve(N);
+            vz.reserve(N);
+            f.reserve(N);
+            vw = Vec(N, 0);
+            ui.reserve(2*NP*(nn+1)*(nn+1));  // index for unique points
+
+            for (int p=0;p<2*NP;++p) _IcosahedronUniqueIndex(p);
+            for (int p=0;p<2*NP;++p) _IcosahedronRefine(p);
+
+            init_f();
+        }
+
+        ~IcosahedronVoronoi() {
+            pp.close();
+            bb.close();
+            vv.close();
+        }
+        
+    private:
+
+        vector<Point> bp;   // 2*NP+2 base points (12 for Icosahedral, north/south pole for the first/last) 
+        vector<Point> X;    // non-unique points in each patch
+        vector<uint>  ui;   // index for unique points
+
+        std::ofstream pp, bb, vv;
+
+        inline uint fid(uint p, uint i, uint j) {  return (p*(nn+1) + i)*(nn+1) + j;     }
+        inline uint sid(uint p, uint i, uint j) {  return (p*nn + i)*nn + j;     }
+
+        void _IcosahedronUniqueIndex(uint p) {
+
+            // calculate index for accesssing unique points
+            #pragma omp parallel for collapse(2)
+            for (int i=0; i<nn; ++i)
+            for (int j=0; j<nn; ++j) {
+                ui[fid(p,i,j)] = p*nn*nn + i*nn + j + 1;
+            }
+            
+            if (p==2*NP-1) {     // last patch
+                for (int i=1; i<=nn; ++i) {
+                   ui[fid(p, i-1, nn)] =               1 + nn*(i-1);            // upper-right side
+                   ui[fid(p,  nn,  i)] = 2*nn*nn - (nn-1) - nn*(i-1);      // bottom-right side
+                }
+                ui[fid(p,nn,0)] = N-1;  // S-pole
+            } else if (1==p%2)  {   // lower NP patched
+                for (int i=1; i<=nn; ++i) {
+                   ui[fid(p, i-1, nn)] = (p+1)*nn*nn +      1 + nn*(i-1);  // upper-right side
+                   ui[fid(p,  nn,  i)] = (p+3)*nn*nn - (nn-1) - nn*(i-1);  // bottom-right side
+                }
+                ui[fid(p,nn,0)] = N-1;  // S-pole
+            } else {                // upper NP patched
+                for (int i=1; i<=nn; ++i) {
+                   ui[fid(p, i,nn)]     = ((p+2)*nn*nn + (nn- i) + 1) % (2*NP*nn*nn);  // upper-right side
+                   ui[fid(p,  nn, i-1)] =  (p+1)*nn*nn + i;                     // bottom-right side
+                }
+                ui[fid(p,0,nn)] = 0;     // N-pole
+            }
+            
+            #if 0
+            for (int i=0; i<nn+1; ++i)
+            for (int j=0; j<nn+1; ++j) {
+                uint pij = fid(p,i,j);
+                printf("p=%2d i=%3d j=%3d:  pij=%5d ui[pij]=%5d   (%6f %6f %6f) \n", p, i, j, pij, ui[pij], X[ui[pij]].x, X[ui[pij]].y, X[ui[pij]].z);
+            }
+            printf("\n");
+            #endif
+        }
+
+        void _IcosahedronRefine(uint p) {
+
+            // assign v
+            #pragma omp parallel for
+            for (int i=0; i<N; ++i) {
+                vx[i] = X[i].x;
+                vy[i] = X[i].y;
+                vz[i] = X[i].z;
+            }
+
+            //#pragma omp parallel for collapse(2)
+            for (int i=0; i<nn; ++i)
+            for (int j=0; j<nn; ++j) {
+
+                auto iA = ui[fid(p,i  ,j  )];
+                auto iC = ui[fid(p,i+1,j+1)];
+                auto A = X[iA];
+                auto C = X[iC];
+                {
+                auto iB = ui[fid(p,i  ,j+1)];
+                auto B = X[iB];
+                auto O = circumcenter( A,B,C );
+                auto fAB = ((O-A)*(B-A) * 0.25).norm();
+                auto fBC = ((O-B)*(C-B) * 0.25).norm();
+                auto fCA = ((O-C)*(A-C) * 0.25).norm();
+                vw[ iA ] += fAB + fCA;
+                vw[ iB ] += fBC + fAB;
+                vw[ iC ] += fCA + fBC;
+            #if 0
+                pp << A << endl << B << endl << C << endl << O << endl;
+            #endif
+                }
+                {
+                auto iB = ui[fid(p,i+1,j)];
+                auto B = X[iB];
+                auto O = circumcenter( A,B,C );
+                auto fAB = ((O-A)*(B-A) * 0.25).norm();
+                auto fBC = ((O-B)*(C-B) * 0.25).norm();
+                auto fCA = ((O-C)*(A-C) * 0.25).norm();
+                vw[ iA ] += fAB + fCA;
+                vw[ iB ] += fBC + fAB;
+                vw[ iC ] += fCA + fBC;
+            #if 0
+                pp << A << endl << B << endl << C << endl << O << endl;
+            #endif
+                }
+            #if 0
+                vv << vx[iA] << " "  << vy[iA] << " "  << vz[iA] << " "  << vw[iA] << endl;
+            #endif
+            } // end for ij
+        }
+};
+
 
 class SpherePolarCC : public Sphere {
     public:
@@ -92,7 +303,7 @@ class SpherePolarCC : public Sphere {
 // NP=7  1.07702232077537
 ****/
 
-class Icosahedron : public Sphere {
+class IcosahedronDelaunay  : public Sphere {
     public:
         const uint NP = 5;
         /*const IVec IB0 = { 1, 0, 2, 6,   6, 2,  7, 11,
@@ -135,7 +346,7 @@ class Icosahedron : public Sphere {
             printf("Exact number for icosahedron: a = %.10g  Surface area = %.10g\n", sqrt(a2), 5.0*std::sqrt(3.0)*a2);
         }
 
-        Icosahedron(uint nm_, uint nn_) : nn(nn_), nm(nm_) {
+        IcosahedronDelaunay (uint nm_, uint nn_) : nn(nn_), nm(nm_) {
 
             pp.open("p.dat", std::ofstream::out | std::ofstream::trunc);
             bb.open("b.dat", std::ofstream::out | std::ofstream::trunc);
@@ -156,7 +367,7 @@ class Icosahedron : public Sphere {
             init_f();
         }
 
-        ~Icosahedron() {
+        ~IcosahedronDelaunay () {
         pp.close();
         bb.close();
         vv.close();
@@ -187,19 +398,6 @@ class Icosahedron : public Sphere {
                 y[ij] *= iL;
                 z[ij] *= iL;
             }
-            
-            #if 0
-            for (int j=0; j<nn; ++j)
-            for (int i=0; i<nm; ++i)  {
-                uint ij = j*(nm+1) + i;
-                pp << x[ij] << " " << y[ij] << " " << z[ij] << endl;
-                pp << x[ij+1] << " " << y[ij+1] << " " << z[ij+1] << endl;
-                pp << x[ij+nm+2] << " " << y[ij+nm+2] << " " << z[ij+nm+2] << endl;
-                pp << x[ij] << " " << y[ij] << " " << z[ij] << endl;
-                pp << x[ij+nm+1] << " " << y[ij+nm+1] << " " << z[ij+nm+1] << endl;
-                pp << x[ij+nm+2] << " " << y[ij+nm+2] << " " << z[ij+nm+2] << endl;
-            }
-            #endif
 
             #pragma omp parallel for collapse(2)
             for (int j=0; j<nn; ++j)
@@ -375,50 +573,70 @@ class IcosahedronSquare : public Sphere {
 
 int main(int argc, char *argv[]) {
 
-    //real exact = 4*M_PI;
-    real exact = 4.0 * M_PI / 105.0;
+    const int N=2000;
 
     std::chrono::time_point<std::chrono::high_resolution_clock> t1;
 
 #if 1
-    for (uint n=2; n<1000; n*=2) {
+    for (uint n=2; n<N; n*=2) {
        t1 = std::chrono::high_resolution_clock::now();
        SpherePolarCC sgpcc(n,2*n);
        real Ipcc = sgpcc.integral();
        real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
-       printf("dIpcc for n=%5d : %.10g -- Time: %g ms\n", n, Ipcc-exact, stepms);
+       printf("dIpcc for n=%5d : %.10g -- Time: %g ms\n", n, Ipcc-sgpcc.exact, stepms);
     }
 #endif
 
 #if 1
-    for (uint n=1; n<2000; n<<=1) {
+    for (uint n=1; n<N; n<<=1) {
        t1 = std::chrono::high_resolution_clock::now();
-       Icosahedron icosa(n,n);
+       IcosahedronDelaunay  icosa(n,n);
        if (n==1) {
           icosa.showIcosaExact();
           icosa.dumpBasePoints();
        }
-       real Iicosa = icosa.integral();
+       real integral = icosa.integral();
        real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
-       printf("Icosahedron, n = %5d, I= %15.10g (%15.10g)    Time: %g ms\n", n, Iicosa, exact-Iicosa, stepms);
 
+        real max = -10, min=100;
+        for(int i=0;i<icosa.N;++i) {
+            max = icosa.vw[i]>max? icosa.vw[i] : max;
+            min = icosa.vw[i]<min? icosa.vw[i] : min;
+        }
 
-    real max = -10, min=100;
-    for(int i=0;i<icosa.N;++i) {
-        max = icosa.vw[i]>max? icosa.vw[i] : max;
-        min = icosa.vw[i]<min? icosa.vw[i] : min;
-    }
-    printf("%g %g  %g %%\n", min, max, (max-min)/max*100);
+       printf("IcosahedronDelaunay, n = %5d, I= %10.5g (%10.7g),  dVe= %4.1f%  Time: %g ms\n", n, integral, icosa.exact- integral,  (max-min)/max*100, stepms);
     }
 #endif
 
-    ///
-    for (uint n=1; n<2000; n<<=1) {
+#if 1
+    for (uint n=1; n<N; n<<=1) {
+       t1 = std::chrono::high_resolution_clock::now();
+       IcosahedronVoronoi icosa(n);
+       if (n==1) {
+          icosa.showIcosaExact();
+          icosa.dumpBasePoints();
+       }
+       real integral = icosa.integral();
+       real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
+
+        real max = -10, min=100;
+        for(int i=0;i<icosa.N;++i) {
+            max = icosa.vw[i]>max? icosa.vw[i] : max;
+            min = icosa.vw[i]<min? icosa.vw[i] : min;
+        }
+
+       printf("IcosahedronVoronoi, n = %5d, I= %10.5g (%10.7g),  dVe= %4.1f%  Time: %g ms\n", n, integral, icosa.exact- integral,  (max-min)/max*100, stepms);
+    }
+#endif
+
+#if 1
+    for (uint n=1; n<N; n<<=1) {
        t1 = std::chrono::high_resolution_clock::now();
        IcosahedronSquare icosa(n,n);
        real Iicosa = icosa.integral();
        real stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
-       printf("IcosahedronSquare, n = %5d, I= %15.10g (%15.10g)    Time: %g ms\n", n, Iicosa, exact-Iicosa, stepms);
+       printf("IcosahedronSquare, n = %5d, I= %15.10g (%15.10g)    Time: %g ms\n", n, Iicosa, icosa.exact-Iicosa, stepms);
     }
+#endif
     return 0;
 }

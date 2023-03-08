@@ -1,6 +1,7 @@
 #include "CartGrid.h"
-#include "jacobi_poly.h"
 
+/*
+#include "jacobi_poly.h"
 int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
     Vec r(nv);
     Vec w(nv);
@@ -20,6 +21,19 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
         }
     return nv*nphi;
 }
+int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
+    Vec r(nv,0);
+    Vec w(nv,0);
+    JacobiGL(nv-1,0,0,r,w);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = r[j];
+        vw[j] = w[j];
+    }
+    return nv;
+}
+*/
 
 int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, Vec& vz) {
     vx.reserve(nv*nphi);
@@ -38,19 +52,6 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
             vw[j*nv+i] = dv/nphi;
         }
     return nv*nphi;
-}
-
-int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
-    Vec r(nv,0);
-    Vec w(nv,0);
-    JacobiGL(nv-1,0,0,r,w);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = r[j];
-        vw[j] = w[j];
-    }
-    return nv;
 }
 
 // v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
