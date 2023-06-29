@@ -19,7 +19,7 @@ test2d:
 
 UNITTEST=--nv 4 --dx 0.01 --xmax 0.5 --dz 0.01 --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T .1 --END_STEP_T .5 --ANA_EVERY_T 0.1
 UNITTEST=--nv 2 --gz 2 --dz 0.02  --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 0.8 --cfl 0.25 --DUMP_EVERY_T .2 --END_STEP_T .5 --ANA_EVERY_T .2
-UNITTEST=--nv 2 --gz 3 --dz 0.001 --zmax 0.5  --xmax 0.003  --mu 0 --pmo 0 --eps0 1 --sigma .08 --ko 0.7 --cfl 0.5 --DUMP_EVERY_T 1 --END_STEP_T 5 --ANA_EVERY_T 2
+UNITTEST=--nv 2 --gz 2 --dz 0.002 --zmax 0.5  --xmax 0.004  --mu 0 --pmo 0 --eps0 1 --sigma .08 --ko 0.0 --cfl 0.5 --DUMP_EVERY_T 1 --END_STEP_T 5 --ANA_EVERY_T 2
 test2d_advec:
 	rm -f *.png *.bin -f
 	./nuosc --ipt 10 ${UNITTEST}
