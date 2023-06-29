@@ -14,8 +14,6 @@ void handle_gpu_errors(char *err_msg) {
     exit(-1);
 }
 
-
-
 int main(int argc, char *argv[]) {
 
     int px = 1;
@@ -23,7 +21,7 @@ int main(int argc, char *argv[]) {
 
     real dz  =  0.1;
     real dx  =  0.1;
-    real x0  = - 0.5;     real x1  =  -x0;
+    real x0  = - 1;     real x1  =  -x0;
     real z0  = - 10;      real z1  =  -z0;
     int nv_in = 33, nphi = 32;
     real cfl = 0.4;      real ko = 0.0;
@@ -56,19 +54,29 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     #endif
 
+#ifndef KO_ORD_3
+    int gz = 3, gx = 3;
+#else
+    int gz = 2, gx = 2;
+#endif
 
     // Parse input argument --------------------------------------------
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dz") == 0 )  {
             dz  = atof(argv[t+1]);     t+=1;
+            dx  = dz;
         } else if (strcmp(argv[t], "--dx") == 0 )  {
             dx  = atof(argv[t+1]);     t+=1;
-        } else if (strcmp(argv[t], "--xmax") == 0 )  {
-            x1   = atof(argv[t+1]);    t+=1;
-            x0   = -x1;
         } else if (strcmp(argv[t], "--zmax") == 0 )  {
             z1   = atof(argv[t+1]);    t+=1;
             z0   = -z1;
+            x1 = z1;  x0 = z0;
+        } else if (strcmp(argv[t], "--xmax") == 0 )  {
+            x1   = atof(argv[t+1]);    t+=1;
+            x0   = -x1;
+        } else if (strcmp(argv[t], "--gz") == 0 )  {
+            gz   = atof(argv[t+1]);    t+=1;
+            gx = gz;
         } else if (strcmp(argv[t], "--cfl") == 0 )  {
             cfl   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--nv") == 0 )  {
@@ -134,12 +142,6 @@ int main(int argc, char *argv[]) {
     //acc_set_error_routine(&handle_gpu_errors);  // undefined 
 #endif
 
-#ifndef KO_ORD_3
-    int gz = 3, gx = 3;
-#else
-    int gz = 2, gx = 2;
-#endif
-    
     // === create simuation
     NuOsc state(px, pz, nv_in, nphi, gx, gz, x0, x1, z0, z1, dx, dz, cfl, ko);
     long lpts = state.grid.get_lpts();
@@ -151,7 +153,7 @@ int main(int argc, char *argv[]) {
     uint nz = (z1-z0)/dz;
 
 #ifdef ADV_TEST
-    if      (ipt==10) state.fillInitGaussian( eps0, sigma);
+    if      (ipt==10) state.fillInitAdvtest( eps0, sigma);
     else if (ipt==20) state.fillInitSquare( eps0, sigma);
     else if (ipt==30) state.fillInitTriangle( eps0, sigma);
 #else
@@ -161,32 +163,34 @@ int main(int argc, char *argv[]) {
     // === analysis for t=0
     state.analysis();
 
-/*
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
+#ifndef ADV_TEST
         std::list<real*> vlist( { state.P3 } );
         std::vector<int> vslice;
         for (int v=0;v<nv_in;++v) {
             vslice.push_back( int((nv_in-1)/2)*nv_in + v );
         }
         //state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslize );
-        state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
+        //state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
         //std::list<real*> plist( { state.P3 } );
         //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
         //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
-#ifdef ADV_TEST
+#else
+        //auto nxl = std::vector<int>{ 0, state.grid.nx/2, state.grid.nx-1 };
+        auto nxl = std::vector<int>{ state.grid.nx/2 };
+        auto nvl = std::vector<int>{ 0, state.get_nv()/2, state.get_nv()-1}; //gen_skimmed_vslice_index(nv_in, nv_in)
         std::list<real*> vlist( { state.v_stat->ee } );
-        state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
-        //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
+        //state.addSnapShotAtXV(vlist, "ee%06d.bin", DUMP_EVERY, nxl, nvl);
+        state.addSnapShotAtV (vlist, "ee%06d.bin", DUMP_EVERY, nvl );
 #endif
         state.checkSnapShot(0);
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();
     }
-*/
 
     std::cout << std::flush;
     real stepms;
@@ -211,8 +215,9 @@ int main(int argc, char *argv[]) {
         if ( t%ANAL_EVERY==0)  {
             state.analysis();
         }
-
-        //state.checkSnapShot(t);
+        if ( t%DUMP_EVERY==0)  {
+            state.checkSnapShot(t);
+        }
 
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
 #ifdef COSENU_MPI
@@ -246,6 +251,9 @@ int main(int argc, char *argv[]) {
        printf("[Summ] %d %d %d %d %d %d %f\n", omp_get_max_threads(), px, pz, nx, nz, state.get_nv(), ns_per_stepgrid);
     }
     
+    #ifdef SYNC_NCCL
+    ncclCommDestroy(state.grid._ncclcomm);   // FIXME: should redesign class moving this to another place
+    #endif
     #ifdef COSENU_MPI
     MPI_Finalize();    // error because this is called before the deconstructor of CartGrid
     #endif

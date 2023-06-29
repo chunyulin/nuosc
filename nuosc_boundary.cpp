@@ -254,13 +254,18 @@ void NuOsc::unpack_buffer(FieldVar* out) {
 void NuOsc::sync_boundary(FieldVar* v0) {
 
     pack_buffer(v0);
-#if defined(SYNC_COPY)
-    grid.sync_buffer_copy();
-#elif defined(SYNC_MPI_ONESIDE_COPY)
-    grid.sync_buffer();
-#else
-    grid.sync_buffer_isend();
-#endif
+    #if   defined(SYNC_NCCL)
+    grid.sync_nccl();
+    #elif defined(SYNC_COPY)
+    grid.sync_copy();    //  Only for test in one node.
+    #elif defined(SYNC_MPI_ONESIDE_COPY)
+    grid.sync_put();     //  Not work on T2?
+    #elif defined(SYNC_MPI_SENDRECV)
+    grid.sync_sendrecv();
+    #else
+    grid.sync_isend();
+    #endif
+
     unpack_buffer(v0);
 
 

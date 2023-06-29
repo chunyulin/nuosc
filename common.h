@@ -1,15 +1,26 @@
 #pragma once
 
 //==== Global flag
+//==== Start of global flags
+#define DIM 2
+#if DIM != 2
+#error Only DIM=2 is supported
+#endif
+
+
 #define KO_ORD_3
 #define BC_PERI
+//#define IM_V2D_POLAR_GRID
 
 //#define COSENU_MPI
 //#define GDR_OFF
+//#define SYNC_NCCL
+//#define SYNC_COPY
 //#define SYNC_MPI_ONESIDE_COPY
-
-
+//#define SYNC_MPI_SENDRECV
 //#define ADV_TEST
+
+#define ADV_TEST
 
 
 
@@ -63,3 +74,13 @@ typedef std::vector<double> Vec;
 #include <mpi.h>
 #endif
 
+#ifdef SYNC_NCCL
+#include "nccl.h"
+#define NCCLCHECK(cmd) do {     \
+    ncclResult_t res = cmd;     \
+    if (res != ncclSuccess) {   \
+        printf("Failed, NCCL error %s:%d '%s'\n", __FILE__,__LINE__,ncclGetErrorString(res)); \
+        exit(EXIT_FAILURE);     \
+    }                           \
+    } while(0)
+#endif

@@ -2,8 +2,8 @@
 #SBATCH -A GOV109092
 #SBATCH -p gtest
 #SBATCH -J nuosc
-#SBATCH --nodes=2 --ntasks-per-node=1 --cpus-per-task=4
-#SBATCH --gres=gpu:1
+#SBATCH --nodes=1 --ntasks-per-node=4 --cpus-per-task=4
+#SBATCH --gres=gpu:4
 
 module purge
 ##export OMP_NUM_THREADS=16

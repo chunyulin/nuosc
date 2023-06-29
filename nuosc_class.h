@@ -3,18 +3,16 @@
 #include "CartGrid.h"
 
 #define COLLAPSE_LOOP 3
-#define PARFORALL(i,j,v) \
-    _Pragma("omp parallel for collapse(3)") \
-    _Pragma("acc parallel loop collapse(3)") \
-    for (int i=0;i<grid.nx; ++i) \
-    for (int j=0;j<grid.nz; ++j) \
-    for (int v=0;v<grid.nv; ++v)
 
 #define FORALL(i,j,v) \
     for (int i=0;i<grid.nx; ++i) \
     for (int j=0;j<grid.nz; ++j) \
     for (int v=0;v<grid.nv; ++v)
 
+#define PARFORALL(i,j,v) \
+    _Pragma("omp parallel for collapse(3)") \
+    _Pragma("acc parallel loop collapse(3)") \
+    FORALL(i,j,v)
 
 typedef struct Vars {
     real* ee;
@@ -124,7 +122,6 @@ class NuOsc {
             delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
 
             anafile.close();
-
         }
 
         void set_mu(real mu_) {
@@ -146,12 +143,17 @@ class NuOsc {
         void fillInitGaussian(real eps0, real sigma);
         void fillInitSquare(real eps0, real sigma);
         void fillInitTriangle(real eps0, real sigma);
+        void fillInitAdvtest(real eps0, real sigma);
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
+
         void step_rk4();
+        void step_srk3();
         void calRHS(FieldVar* out, const FieldVar * in);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
+        void vectorize(FieldVar* __restrict v0, const real a, const FieldVar *__restrict v1, const real b, const FieldVar * __restrict v2, const real dt, const FieldVar * __restrict v3);
+
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
@@ -165,5 +167,4 @@ class NuOsc {
         void checkSnapShot(const int t=0) const;
         // 2D output:
         void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
-
 };

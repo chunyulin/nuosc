@@ -1,0 +1,25 @@
+# Unit tests
+- Use `make test2d_advec` to run the [advection test](adv.png).
+- Use `make test_vint2d` to build the unit test file for testing integral over Icosahedral grid.
+
+# Baseline test on Twnia-2:
+
+1. Compile on Twina-2 by ". ./gocom"
+2. sbatch t2.sub
+3. See example output slurm*.out 
+
+# A typical workflow on ARM/TWCC cluster
+
+1) Use ". ./gocom" to make.
+2) Sinale run by ./nuosc <argument>
+3) Multiple runs by "run*.sh" submitting to Slurm or nohup. Each set of runs is in the `runtag` folder.
+4) Make plots:
+    a) In each runtag folder, use `plt_analysis.py` to compare statistics quantities like `|P|-1, Pee, M0` for different runs.
+    b) In each run, use `plt_P3.py *.bin` to generate P3 plots.
+    c) The animation can be generated via `makemovie`.
+
+
+For preliminary mpi run w/o full output function, 
+try "make test2d_mpi" with additional argument [./nuosc --np px py] to specify decomposition geometry.
+Also check "COSENU_MPI"
+---

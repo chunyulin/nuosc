@@ -1,15 +1,13 @@
 #pragma once
 #include "common.h"
 
-//#define IM_V2D_POLAR_GL_Z
-//#define IM_V2D_POLAR_RSUM
-
 //#define IM_SIMPSON
 //#define IM_TRAPEZOIDAL
 //#define IM_GL
 
-int gen_v2d_GL_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
+//int gen_v2d_GL_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
 int gen_v2d_rsum_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
+int gen_v2d_icosahedron(const int nv_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
 
 int gen_v1d_GL(const int nv, Vec vw, Vec vz);
 int gen_v1d_trapezoidal(const int nv_, Vec vw, Vec vz);
@@ -51,8 +49,12 @@ class CartGrid {
         // packing buffers for Z- Z+ and X_- X+
         MPI_Datatype t_pbX, t_pbZ;
         MPI_Win      w_pbX, w_pbZ;
-
 #endif
+#ifdef SYNC_NCCL
+        ncclComm_t _ncclcomm;
+        cudaStream_t stream[2*DIM];
+#endif
+                
 
         real *pbX, *pbZ;          // TODO: can we use the storage of FieldVar directly w/o copying to this buffers ?
 
@@ -72,10 +74,14 @@ class CartGrid {
               myrank, s, rx, rz, lowerX, upperX, lowerZ, upperZ, x0, x1, nx, z0, z1, nz, nv, nphi);
         }
 
-        void sync_buffer();
-        void sync_buffer_isend();
-        void sync_buffer_copy();
-
+        #ifdef SYNC_NCCL
+        void sync_nccl();
+        #endif
+        void sync_isend();
+        void sync_sendrecv();
+        void sync_put();
+        void sync_copy();
+                                        
         int  get_nv()    const {  return nv;   }
         int  get_nphi()  const  {  return nphi;   }
         ulong get_lpts()  const  {  return lpts;  }

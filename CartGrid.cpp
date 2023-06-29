@@ -1,7 +1,8 @@
 #include "CartGrid.h"
+#include "icosahedron.h"
+//#include "jacobi_poly.h"
 
 /*
-#include "jacobi_poly.h"
 int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
     Vec r(nv);
     Vec w(nv);
@@ -20,18 +21,6 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
             vw[j*nv+i] = w[i]/nphi;
         }
     return nv*nphi;
-}
-int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
-    Vec r(nv,0);
-    Vec w(nv,0);
-    JacobiGL(nv-1,0,0,r,w);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = r[j];
-        vw[j] = w[j];
-    }
-    return nv;
 }
 */
 
@@ -53,6 +42,37 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
         }
     return nv*nphi;
 }
+
+int gen_v2d_icosahedron(const int nv_, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
+    
+    IcosahedronVoronoi icosa(nv_);
+    int nv=icosa.N;
+    vx.reserve(nv);
+    vy.reserve(nv);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int i=0; i<nv; ++i) {
+        vx[i] = icosa.X[i].x;
+        vy[i] = icosa.X[i].y;
+        vz[i] = icosa.X[i].z;
+        vw[i] = icosa.vw[i];
+    }
+    return nv;
+}
+
+/*
+int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
+    Vec r(nv,0);
+    Vec w(nv,0);
+    JacobiGL(nv-1,0,0,r,w);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = r[j];
+        vw[j] = w[j];
+    }
+    return nv;
+}*/
 
 // v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
 int gen_v1d_trapezoidal(const int nv, Vec vw, Vec vz) {
@@ -140,13 +160,31 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     #endif
     #endif
 
-    #if defined(SYNC_COPY)
+    #ifdef SYNC_NCCL
+    ncclUniqueId id;
+    if (myrank == 0) ncclGetUniqueId(&id);
+    #ifdef COSENU_MPI
+    MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
+    #endif
+    ncclCommInitRank(&_ncclcomm, ranks, id, myrank);     // should this be put after acc_set_device() ?
+
+    for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
+    #endif
+
+    #if defined(SYNC_NCCL)
+    if (!myrank) {
+        printf("Sync by NCCL.\n");
+    }
+    #elif defined(SYNC_COPY)
     if (!myrank) printf("SYNC_COPY for test.\n");
     #elif defined(SYNC_MPI_ONESIDE_COPY)
-    if (!myrank) printf("MPI One-side copy.\n");
+    if (!myrank) printf("Sync by MPI One-side copy.\n");
+    #elif defined(SYNC_MPI_SENDRECV)
+    if (!myrank) printf("Sync by MPI Sendrecev.\n");
     #else
-    if (!myrank) printf("MPI Isend/recv.\n");
+    if (!myrank) printf("Sync by MPI Isend / Irecv.\n");
     #endif
+
 
 #endif
 
@@ -161,12 +199,11 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     X.reserve(nx);   for(int i=0;i<nx; ++i)    X[i] = x0 + (i+0.5)*dx;
     Z.reserve(nz);   for(int i=0;i<nz; ++i)    Z[i] = z0 + (i+0.5)*dz;
 
-#if defined(IM_V2D_POLAR_GL_Z)
-    nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
-#else
+#if defined(IM_V2D_POLAR_GRID)
     nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
+#else
+    nv = gen_v2d_icosahedron(nv_, vw, vx, vy, vz);
 #endif
-
 
     lpts = (nx+2*gx)*(nz+2*gz)*nv;
     //lpts_x = gx*nz
@@ -189,21 +226,22 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     #else
     pbX = new real[4*npbX];
     pbZ = new real[4*npbZ];
+    #pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
     #endif
 
 #else
     pbX = new real[4*npbX];
     pbZ = new real[4*npbZ];
+    #pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
 #endif
-#pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
 
     for (int i=0;i<ranks;++i) {
        if (myrank==i)  {
           print_info();
-          MPI_Barrier(MPI_COMM_WORLD);
-       } else {
-          MPI_Barrier(MPI_COMM_WORLD);
        }
+       #ifdef COSENU_MPI
+       MPI_Barrier(MPI_COMM_WORLD);
+       #endif
     }
     //test_win();
 }
@@ -214,7 +252,7 @@ CartGrid::~CartGrid() {
     //MPI_Type_free(&t_pbX);
     //MPI_Type_free(&t_pbZ);
 
-#pragma acc exit data delete(pbX,pbZ)
+//#pragma acc exit data delete(pbX,pbZ)
 
 #ifndef COSENU_MPI
     delete[] pbX;
@@ -223,7 +261,7 @@ CartGrid::~CartGrid() {
 }
 
 
-void CartGrid::sync_buffer() {
+void CartGrid::sync_put() {
     const auto npbX = nvar*gx*nz*nv;
     const auto npbZ = nvar*nx*gz*nv;
 #ifdef COSENU_MPI
@@ -289,7 +327,7 @@ void CartGrid::sync_buffer() {
 #endif
 }
 
-void CartGrid::sync_buffer_isend() {
+void CartGrid::sync_isend() {
 #ifdef COSENU_MPI
 #if 0
     for (int i=0;i<5;i++) {
@@ -354,8 +392,52 @@ void CartGrid::sync_buffer_isend() {
 #endif
 }
 
-void CartGrid::sync_buffer_copy() {   // Only for single-node test
+void CartGrid::sync_copy() {   // Only for single-node test
     memcpy(&pbX[2*gx*nz*nv*nvar], &pbX[0], 2*gx*nz*nv*nvar*sizeof(real));
     memcpy(&pbZ[2*nx*gz*nv*nvar], &pbZ[0], 2*nx*gz*nv*nvar*sizeof(real));
 }
+
+// FIXME: SendRecv gives wrong result under GPU mode even for Rank=1 !!
+void CartGrid::sync_sendrecv() {
+    #ifdef COSENU_MPI
+    assert(0);
+    #endif
+}
+
+#ifdef SYNC_NCCL
+void CartGrid::sync_nccl() {
+    #ifdef NVTX
+    nvtxRangePush("Sync NCCL");
+    #endif
+    const auto npbX = nvar*gx*nz*nv;
+    const auto npbZ = nvar*nx*gz*nv;
+
+    NCCLCHECK( ncclGroupStart() );
+        NCCLCHECK( ncclSend(&pbX[     0], npbX, ncclDouble, lowerX, _ncclcomm, stream[0]) );
+        NCCLCHECK( ncclRecv(&pbX[2*npbX], npbX, ncclDouble, upperX, _ncclcomm, stream[0]) );
+    NCCLCHECK( ncclGroupEnd() );
+    
+    NCCLCHECK( ncclGroupStart() );
+        NCCLCHECK( ncclSend(&pbX[  npbX], npbX, ncclDouble, upperX, _ncclcomm, stream[1]) );
+        NCCLCHECK( ncclRecv(&pbX[3*npbX], npbX, ncclDouble, lowerX, _ncclcomm, stream[1]) );
+    NCCLCHECK( ncclGroupEnd() );
+
+    NCCLCHECK( ncclGroupStart() );
+        NCCLCHECK( ncclSend(&pbZ[     0], npbZ, ncclDouble, lowerZ, _ncclcomm, stream[2]) );
+        NCCLCHECK( ncclRecv(&pbZ[2*npbZ], npbZ, ncclDouble, upperZ, _ncclcomm, stream[2]) );
+    NCCLCHECK( ncclGroupEnd() );
+    
+    NCCLCHECK( ncclGroupStart() );
+        NCCLCHECK( ncclSend(&pbZ[  npbZ], npbZ, ncclDouble, upperZ, _ncclcomm, stream[3]) );
+        NCCLCHECK( ncclRecv(&pbZ[3*npbZ], npbZ, ncclDouble, lowerZ, _ncclcomm, stream[3]) );
+    NCCLCHECK( ncclGroupEnd() );
+
+    cudaDeviceSynchronize();
+
+    #ifdef NVTX
+    nvtxRangePop();
+    #endif
+}
+#endif
+
 

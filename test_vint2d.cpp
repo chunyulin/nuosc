@@ -151,7 +151,7 @@ class IcosahedronVoronoi : public Sphere {
     private:
 
         vector<Point> bp;   // 2*NP+2 base points (12 for Icosahedral, north/south pole for the first/last) 
-        vector<Point> X;    // non-unique points in each patch
+        vector<Point> X;    // unique points in each patch
         vector<uint>  ui;   // index for unique points
 
         std::ofstream pp, bb, vv;

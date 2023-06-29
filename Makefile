@@ -1,9 +1,8 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o nuosc_boundary.cpp CartGrid.o
-## jacobi_poly.o 
-##//  nuosc_snapshot.o 
+OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o nuosc_boundary.o  CartGrid.o  nuosc_snapshot.o
+##\\ jacobi_poly.o 
 
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"
@@ -18,36 +17,14 @@ ${TARGET}: ${OBJS}
 test2d:
 	mpirun -np 1 ./nuosc --np 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 5 --xmax 5 --dz 0.1 --dx 0.1 --nv 8 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 5 --END_STEP 10
 
-test2d_gaussian:
-	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	mpirun -np 2 ./nuosc --np 2 1 --ipt 10 --nv 3 --dx 0.05 --xmax 1 --dz 0.05 --zmax 1 --mu 0 --pmo 0 --eps0 1 --sigma 100 --ko 1e-3 --cfl 0.5 --END_STEP 10 --ANA_EVERY 1
-	##mpirun -np 1 ./nuosc --ipt 10 --nv 3 --dx 0.05 --xmax 1 --dz 0.05 --zmax 1 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --END_STEP 10 --ANA_EVERY 1
-	#python3 ./plt_XZ.py ee*.bin
-	#scp *.png lincy@arm.nchc.org.tw:~/public_html/tmp/tmp/
-
-test2d_square:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 20 --nv 8 --dx 0.01 --xmax 0.5 --dz 0.01 --zmax 0.8 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T .2 --END_STEP_T 2 --ANA_EVERY_T .2
-	python3 ./plt_XZ.py ee*.bin
-	scp *.png lincy@arm.nchc.org.tw:~/public_html/tmp/tmp/
-
-test_gaussian:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 10 --nv 3 --dz 0.02 --zmax 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --DUMP_EVERY_T 5 --END_STEP_T 50 --ANA_EVERY_T 5
+UNITTEST=--nv 4 --dx 0.01 --xmax 0.5 --dz 0.01 --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T .1 --END_STEP_T .5 --ANA_EVERY_T 0.1
+UNITTEST=--nv 2 --gz 2 --dz 0.02  --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 0.8 --cfl 0.25 --DUMP_EVERY_T .2 --END_STEP_T .5 --ANA_EVERY_T .2
+UNITTEST=--nv 2 --gz 3 --dz 0.001 --zmax 0.5  --xmax 0.003  --mu 0 --pmo 0 --eps0 1 --sigma .08 --ko 0.7 --cfl 0.5 --DUMP_EVERY_T 1 --END_STEP_T 5 --ANA_EVERY_T 2
+test2d_advec:
+	rm -f *.png *.bin -f
+	./nuosc --ipt 10 ${UNITTEST}
 	python3 ./plt_overlay.py ee*.bin
-	cp -f *.png ~/public_html/tmp/tmp/
-
-test_square:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 20 --nv 3 --dz 0.001 --zmax 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --DUMP_EVERY_T 0.25 --END_STEP_T 1 --ANA_EVERY_T 1
-	python3 ./plt_overlay.py ee*.bin
-	cp -f *.png ~/public_html/tmp/tmp/
-
-test_tri:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 30 --nv 3 --dz 0.001 --zmax 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --DUMP_EVERY_T 5 --END_STEP_T 50 --ANA_EVERY_T 10
-	python3 ./plt_overlay.py ee*.bin
-	cp -f *.png ~/public_html/tmp/tmp/
+	#python3 ./plt_ZX.py ee*.bin
 
 test:
 	export CUDA_VISIBLE_DEVICES=0; \
@@ -80,11 +57,6 @@ nsys:
 ncu:
 	${NCU} --nvtx -f --set full --sampling-interval 6 -o FD \
            ./nuosc --ipt 0 --mu 1.0 --zmax 1024 --dz 0.05 --nv 400 --cfl 0.5 --ko 1e-3 --ANA_EVERY 9999 --DUMP_EVERY 9999 --END_STEP 5
-
-
-test_vint: test_vint.o jacobi_poly.o
-	nvc++ test_vint.cpp jacobi_poly.cpp -I/pkg/gsl-2.7.1/include -L/pkg/gsl-2.7.1/lib -lgsl -lgslcblas -o test_vint
-
 
 clean:
 	rm *.o -f ${TARGET}

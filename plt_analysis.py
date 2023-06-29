@@ -25,7 +25,7 @@ for run in runs:
 def compare(col, tag, log = 0):
     plt.figure()
     for k in data:
-        plt.plot(data[k][:,0],data[k][:,col], label=k, linewidth=0.5)
+        plt.plot(data[k][:,0],data[k][:,col], label=k, linewidth=1)
     #plt.plot(d2[:,0],(d2[:,col]-d2[0,col]), label=la[2])
     #plt.plot(d3[:,0],(d3[:,col]-d3[0,col]), label=la[3])
     #plt.plot(d4[:,0],(d4[:,col]-d4[0,col]), label=la[4])

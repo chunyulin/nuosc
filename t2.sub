@@ -1,59 +1,23 @@
 #!/bin/bash
-#SBATCH -A ENT211349
-#SBATCH -p gtest
+#SBATCH -A GOV109092
+#SBATCH -p gp4d
 #SBATCH -J nuosc
-#SBATCH --nodes=1 --ntasks-per-node=2 --cpus-per-task=4
-#SBATCH --gres=gpu:2
+#SBATCH --nodes=1 --ntasks-per-node=8 --cpus-per-task=4
+#SBATCH --gres=gpu:8
 ###SBATCH -t 0-0:10
 
 module purge
-module load nvhpc
+source /opt/ohpc/pkg/kagra/nv/openmpi-4.1.4/env.sh
 
-export OMPI_MCA_btl_openib_warn_default_gid_prefix=0
-export OMPI_MCA_btl_openib_want_cuda_gdr=1
+#export OMPI_MCA_btl_openib_want_cuda_gdr=1
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
-export NVCOMPILER_ACC_TIME=0
-export NVCOMPILER_ACC_NOTIFY=0
+#export NVCOMPILER_ACC_TIME=0
+#export NVCOMPILER_ACC_NOTIFY=0
 
-export
-free -h
+SRUN="mpirun -np ${SLURM_NTASKS}"
 
-MPIRUN="mpirun -np ${SLURM_NTASKS}"
-
+${SRUN} ./nuosc --np 4 2 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 100 --zmax 32 --dx 0.1 --nv 32 --nphi 16 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 1 --END_STEP 12
 
 
-#PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 128 --xmax 64 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
-#mpirun -np 8 ./nuosc --np 4 2 ${PARAM}
-#mpirun -np 8 ./nuosc --np 2 4 ${PARAM}
-#mpirun -np 8 ./nuosc --np 8 1 ${PARAM}
-#mpirun -np 8 ./nuosc --np 1 8 ${PARAM}
-
-#PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 64 --xmax 64 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
-#mpirun -np 4 ./nuosc --np 4 1 ${PARAM}
-#mpirun -np 4 ./nuosc --np 1 4 ${PARAM}
-#mpirun -np 4 ./nuosc --np 2 2 ${PARAM}
-
-make test2d_mpi
-
-#PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 64 --xmax 32 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
-#mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
-#mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
-
-#PARAM="--pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 32 --xmax 32 --dz 0.1 --dx 0.1 --nv 17 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 5 --ANA_EVERY 5 --END_STEP 10"
-#mpirun -np 1 ./nuosc --np 1 1 ${PARAM}
-
-
-#mpirun -np 16 ./nuosc --np 4 4 ${PARAM}
-#mpirun -np 16 ./nuosc --np 8 2 ${PARAM}
-#mpirun -np 16 ./nuosc --np 2 8 ${PARAM}
-#mpirun -np 16 ./nuosc --np 16 1 ${PARAM}
-#mpirun -np 16 ./nuosc --np 1 16 ${PARAM}
-#mpirun -np 8 ./nuosc --np 4 2 ${PARAM}
-#mpirun -np 8 ./nuosc --np 2 4 ${PARAM}
-#mpirun -np 8 ./nuosc --np 8 1 ${PARAM}
-#mpirun -np 8 ./nuosc --np 1 8 ${PARAM}
-#mpirun -np 2 ./nuosc --np 2 1 ${PARAM}
-#mpirun -np 2 ./nuosc --np 1 2 ${PARAM}
-#mpirun -np 1 ./nuosc --np 1 1 ${PARAM}
 
 echo "--- Walltime: ${SECONDS} sec."

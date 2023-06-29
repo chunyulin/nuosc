@@ -6,8 +6,9 @@ if [[ $host == *"twcc.ai" ]]; then
   echo "==== on TWCC"
   #module load miniconda3
   #conda activate /opt/ohpc/pkg/kagra/ENV/py37
-  module load nvhpc
-
+  module purge
+  source /opt/ohpc/pkg/kagra/nv/openmpi-4.1.4/env.sh
+  
   export CXX=mpic++
   export GSL_ROOT=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
   export OPT="-acc=gpu -O3 -Minfo=acc -gpu=manage"
@@ -32,16 +33,16 @@ elif [[ $host == "node1" ]]; then
   echo "==== on N1 A100"
   module purge
   module load nvhpc/22.2
+  #module load nvhpc/23.1
 
-  ##export CUDA_VISIBLE_DEVICES=0
-  ##export LD_LIBRARY_PATH=/pkg/gsl-2.7.1/lib:${LD_LIBRARY_PATH}
-
+  unset CUDA_VISIBLE_DEVICES
   unset CFLAGS
 
-  export GSL_ROOT=/pkg/gsl-2.7.1
+  #export GSL_ROOT=/pkg/gsl-2.7.1
+
   export CXX=mpic++
-  export OPT="-mp -O4 -Minfo=mp -DADVEC_OFF"
-  export OPT="-O1 -acc=gpu -Minfo=acc -gpu=manage" ## -DADVEC_OFF"
+  export OPT="-mp -O4 -Minfo=mp"
+  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=manage,cc80"
 
 else
   echo "==== on ARM"

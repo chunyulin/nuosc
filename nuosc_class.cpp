@@ -1,5 +1,10 @@
 #include "nuosc_class.h"
 
+real flimiter(real a, real b) {
+	//return 0.5*(sgn(a)+sgn(b))*min(abs(a),abs(b));    // minmod
+	return 0.5*(sgn(a)+sgn(b))*max( min(2*abs(a),abs(b)), min(abs(a),2*abs(b)) );   // superbee
+}
+
 
 void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #ifdef NVTX
@@ -50,7 +55,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             ivzdv_bexI_p_exI          += vw[k] * vz[k]*(in->bex_im[ijk] + in->ex_im[ijk] );
             ivzdv_bxx_m_bee_m_xx_p_ee += vw[k] * vz[k]*(in->bxx[ijk]-in->bee[ijk]+in->ee[ijk]-in->xx[ijk] );
         }
-        //cout << "===" << grid.nx << " " << grid.nz << " " << grid.nv << " " << grid.gx << " " << grid.gz << endl; 
 
         // OMP for not useful here
 #pragma acc loop
@@ -68,31 +72,78 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             real *bexr  = &(in->bex_re[ijv]);
             real *bexi  = &(in->bex_im[ijv]);
 
-            // prepare KO operator
 #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
-            real ko_eps_z = -ko/grid.dz/64.0;
             real ko_eps_x = -ko/grid.dx/64.0;
-#define KO_FD(x) ( ko_eps_z*( x[-3*grid.nv]  + x[3*grid.nv]  - 6*(x[-2*grid.nv] +x[2*grid.nv])  + 15*(x[-grid.nv] +x[grid.nv])  - 20*x[0] ) + \
-        ko_eps_x*( x[-3*nzv] + x[3*nzv] - 6*(x[-2*nzv]+x[2*nzv]) + 15*(x[-nzv]+x[nzv]) - 20*x[0] ) )
+            real ko_eps_z = -ko/grid.dz/64.0;
+            #define KO_FD(x) ( ko_eps_z*( x[-3*grid.nv] + x[3*grid.nv] - 6*(x[-2*grid.nv] +x[2*grid.nv]) + 15*(x[-grid.nv] +x[grid.nv]) - 20*x[0] ) + \
+                               ko_eps_x*( x[-3*nzv]     + x[3*nzv]     - 6*(x[-2*nzv]+x[2*nzv])          + 15*(x[-nzv]     +x[nzv])     - 20*x[0] ) )
 #else
             // Kreiss-Oliger dissipation (3-nd order)
-            real ko_eps_z = -ko/dz/16.0;
-            real ko_eps_x = -ko/dx/16.0;
-#define KO_FD(x) ( ko_eps_z * ( x[-2*grid.nv]  + x[2*grid.nv]  - 4*(x[-grid.nv] +x[grid.nv])  + 6*x[0] ) + \
-        ko_eps_x * ( x[-2*nzv] + x[2*nzv] - 4*(x[-nzv]+x[nzv]) + 6*x[0] ) )
+            real ko_eps_x = -ko/grid.dx/16.0;
+            real ko_eps_z = -ko/grid.dz/16.0;
+            #define KO_FD(x) ( ko_eps_z * ( x[-2*grid.nv] + x[2*grid.nv] - 4*(x[-grid.nv] +x[grid.nv]) + 6*x[0] ) + \
+                               ko_eps_x * ( x[-2*nzv]     + x[2*nzv]     - 4*(x[-nzv]+x[nzv])          + 6*x[0] ) )
 #endif
 
-            // prepare advection FD operator
-            //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
-            real factor_z = -grid.vz[v]/(12*grid.dz);
+#define ADVEC_MUSCL
+//#define ADVEC_UPWIND2O
+//#define ADVEC_LOPESIDE
+//#define ADVEC_CFD2
 #ifdef ADVEC_OFF
-#define ADV_FD(x)     (0.0)
+             #define ADV_FD(x)     (0.0)
+#elif defined(ADVEC_MUSCL)
+	    // For advection eq: F(u) = v*(uL*int(v>0)  + uR*int(v<0))
+/*
+	    real uxLp = x[0]       + 0.5* minmod(x[0]       -x[-nzv],      x[nzv]    -x[0])       * (x[nzv]    -x[0]);
+	    real uzLp = x[0]       + 0.5* minmod(x[0]       -x[-grid.nv],  x[grid.nv]-x[0])       * (x[grid.nv]-x[0]);
+	    real uxLm = x[-nzv]    + 0.5* minmod(x[-nzv]    -x[-2*nzv],    x[0]      -x[-nzv])    * (x[0]      -x[-nzv]);
+	    real uzLm = x[-grid.nv]+ 0.5* minmod(x[-grid.nv]-x[-2*grid.nv],x[0]      -x[-grid.nv])* (x[0]      -x[-grid.nv]);
+	    real uxRp = x[nzv]     - 0.5* minmod(x[nzv]    -x[0],       x[2*nzv]    -x[nzv])    * (x[2*nzv]    -x[nzv]);
+	    real uzRp = x[grid.nv] - 0.5* minmod(x[grid.nv]-x[0],       x[2*grid.nv]-x[grid.nv])* (x[2*grid.nv]-x[grid.nv]);
+	    real uxRm = x[0]       - 0.5* minmod(x[0]      -x[-nzv],    x[nzv]      -x[0])      * (x[nzv]      -x[0]);
+	    real uzRm = x[0]       - 0.5* minmod(x[0]      -x[-grid.nv],x[grid.nv]  -x[0])      * (x[grid.nv]  -x[0]);
+            #define ADV_FD(x)  ( -grid.vx[v]/(grid.dx)* ( (uxLp-uxLm)*int(grid.vx[v]>0) + (uxRp-uxRm)*int(grid.vx[v]<0) )   \
+                                 -grid.vz[v]/(grid.dz)* ( (uzLp-uzLm)*int(grid.vz[v]>0) + (uzRp-uzRm)*int(grid.vz[v]<0) ) )
+*/
+            #define ADV_FD(x)  ( -grid.vx[v]/(grid.dx)* ( int(grid.vx[v]>0)*  \
+    ( x[0]       + 0.5* flimiter(x[0]       -x[-nzv],      x[nzv]    -x[0])      \
+    - x[-nzv]   - 0.5* flimiter(x[-nzv]    -x[-2*nzv],    x[0]      -x[-nzv])   ) \
+               + int(grid.vx[v]<0)* \
+    ( x[nzv]     - 0.5* flimiter(x[nzv]    -x[0],       x[2*nzv]    -x[nzv])   \
+      - x[0]     + 0.5* flimiter(x[0]      -x[-nzv],    x[nzv]      -x[0])    )   )   \
+                                 -grid.vz[v]/(grid.dz)* ( int(grid.vz[v]>0)* \
+    ( x[0]       + 0.5* flimiter(x[0]       -x[-grid.nv],  x[grid.nv]-x[0])     \
+     -x[-grid.nv]- 0.5* flimiter(x[-grid.nv]-x[-2*grid.nv],x[0]      -x[-grid.nv])  ) \
+              + int(grid.vz[v]<0)* \
+     (  x[grid.nv] - 0.5* flimiter(x[grid.nv]-x[0],       x[2*grid.nv]-x[grid.nv])   \
+        - x[0]       - 0.5* flimiter(x[0]      -x[-grid.nv],x[grid.nv]  -x[0])    )  ) )
+
+#elif defined(ADVEC_UPWIND2O)
+            int sx = sgn(grid.vx[v]);
+            int sz = sgn(grid.vz[v]);
+            real factor_x = -sx*grid.vx[v]/(2*grid.dx);
+            real factor_z = -sz*grid.vz[v]/(2*grid.dz);
+            #define ADV_FD(x)  ( factor_z*( x[-2*sz*grid.nv] - 4*x[-sz*grid.nv] + 3*x[0] ) + \
+                                 factor_x*( x[-2*sx*nzv]     - 4*x[-sx*nzv]     + 3*x[0] ) )
+#elif defined(ADVEC_LOPESIDE)
+            // advection term: (4-th order lopsided finite differencing)
+            int sx = sgn(grid.vx[v]);
+            int sz = sgn(grid.vz[v]);
+            real factor_x = -sx*grid.vx[v]/(12*grid.dx);
+            real factor_z = -sz*grid.vz[v]/(12*grid.dz);
+            #define ADV_FD(x)  ( factor_z* ( -x[-3*sz*grid.nv] + 6*x[-2*sz*grid.nv] - 18*x[-sz*grid.nv] + 10*x[0] + 3*x[sz*grid.nv] )   + \
+                                 factor_x* ( -x[-3*sx*nzv]     + 6*x[-2*sx*nzv]     - 18*x[-sx*nzv]     + 10*x[0] + 3*x[sx*nzv]     ) )
+#elif defined(ADVEC_CFD2O)
+            real factor_x = -grid.vx[v]/(2*grid.dx);
+            real factor_z = -grid.vz[v]/(2*grid.dz);
+            #define ADV_FD(x) ( factor_z*( (x[grid.nv] -x[-grid.nv]  ) ) + \
+                                factor_x*( (x[nzv]     -x[-nzv]      ) ) )
 #else
             real factor_x = -grid.vx[v]/(12*grid.dx);
-#define ADV_FD(x) ( factor_z*(  (x[-2*grid.nv] -x[2*grid.nv])  - 8.0*(x[-grid.nv] -x[grid.nv]  ) ) + \
-        factor_x*(  (x[-2*nzv]-x[2*nzv]) - 8.0*(x[-nzv]-x[nzv] ) ) )
-
+            real factor_z = -grid.vz[v]/(12*grid.dz);
+            #define ADV_FD(x) ( factor_z*( (x[-2*grid.nv] - x[2*grid.nv]) - 8.0*(x[-grid.nv] - x[grid.nv] ) ) + \
+                                factor_x*( (x[-2*nzv]     - x[2*nzv])     - 8.0*(x[-nzv]     - x[nzv]     ) ) )
 #endif
 
             // interaction term
@@ -176,6 +227,27 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 #endif
 }
 
+// v0 = a*v1 + b*(v2 + dt*v3)
+void NuOsc::vectorize(FieldVar* __restrict v0, const real a, const FieldVar * __restrict v1, const real b, const FieldVar* __restrict v2, const real dt, const FieldVar * __restrict v3) {
+#ifdef NVTX
+    nvtxRangePush(__FUNCTION__);
+#endif
+
+    PARFORALL(i,j,v) {
+            auto k = grid.idx(i,j,v);
+            v0->ee    [k] = a*v1->ee    [k] + b * (v2->ee    [k] + dt*v3->ee    [k]);
+            v0->xx    [k] = a*v1->xx    [k] + b * (v2->xx    [k] + dt*v3->xx    [k]);
+            v0->ex_re [k] = a*v1->ex_re[k] + b * (v2->ex_re [k] + dt*v3->ex_re [k]);
+            v0->ex_im [k] = a*v1->ex_im[k] + b * (v2->ex_im [k] + dt*v3->ex_im [k]);
+            v0->bee   [k] = a*v1->bee   [k] + b * (v2->bee   [k] + dt*v3->bee   [k]);
+            v0->bxx   [k] = a*v1->bxx   [k] + b * (v2->bxx   [k] + dt*v3->bxx   [k]);
+            v0->bex_re[k] = a*v1->bex_re[k] + b * (v2->bex_re[k] + dt*v3->bex_re[k]);
+            v0->bex_im[k] = a*v1->bex_im[k] + b * (v2->bex_im[k] + dt*v3->bex_im[k]);
+        }
+#ifdef NVTX
+    nvtxRangePop();
+#endif
+}
 
 void NuOsc::step_rk4() {
 #ifdef NVTX
@@ -232,6 +304,30 @@ void NuOsc::step_rk4() {
 #endif
 }
 
+void NuOsc::step_srk3() {
+#ifdef NVTX
+    nvtxRangePush(__FUNCTION__);
+#endif
+
+    //Step-1
+    calRHS(v_rhs, v_stat);   // L(u0)
+    vectorize(v_pre, v_stat, dt, v_rhs);  // u1 = u0 + dt*L(u0)
+
+    //Step-2
+    calRHS(v_rhs, v_pre);   // L(u1)
+    vectorize(v_pre, 3.0/4.0, v_stat, 1.0/4.0, v_pre, dt, v_rhs);   // u2
+
+    //Step-3
+    calRHS(v_cor, v_pre);   // L(u2)
+    vectorize(v_stat, 1.0/3.0, v_stat, 2.0/3.0, v_pre, dt, v_cor);
+
+    if(renorm) renormalize(v_stat);
+
+    phy_time += dt;
+#ifdef NVTX
+    nvtxRangePop();
+#endif
+}
 
 NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const int gx_,const int gz_,
         const real  x0_, const real  x1_, const real  z0_, const real  z1_, const real dx_, const real dz_, 
@@ -257,38 +353,38 @@ NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const
             printf("   Domain:  v: nv = %5d  nphi = %5d  on S2.\n", grid.get_nv(), grid.get_nphi() );
             printf("            x:( %12f %12f )  dx = %g\n", x0_,x1_, dx);
             printf("            z:( %12f %12f )  dz = %g\n", z0_,z1_, dz);
-            printf("   Local size per field var = %.2f GB, totol memory per rank roughly %.2f GB\n", mem_per_var, mem_per_var*50);
+            printf("   Size per var per rank = %.2f GB, totol memory per rank ~ %.2f GB\n", mem_per_var, mem_per_var*50);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
-            printf("   Use Periodic boundary\n");
+            printf("   Boundary: Periodic\n");
 #else
-            printf("   Use open boundary\n");
+            printf("   Boundary: Open\n");
 #endif
 
-#if defined(IM_V2D_POLAR_GL_Z)
-            printf("   Use Gauss-Lobatto z-grid and uniform phi-grid.\n");
+#if defined(IM_V2D_POLAR_GRID)
+            printf("   Velocity grid: uniform z-/phi-\n");
 #else
-            printf("   Use uniform z- and phi- grid.\n");
+            printf("   Velocity grid: Icosahedron sphere grid\n");
 #endif
 
 #ifndef KO_ORD_3
-            printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
+            printf("   Dissipation: 5-th order KO w/ eps = %g\n", ko);
 #else
-            printf("   Use 3-th order KO dissipation, KO eps = %g\n", ko);
+            printf("   Dissipation: 3-th order KO w/ eps = %g\n", ko);
 #endif
 
 #ifndef ADVEC_OFF
-            printf("   Advection ON. (Center-FD)\n");
+            printf("   Advection: ON (Center-FD)\n");
             //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
             //printf("   Use lopsided FD for advaction\n");
 #else
-            printf("   Advection OFF.\n");
+            printf("   Advection: OFF\n");
 #endif
 
 #ifdef VACUUM_OFF
-            printf("   Vacuum term OFF.\n");
+            printf("   Vacuum term: OFF\n");
 #else
-            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
+            printf("   Vacuum term: pmo= %g theta= %g\n", pmo, theta);
 #endif
         }
 

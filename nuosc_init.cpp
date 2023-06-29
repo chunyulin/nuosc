@@ -159,6 +159,32 @@ void NuOsc::fillInitGaussian(real eps0, real sigma) {
     }
 }
 
+void NuOsc::fillInitAdvtest(real eps0, real sigma) {
+
+    if (myrank==0) printf("   Init Advtest eps0= %g sigma= %g for testing.\n", eps0, sigma);
+
+    PARFORALL(i,j,v) {
+	    auto ijv = grid.idx(i,j,v);
+
+            G0 [ijv] = 1.0;
+            G0b[ijv] = 1.0;
+			const real sd = 0.33;
+	    
+            real tmp = exp( - ((grid.Z[j])*(grid.Z[j]))/(1.0*sigma*sigma) ) + \
+                       ((grid.Z[j]+sd)*(grid.Z[j]+sd) <= sigma*sigma) + 
+	    			   int(grid.Z[j]-sd<0  && grid.Z[j]-sd> -sigma)*( sigma + grid.Z[j]-sd)/sigma + 
+	                   int(grid.Z[j]-sd>=0 && grid.Z[j]-sd <  sigma)*( sigma - grid.Z[j]+sd)/sigma;
+            v_stat->ee    [ijv] = tmp*eps0;
+            v_stat->xx    [ijv] = 0;
+            v_stat->ex_re [ijv] = 0;
+            v_stat->ex_im [ijv] = 0;
+            v_stat->bee   [ijv] = 0;
+            v_stat->bxx   [ijv] = 0;
+            v_stat->bex_re[ijv] = 0;
+            v_stat->bex_im[ijv] = 0;
+    }
+}
+
 void NuOsc::fillInitSquare(real eps0, real sigma) {
 
     if (myrank==0) printf("   Init Square eps0= %g sigma= %g for testing.\n", eps0, sigma);
@@ -170,8 +196,10 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
             G0b[ijv] = 1.0;
 	    
             real tmp = 0;
-            if (grid.Z[j]*grid.Z[j]+grid.X[i]*grid.X[i] <= sigma*sigma) tmp = eps0;
+            //if (grid.Z[j]*grid.Z[j]+grid.X[i]*grid.X[i] <= sigma*sigma) tmp = eps0;
+            if (grid.Z[j]*grid.Z[j] <= sigma*sigma) tmp = eps0;
             v_stat->ee    [ijv] = tmp;
+            //v_stat->ee    [ijv] = 1;//grid.vz[v];
             v_stat->xx    [ijv] = 0;
             v_stat->ex_re [ijv] = 0;
             v_stat->ex_im [ijv] = 0;
@@ -194,7 +222,7 @@ void NuOsc::fillInitTriangle(real eps0, real sigma) {
 	    
             if      (grid.Z[j]<0  && grid.Z[j] > -sigma)  v_stat->ee[ipv] = ( sigma + grid.Z[j] ) * eps0 / sigma;
             else if (grid.Z[j]>=0 && grid.Z[j] <  sigma)  v_stat->ee[ipv] = ( sigma - grid.Z[j] ) * eps0 / sigma;
-            else                                    v_stat->ee[ipv] = 0.0;
+            else                                          v_stat->ee[ipv] = 0.0;
             v_stat->xx    [ipv] = 0;
             v_stat->ex_re [ipv] = 0;
             v_stat->ex_im [ipv] = 0;

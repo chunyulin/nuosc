@@ -20,7 +20,7 @@ void NuOsc::addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std
     int sx  = xidx.size();
     int sv  = vidx.size();
 
-    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", sx, nz, sv, dumpstep);
+    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", sx, grid.nz, sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];
@@ -30,14 +30,15 @@ void NuOsc::addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
     // grid information
-    outfile << dt <<" "<< sx <<" "<< nz << " "<< sv << endl;
-    outfile << x0 <<" "<< x1 << endl;
-    outfile << z0 <<" "<< z1 << endl;
+    outfile << dt <<" "<< sx <<" "<< grid.nz << " "<< sv << endl;
+    outfile << grid.x0 <<" "<< grid.x1 << endl;
+    outfile << grid.z0 <<" "<< grid.z1 << endl;
 
-    for(auto &x:xidx)       outfile << X[x]  << " ";   outfile << endl;
-    for (int i=0;i<nz; ++i) outfile << Z[i]  << " ";   outfile << endl;
-    for(auto &v:vidx)       outfile << vx[v] << " ";   outfile << endl;
-    for(auto &v:vidx)       outfile << vz[v] << " ";   outfile << endl;
+    for(int i=0;i<grid.nz; ++i) outfile << grid.Z[i]  << " ";   outfile << endl;
+    for(auto &x:xidx)       outfile << grid.X[x]  << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vx[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vy[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vz[v] << " ";   outfile << endl;
 #ifdef NVTX
     nvtxRangePop();
 #endif
@@ -48,11 +49,12 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     nvtxRangePush(__FUNCTION__);
 #endif
 
-    SnapShot ss(var, fntpl, dumpstep, vidx);
+    std::vector<int> xidx(grid.nx); for (int i = 0; i <grid.nx; ++i) xidx[i] = i;
+    SnapShot ss(var, fntpl, dumpstep, xidx, vidx);
     snapshots.push_back(ss);
     int sv  = vidx.size();
 
-    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", nx, nz, sv, dumpstep);
+    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", grid.nx, grid.nz, sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];
@@ -62,18 +64,16 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
     // grid information
-    outfile << dt <<" "<< nx <<" "<< nz << " "<< sv << endl;
-    outfile << x0 <<" "<< x1 << endl;
-    outfile << z0 <<" "<< z1 << endl;
+    outfile << dt <<" "<< grid.nx <<" "<< grid.nz << " "<< sv << endl;
+    outfile << grid.x0 <<" "<< grid.x1 << endl;
+    outfile << grid.z0 <<" "<< grid.z1 << endl;
 
-    for (int i=0;i<nx; ++i) {
-        outfile << X[i]  << " ";
-    }   outfile << endl;
-    for (int i=0;i<nz; ++i) {
-        outfile << Z[i]  << " ";
-    }   outfile << endl;
-    for(auto &v:vidx)       outfile << vx[v] << " ";   outfile << endl;
-    for(auto &v:vidx)       outfile << vz[v] << " ";   outfile << endl;
+    for (int i=0;i<grid.nx; ++i)  outfile << grid.X[i]  << " ";   outfile << endl;
+    for (int i=0;i<grid.nz; ++i)  outfile << grid.Z[i]  << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vx[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vy[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << grid.vz[v] << " ";   outfile << endl;
+
 #ifdef NVTX
     nvtxRangePop();
 #endif
@@ -84,14 +84,12 @@ void NuOsc::checkSnapShot(const int t) const {
     nvtxRangePush(__FUNCTION__);
 #endif
 
-    for (auto const& ss : snapshots) {
+    for(auto const& ss : snapshots) {
 
-        if ( t % ss.every != 0 ) break;
+        //if ( t % ss.every != 0 ) break;
 
-        std::vector<int> xc = ss.x_slices;
-        int sx = xc.size();
-        std::vector<int> vc = ss.v_slices;
-        int sv = vc.size();
+        std::vector<int> xc = ss.x_slices;        int sx = xc.size();
+        std::vector<int> vc = ss.v_slices;        int sv = vc.size();
 
         char filename[32];
         sprintf(filename, ss.fntpl.c_str(), t);
@@ -99,23 +97,22 @@ void NuOsc::checkSnapShot(const int t) const {
         outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
         if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
-        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), sx, nz, sv, filename);
+        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), sx, grid.nz, sv, filename);
 
         outfile.write((char *) &t,        sizeof(uint) );
         outfile.write((char *) &phy_time, sizeof(real) );
 
-        std::vector<real> carr(nz*nx*sv);
+        std::vector<real> carr(sx*grid.nz*sv);
         for (auto const& var : ss.var_list) {
 
             #pragma omp parallel for collapse(3)
-            //#pragma acc parallel loop collapse(2)
-            for(int i=0; i<sx; ++i)
-            for(int j=0; j<nz; ++j)
-            for(int v=0; v<sv; ++v) {
-                carr[ (i*nz + j)*sv + v ] = var[ idx(xc[i],j,vc[v]) ];
+            for(int i=0; i<sx;      ++i)
+            for(int j=0; j<grid.nz; ++j)
+            for(int v=0; v<sv;      ++v) {
+                carr[ (i*grid.nz + j)*sv + v ] = var[ grid.idx(xc[i],j,vc[v]) ];
             }
 
-            outfile.write((char *) carr.data(),  sx*nz*sv*sizeof(real));
+            outfile.write((char *) carr.data(),  sx*grid.nz*sv*sizeof(real));
         }
         outfile.close();
     }
