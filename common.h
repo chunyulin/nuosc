@@ -7,6 +7,12 @@
 #error Only DIM=2 is supported
 #endif
 
+//#define N_FLAVOR_3
+#ifdef N_FLAVOR_3
+  #define NVAR 18
+#else
+  #define NVAR 8
+#endif
 
 #define KO_ORD_3
 #define BC_PERI
@@ -19,9 +25,6 @@
 //#define SYNC_MPI_ONESIDE_COPY
 //#define SYNC_MPI_SENDRECV
 //#define ADV_TEST
-
-#define ADV_TEST
-
 
 
 #include <chrono>

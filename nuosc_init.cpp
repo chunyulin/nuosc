@@ -53,14 +53,14 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 		G0 [jv] =         g(grid.vz[v], lnue );
 		G0b[jv] = alpha * g(grid.vz[v], lnueb);
 
-                v_stat->ee    [jv] =  0.5* G0 [jv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-                v_stat->xx    [jv] =  0.5* G0 [jv]*(1.0-tmp2);
-                v_stat->ex_re [jv] =  0.5* G0 [jv]*tmpr;//1e-6;
-                v_stat->ex_im [jv] =  0.5* G0 [jv]*tmpi;//random_amp(0.001);
+                v_stat->ee    [jv] =  0.5* G0 [jv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->emr[idx(i,j)])*(v_stat->emr[idx(i,j)]));
+                v_stat->mm    [jv] =  0.5* G0 [jv]*(1.0-tmp2);
+                v_stat->emr [jv] =  0.5* G0 [jv]*tmpr;//1e-6;
+                v_stat->emi [jv] =  0.5* G0 [jv]*tmpi;//random_amp(0.001);
                 v_stat->bee   [jv] =  0.5* G0b[jv]*(1.0+tmp2);
-                v_stat->bxx   [jv] =  0.5* G0b[jv]*(1.0-tmp2);
-                v_stat->bex_re[jv] =  0.5* G0b[jv]*tmpr;//1e-6;
-                v_stat->bex_im[jv] = -0.5* G0b[jv]*tmpi;//random_amp(0.001);
+                v_stat->bmm   [jv] =  0.5* G0b[jv]*(1.0-tmp2);
+                v_stat->bemr[jv] =  0.5* G0b[jv]*tmpr;//1e-6;
+                v_stat->bemi[jv] = -0.5* G0b[jv]*tmpi;//random_amp(0.001);
                 // initial nv_e
                 n00 += grid.vw[v]*v_stat->ee [jv];
                 n01 += grid.vw[v]*v_stat->bee[jv];
@@ -104,13 +104,13 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
             real p3o = sqrt(1.0-tmpr*tmpr);
             v_stat->ee    [ijv] = 0.5* G0[ijv]*(1.0+p3o);
-            v_stat->xx    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
-            v_stat->ex_re [ijv] = 0.5* G0[ijv]*tmpr;
-            v_stat->ex_im [ijv] = 0.0;
+            v_stat->mm    [ijv] = 0.5* G0[ijv]*(1.0-p3o);
+            v_stat->emr [ijv] = 0.5* G0[ijv]*tmpr;
+            v_stat->emi [ijv] = 0.0;
             v_stat->bee   [ijv] = 0.5* G0b[ijv]*(1.0+p3o);
-            v_stat->bxx   [ijv] = 0.5* G0b[ijv]*(1.0-p3o);
-            v_stat->bex_re[ijv] = 0.5* G0b[ijv]*tmpr;
-            v_stat->bex_im[ijv] = 0.0;
+            v_stat->bmm   [ijv] = 0.5* G0b[ijv]*(1.0-p3o);
+            v_stat->bemr[ijv] = 0.5* G0b[ijv]*tmpr;
+            v_stat->bemi[ijv] = 0.0;
 
             // initial nv_e
             n00 += grid.vw[v]*v_stat->ee [ijv];
@@ -149,13 +149,13 @@ void NuOsc::fillInitGaussian(real eps0, real sigma) {
 
             real tmp = eps0* exp( - ((grid.X[i])*(grid.X[i]))/(1.0*sigma*sigma) - ((grid.Z[j])*(grid.Z[j]))/(1.0*sigma*sigma) );
             v_stat->ee    [ipv] = tmp;
-            v_stat->xx    [ipv] = 0;
-            v_stat->ex_re [ipv] = 0;
-            v_stat->ex_im [ipv] = 0;
+            v_stat->mm    [ipv] = 0;
+            v_stat->emr [ipv] = 0;
+            v_stat->emi [ipv] = 0;
             v_stat->bee   [ipv] = 0;
-            v_stat->bxx   [ipv] = 0;
-            v_stat->bex_re[ipv] = 0;
-            v_stat->bex_im[ipv] = 0;
+            v_stat->bmm   [ipv] = 0;
+            v_stat->bemr[ipv] = 0;
+            v_stat->bemi[ipv] = 0;
     }
 }
 
@@ -175,13 +175,13 @@ void NuOsc::fillInitAdvtest(real eps0, real sigma) {
 	    			   int(grid.Z[j]-sd<0  && grid.Z[j]-sd> -sigma)*( sigma + grid.Z[j]-sd)/sigma + 
 	                   int(grid.Z[j]-sd>=0 && grid.Z[j]-sd <  sigma)*( sigma - grid.Z[j]+sd)/sigma;
             v_stat->ee    [ijv] = tmp*eps0;
-            v_stat->xx    [ijv] = 0;
-            v_stat->ex_re [ijv] = 0;
-            v_stat->ex_im [ijv] = 0;
+            v_stat->mm    [ijv] = 0;
+            v_stat->emr [ijv] = 0;
+            v_stat->emi [ijv] = 0;
             v_stat->bee   [ijv] = 0;
-            v_stat->bxx   [ijv] = 0;
-            v_stat->bex_re[ijv] = 0;
-            v_stat->bex_im[ijv] = 0;
+            v_stat->bmm   [ijv] = 0;
+            v_stat->bemr[ijv] = 0;
+            v_stat->bemi[ijv] = 0;
     }
 }
 
@@ -200,13 +200,13 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
             if (grid.Z[j]*grid.Z[j] <= sigma*sigma) tmp = eps0;
             v_stat->ee    [ijv] = tmp;
             //v_stat->ee    [ijv] = 1;//grid.vz[v];
-            v_stat->xx    [ijv] = 0;
-            v_stat->ex_re [ijv] = 0;
-            v_stat->ex_im [ijv] = 0;
+            v_stat->mm    [ijv] = 0;
+            v_stat->emr [ijv] = 0;
+            v_stat->emi [ijv] = 0;
             v_stat->bee   [ijv] = 0;
-            v_stat->bxx   [ijv] = 0;
-            v_stat->bex_re[ijv] = 0;
-            v_stat->bex_im[ijv] = 0;
+            v_stat->bmm   [ijv] = 0;
+            v_stat->bemr[ijv] = 0;
+            v_stat->bemi[ijv] = 0;
     }
 }
 
@@ -223,13 +223,13 @@ void NuOsc::fillInitTriangle(real eps0, real sigma) {
             if      (grid.Z[j]<0  && grid.Z[j] > -sigma)  v_stat->ee[ipv] = ( sigma + grid.Z[j] ) * eps0 / sigma;
             else if (grid.Z[j]>=0 && grid.Z[j] <  sigma)  v_stat->ee[ipv] = ( sigma - grid.Z[j] ) * eps0 / sigma;
             else                                          v_stat->ee[ipv] = 0.0;
-            v_stat->xx    [ipv] = 0;
-            v_stat->ex_re [ipv] = 0;
-            v_stat->ex_im [ipv] = 0;
+            v_stat->mm    [ipv] = 0;
+            v_stat->emr [ipv] = 0;
+            v_stat->emi [ipv] = 0;
             v_stat->bee   [ipv] = 0;
-            v_stat->bxx   [ipv] = 0;
-            v_stat->bex_re[ipv] = 0;
-            v_stat->bex_im[ipv] = 0;
+            v_stat->bmm   [ipv] = 0;
+            v_stat->bemr[ipv] = 0;
+            v_stat->bemi[ipv] = 0;
     }
 }
 

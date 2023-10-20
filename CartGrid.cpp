@@ -120,7 +120,7 @@ int gen_v1d_cellcenter(const int nv, Vec vw, Vec vz) {
 
 // calculates local box and cartesian communicator given global box and processor shape
 CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real x0_, real x1_, real z0_, real z1_, real dx_, real dz_) 
-: px(px_), pz(pz_), nphi(nphi_), gx(gx_), gz(gz_), dx(dx_), dz(dz_), nvar(8)
+: px(px_), pz(pz_), nphi(nphi_), gx(gx_), gz(gz_), dx(dx_), dz(dz_), nvar(NVAR)
 {
 #ifdef COSENU_MPI
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);

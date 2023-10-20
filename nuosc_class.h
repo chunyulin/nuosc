@@ -15,41 +15,59 @@
     FORALL(i,j,v)
 
 typedef struct Vars {
-    real* ee;
-    real* xx;
-    real* ex_re;
-    real* ex_im;
-    real* bee;
-    real* bxx;
-    real* bex_re;
-    real* bex_im;
+    real *ee,  *mm, *tt;
+    real *emr, *mtr, *ter;
+    real *emi, *mti, *tei;
+    real *bee, *bmm, *btt;
+    real *bemr, *bmtr, *bter;
+    real *bemi, *bmti, *btei;
 
     Vars(int size) {
-        ee     = new real[size](); // all init to zero
-        xx     = new real[size]();
-        ex_re  = new real[size]();
-        ex_im  = new real[size]();
-        bee    = new real[size]();
-        bxx    = new real[size]();
-        bex_re = new real[size]();
-        bex_im = new real[size]();
-        #pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
+        ee   = new real[size](); // all init to zero
+        mm   = new real[size]();
+        emr  = new real[size]();
+        emi  = new real[size]();
+        bee   = new real[size]();
+        bmm   = new real[size]();
+        bemr  = new real[size]();
+        bemi  = new real[size]();
+        #ifdef N_FLAVOR_3
+        tt   = new real[size]();
+        mtr  = new real[size]();
+        mti  = new real[size]();
+        ter  = new real[size]();
+        tei  = new real[size]();
+        btt   = new real[size]();
+        bmtr  = new real[size]();
+        bmti  = new real[size]();
+        bter  = new real[size]();
+        btei  = new real[size]();
+        #endif
+        //#pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
     }
     ~Vars() {
-        #pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
-        delete[] ee;
-        delete[] xx;
-        delete[] ex_re;
-        delete[] ex_im;
-        delete[] bee;
-        delete[] bxx;
-        delete[] bex_re;
-        delete[] bex_im;
+        //#pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
+        delete[] ee;   delete[] mm;   delete[] emr;   delete[] emi;
+        delete[] bee;   delete[] bmm;   delete[] bemr;   delete[] bemi;
+        #ifdef N_FLAVOR_3
+        delete[] tt;   delete[] mtr;  delete[] ter;   delete[] mti;  delete[] tei;
+        delete[] btt;   delete[] bmtr;  delete[] bter;   delete[] bmti;  delete[] btei;
+        #endif
     }
+    
+    std::vector<real*> getAllFields() {
+    #ifdef N_FLAVOR_3
+    return std::vector<real*>{ee, mm, tt, emr, emi, mtr, mti, ter, tei,
+                              bee, bmm, btt, bemr, bemi, bmtr, bmti, bter, btei};
+    #else
+    return std::vector<real*>{ee, mm, emr, emi, bee, bmm, bemr, bemi };
+    #endif
+    }
+
 } FieldVar;
 
 typedef struct SnapShot_struct {
-    std::list<real*> var_list;
+    std	::list<real*> var_list;
     string fntpl;
     int every;
     std::vector<int> x_slices;   // coordinate for the reduced dimension
@@ -98,9 +116,11 @@ class NuOsc {
         real CFL;
         real ko;
 
+        real hee,hmm,htt,hemr,hemi,hmtr,hmti,hter,htei;
         const real theta = 37 * M_PI / 180.;  //1e-6;
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
+
         real pmo = 0.1;      // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
@@ -111,6 +131,7 @@ class NuOsc {
         NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const int gx_,const int gz_,
                 const real  x0_, const real  x1_, const real  z0_, const real  z1_, const real dx_, const real dz_, 
                 const real CFL_, const real  ko_);
+
 
         ~NuOsc() {
             #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
@@ -150,17 +171,17 @@ class NuOsc {
         void step_rk4();
         void step_srk3();
         void calRHS(FieldVar* out, const FieldVar * in);
-        void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
-        void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
-        void vectorize(FieldVar* __restrict v0, const real a, const FieldVar *__restrict v1, const real b, const FieldVar * __restrict v2, const real dt, const FieldVar * __restrict v3);
+        void vectorize(FieldVar* const v0, FieldVar * const v1, const real a, FieldVar * const v2);
+        void vectorize(FieldVar* const v0, FieldVar * const v1, const real a, FieldVar * const v2, FieldVar * const v3);
+        void vectorize(FieldVar* const __restrict v0, const real a, FieldVar * const __restrict v1, const real b, FieldVar * const __restrict v2, const real dt, FieldVar * const __restrict v3);
 
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
-        void pack_buffer(const FieldVar* v0);
-        void unpack_buffer(FieldVar* v0);
-        void sync_boundary(FieldVar* v0);
+        void pack_buffer(FieldVar* const v0);
+        void unpack_buffer(FieldVar* const v0);
+        void sync_boundary(FieldVar* const v0);
 
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);

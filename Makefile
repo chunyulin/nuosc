@@ -15,7 +15,9 @@ ${TARGET}: ${OBJS}
 	$(CXX) $(OPT) $(LIBS) $^ -o $@
 
 test2d:
-	mpirun -np 1 ./nuosc --np 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 5 --xmax 5 --dz 0.1 --dx 0.1 --nv 8 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 --ANA_EVERY 5 --END_STEP 10
+	export OMP_NUM_THREADS=40; \
+	mpirun -np 1 ./nuosc --np 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --zmax 50 --xmax 0.2 --dz 0.1 --dx 0.1 --nv 8 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma 1 \
+        --ANA_EVERY 5 --END_STEP 20
 
 UNITTEST=--nv 4 --dx 0.01 --xmax 0.5 --dz 0.01 --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 1e-3 --cfl 0.5 --DUMP_EVERY_T .1 --END_STEP_T .5 --ANA_EVERY_T 0.1
 UNITTEST=--nv 2 --gz 2 --dz 0.02  --zmax 0.5 --mu 0 --pmo 0 --eps0 1 --sigma .2 --ko 0.8 --cfl 0.25 --DUMP_EVERY_T .2 --END_STEP_T .5 --ANA_EVERY_T .2

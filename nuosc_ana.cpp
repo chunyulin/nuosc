@@ -9,19 +9,19 @@ void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
         uint ijv = grid.idx(i,j,v);
         real iG  = 1.0 / G0[ijv];
         real iGb = 1.0 / G0b[ijv];
-        P1 [ijv] =   2.0*v0->ex_re[ijv] * iG;
-        P2 [ijv] = - 2.0*v0->ex_im[ijv] * iG;
-        P3 [ijv] = (v0->ee[ijv] - v0->xx[ijv])*iG;
-        P1b[ijv] =  2.0*v0->bex_re[ijv] * iGb;
-        P2b[ijv] =  2.0*v0->bex_im[ijv] * iGb;
-        P3b[ijv] = (v0->bee[ijv] - v0->bxx[ijv]) * iGb;
+        P1 [ijv] =   2.0*v0->emr[ijv] * iG;
+        P2 [ijv] = - 2.0*v0->emi[ijv] * iG;
+        P3 [ijv] = (v0->ee[ijv] - v0->mm[ijv])*iG;
+        P1b[ijv] =  2.0*v0->bemr[ijv] * iGb;
+        P2b[ijv] =  2.0*v0->bemi[ijv] * iGb;
+        P3b[ijv] = (v0->bee[ijv] - v0->bmm[ijv]) * iGb;
 
-        dN [ijv] = (v0->ee [ijv] + v0->xx [ijv]);
-        dN [ijv] = (dN [ijv] - G0[ijv])/dN [ijv];   // relative difference of (ee+xx)
-        dNb[ijv] = (v0->bee[ijv] + v0->bxx[ijv]);
+        dN [ijv] = (v0->ee [ijv] + v0->mm [ijv]);
+        dN [ijv] = (dN [ijv] - G0[ijv])/dN [ijv];   // relative difference of (ee+mm)
+        dNb[ijv] = (v0->bee[ijv] + v0->bmm[ijv]);
         dNb[ijv] = (dNb [ijv] - G0b[ijv])/dNb [ijv] ;
-        //dN [ijv] = ( (v0->ee [ijv] + v0->xx [ijv]) - G0[ijv])  / (v0->ee [ijv] + v0->xx [ijv]) ;   // relative difference of (ee+xx)
-        //dNb[ijv] = ( (v0->bee[ijv] + v0->bxx[ijv]) - G0b[ijv]) / (v0->bee[ijv] + v0->bxx[ijv]) ;
+        //dN [ijv] = ( (v0->ee [ijv] + v0->mm [ijv]) - G0[ijv])  / (v0->ee [ijv] + v0->mm [ijv]) ;   // relative difference of (ee+mm)
+        //dNb[ijv] = ( (v0->bee[ijv] + v0->bmm[ijv]) - G0b[ijv]) / (v0->bee[ijv] + v0->bmm[ijv]) ;
 
         dP [ijv] = std::abs( 1.0 - std::sqrt(P1 [ijv]*P1 [ijv]+P2 [ijv]*P2 [ijv]+P3 [ijv]*P3 [ijv]) );
         dPb[ijv] = std::abs( 1.0 - std::sqrt(P1b[ijv]*P1b[ijv]+P2b[ijv]*P2b[ijv]+P3b[ijv]*P3b[ijv]) );
@@ -71,14 +71,14 @@ void NuOsc::analysis() {
         avgPb += grid.vw[v] * G0b[ijv] * std::abs( 1.0 - std::sqrt(P1b[ijv]*P1b[ijv]+P2b[ijv]*P2b[ijv]+P3b[ijv]*P3b[ijv]) );
 
         // M0
-        aM01 += grid.vw[v]* ( v_stat->ex_re[ijv] - v_stat->bex_re[ijv]);                                 // = P1[ijv]*G0[ijv] - P1b[ijv]*G0b[ijv];
-        aM02 += grid.vw[v]* (-v_stat->ex_im[ijv] - v_stat->bex_im[ijv]);                                 // = P2[ijv]*G0[ijv] - P2b[ijv]*G0b[ijv];
-        aM03 += grid.vw[v]* 0.5*(v_stat->ee[ijv] - v_stat->xx[ijv] - v_stat->bee[ijv] + v_stat->bxx[ijv]); // = P3[ijv]*G0[ijv] - P3b[ijv]*G0b[ijv], which is also the net e-x lepton number;
+        aM01 += grid.vw[v]* ( v_stat->emr[ijv] - v_stat->bemr[ijv]);                                 // = P1[ijv]*G0[ijv] - P1b[ijv]*G0b[ijv];
+        aM02 += grid.vw[v]* (-v_stat->emi[ijv] - v_stat->bemi[ijv]);                                 // = P2[ijv]*G0[ijv] - P2b[ijv]*G0b[ijv];
+        aM03 += grid.vw[v]* 0.5*(v_stat->ee[ijv] - v_stat->mm[ijv] - v_stat->bee[ijv] + v_stat->bmm[ijv]); // = P3[ijv]*G0[ijv] - P3b[ijv]*G0b[ijv], which is also the net e-x lepton number;
 
         // M1
-        //aM11 += grid.vw[v]* grid.vz[i]* (v_stat->ex_re[ijv] - v_stat->bex_re[ijv]);
-        //aM12 += grid.vw[v]* grid.vz[i]* (v_stat->ex_im[ijv] + v_stat->bex_im[ijv]);
-        //aM13 += grid.vw[v]* grid.vz[i]* 0.5*(v_stat->ee[ijv] - v_stat->xx[ijv] - v_stat->bee[ijv] + v_stat->bxx[ijv]);
+        //aM11 += grid.vw[v]* grid.vz[i]* (v_stat->emr[ijv] - v_stat->bemr[ijv]);
+        //aM12 += grid.vw[v]* grid.vz[i]* (v_stat->emi[ijv] + v_stat->bemi[ijv]);
+        //aM13 += grid.vw[v]* grid.vz[i]* 0.5*(v_stat->ee[ijv] - v_stat->mm[ijv] - v_stat->bee[ijv] + v_stat->bmm[ijv]);
 
         nor  += grid.vw[v]* G0 [ijv];   // const: should be calculated initially
         norb += grid.vw[v]* G0b[ijv];
@@ -143,25 +143,25 @@ void NuOsc::renormalize(const FieldVar* __restrict v0) {
         int ijv = grid.idx(i,j,v);
         real iG = 1.0 / G0[ijv];
         real iGb = 1.0 / G0b[ijv];
-        real P1  =   v0->ex_re[ijv] * iG;
-        real P2  = - v0->ex_im[ijv] * iG;
-        real P3  = (v0->ee[ijv] - v0->xx[ijv])*iG;
-        real P1b = v0->bex_re[ijv] * iGb;
-        real P2b = v0->bex_im[ijv] * iGb;
-        real P3b = (v0->bee[ijv] - v0->bxx[ijv]) * iGb;
+        real P1  =   v0->emr[ijv] * iG;
+        real P2  = - v0->emi[ijv] * iG;
+        real P3  = (v0->ee[ijv] - v0->mm[ijv])*iG;
+        real P1b = v0->bemr[ijv] * iGb;
+        real P2b = v0->bemi[ijv] * iGb;
+        real P3b = (v0->bee[ijv] - v0->bmm[ijv]) * iGb;
         real iP   = 1.0/std::sqrt(P1*P1+P2*P2+P3*P3);
         real iPb  = 1.0/std::sqrt(P1b*P1b+P2b*P2b+P3b*P3b);
         real tmp  = iP *(P3) *G0 [ijv];
         real tmpb = iPb*(P3b)*G0b[ijv];
 
         v0->ee    [ijv]  = G0[ijv]+tmp;
-        v0->xx    [ijv]  = G0[ijv]-tmp;
-        v0->ex_re [ijv] *= iP;
-        v0->ex_im [ijv] *= iP;
+        v0->mm    [ijv]  = G0[ijv]-tmp;
+        v0->emr [ijv] *= iP;
+        v0->emi [ijv] *= iP;
         v0->bee   [ijv]  = G0b[ijv]+tmpb;
-        v0->bxx   [ijv]  = G0b[ijv]-tmpb;
-        v0->bex_re[ijv] *= iPb;
-        v0->bex_im[ijv] *= iPb;
+        v0->bmm   [ijv]  = G0b[ijv]-tmpb;
+        v0->bemr[ijv] *= iPb;
+        v0->bemi[ijv] *= iPb;
     }
 }
 

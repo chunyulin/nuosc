@@ -41,8 +41,8 @@ elif [[ $host == "node1" ]]; then
   #export GSL_ROOT=/pkg/gsl-2.7.1
 
   export CXX=mpic++
-  export OPT="-mp -O4 -Minfo=mp"
   export OPT="-O3 -acc=gpu -Minfo=acc -gpu=manage,cc80"
+  export OPT="-mp -O4 -Minfo=mp"
 
 else
   echo "==== on ARM"

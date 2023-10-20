@@ -201,7 +201,7 @@ int main(int argc, char *argv[]) {
 #else
     std::chrono::time_point<std::chrono::high_resolution_clock> t1;
 #endif
-    const int cooltime = 5;
+    const int cooltime = 3;
     for (int t=1; t<=END_STEP; t++) {
 
 #ifdef COSENU_MPI
@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
             state.checkSnapShot(t);
         }
 
-        if ( t==10 || t==100 || t==1000 || t==END_STEP) {
+        if ( t == 5 || t==10 || t==100 || t==1000 || t==END_STEP) {
 #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
             MPI_Reduce(&stepms, &stepms_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);

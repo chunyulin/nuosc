@@ -1,71 +1,48 @@
 #include "nuosc_class.h"
 
 
-void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
+void NuOsc::updatePeriodicBoundary(FieldVar * const __restrict in) {
 #ifdef NVTX
     nvtxRangePush("PeriodicBoundary");
 #endif
 
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
+    std::vector<real*> fvars = in->getAllFields();
 
 #pragma omp parallel for collapse(3)
 #pragma acc parallel loop collapse(3)
     for (int i=0;i<grid.nx; ++i)
     for (int j=0;j<grid.gz; ++j)
-        for (int v=0;v<grid.nv; ++v) {
-            // z lower side of ghost <-- z upper
-            auto l0 = grid.idx(i,-j-1,v);
-            auto l1 = grid.idx(i,grid.nz-j-1,v);
-            in->ee    [l0] = in->ee    [l1];
-            in->xx    [l0] = in->xx    [l1];
-            in->ex_re [l0] = in->ex_re [l1];
-            in->ex_im [l0] = in->ex_im [l1];
-            in->bee   [l0] = in->bee   [l1];
-            in->bxx   [l0] = in->bxx   [l1];
-            in->bex_re[l0] = in->bex_re[l1];
-            in->bex_im[l0] = in->bex_im[l1];
-            //z upper side of ghost <-- z lower
-            auto r0 = grid.idx(i,grid.nz+j,v);
-            auto r1 = grid.idx(i,j,v);
-            in->ee    [r0] = in->ee    [r1];
-            in->xx    [r0] = in->xx    [r1];
-            in->ex_re [r0] = in->ex_re [r1];
-            in->ex_im [r0] = in->ex_im [r1];
-            in->bee   [r0] = in->bee   [r1];
-            in->bxx   [r0] = in->bxx   [r1];
-            in->bex_re[r0] = in->bex_re[r1];
-            in->bex_im[r0] = in->bex_im[r1];
-        }
+    for (int v=0;v<grid.nv; ++v) {
+        // z lower side of ghost <-- z upper
+        auto l0 = grid.idx(i,-j-1,v);
+        auto l1 = grid.idx(i,grid.nz-j-1,v);
+        #pragma unroll
+        for (int f=0; f<nvar; ++f) fvars.at(f)[l0] = fvars.at(f)[l1];
+        //z upper side of ghost <-- z lower
+        auto r0 = grid.idx(i,grid.nz+j,v);
+        auto r1 = grid.idx(i,j,v);
+        #pragma unroll
+        for (int f=0; f<nvar; ++f) fvars.at(f)[r0] = fvars.at(f)[r1];
+    }
 
 
 #pragma omp parallel for collapse(3)
 #pragma acc parallel loop collapse(3)
     for (int i=0;i<grid.gx; ++i)
-        for (int j=0;j<grid.nz; ++j)
-            for (int v=0;v<grid.nv; ++v) {
-                //x lower side of ghost <-- x upper
-                auto l0 = grid.idx(-i-1,j,v);
-                auto l1 = grid.idx(grid.nx-i-1,j,v);
-                in->ee    [l0] = in->ee    [l1];
-                in->xx    [l0] = in->xx    [l1];
-                in->ex_re [l0] = in->ex_re [l1];
-                in->ex_im [l0] = in->ex_im [l1];
-                in->bee   [l0] = in->bee   [l1];
-                in->bxx   [l0] = in->bxx   [l1];
-                in->bex_re[l0] = in->bex_re[l1];
-                in->bex_im[l0] = in->bex_im[l1];
-                //x upper side of ghost <-- x lower
-                auto r0 = grid.idx(grid.nx+i,j,v);
-                auto r1 = grid.idx(i,j,v);
-                in->ee    [r0] = in->ee    [r1];
-                in->xx    [r0] = in->xx    [r1];
-                in->ex_re [r0] = in->ex_re [r1];
-                in->ex_im [r0] = in->ex_im [r1];
-                in->bee   [r0] = in->bee   [r1];
-                in->bxx   [r0] = in->bxx   [r1];
-                in->bex_re[r0] = in->bex_re[r1];
-                in->bex_im[r0] = in->bex_im[r1];
-            }
+    for (int j=0;j<grid.nz; ++j)
+    for (int v=0;v<grid.nv; ++v) {
+        //x lower side of ghost <-- x upper
+        auto l0 = grid.idx(-i-1,j,v);
+        auto l1 = grid.idx(grid.nx-i-1,j,v);
+        #pragma unroll
+        for (int f=0; f<nvar; ++f) fvars.at(f)[l0] = fvars.at(f)[l1];
+        //x upper side of ghost <-- x lower
+        auto r0 = grid.idx(grid.nx+i,j,v);
+        auto r1 = grid.idx(i,j,v);
+        #pragma unroll
+        for (int f=0; f<nvar; ++f) fvars.at(f)[r0] = fvars.at(f)[r1];
+    }
 
 #ifdef NVTX
     nvtxRangePop();
@@ -77,11 +54,14 @@ void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) {
     assert(0);
 }
 
+
 #define PBIX(i,j,v) ( (i*grid.nz + j)*grid.nv+v )*nvar;
 #define PBIZ(i,j,v) ( (i*grid.gz + j)*grid.nv+v )*nvar;
 #define NPBX nvar*grid.gx*grid.nz*grid.nv
 #define NPBZ nvar*grid.nx*grid.gz*grid.nv
-void NuOsc::pack_buffer(const FieldVar* in) {
+void NuOsc::pack_buffer(FieldVar* const in) {
+
+    std::vector<real*> fvars = in->getAllFields();
 
     { // X lower side
     real *pbuf = &(grid.pbX[0]);
@@ -92,14 +72,8 @@ void NuOsc::pack_buffer(const FieldVar* in) {
     for (int v=0;v<grid.nv; ++v) {
         auto r1 = grid.idx(i,j,v);
         auto tid8 = PBIX(i,j,v);
-        pbuf[tid8+0] = in->ee    [r1];
-        pbuf[tid8+1] = in->xx    [r1];
-        pbuf[tid8+2] = in->ex_re [r1];
-        pbuf[tid8+3] = in->ex_im [r1];
-        pbuf[tid8+4] = in->bee   [r1];
-        pbuf[tid8+5] = in->bxx   [r1];
-        pbuf[tid8+6] = in->bex_re[r1];
-        pbuf[tid8+7] = in->bex_im[r1];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  pbuf[tid8+f] = fvars.at(f)[r1];
     }
     }
 
@@ -112,14 +86,8 @@ void NuOsc::pack_buffer(const FieldVar* in) {
     for (int v=0;v<grid.nv; ++v) {
         auto l1 = grid.idx(grid.nx-i-1,j,v);
         auto tid8 = PBIX(i,j,v);
-        pbuf[tid8+0] = in->ee    [l1];
-        pbuf[tid8+1] = in->xx    [l1];
-        pbuf[tid8+2] = in->ex_re [l1];
-        pbuf[tid8+3] = in->ex_im [l1];
-        pbuf[tid8+4] = in->bee   [l1];
-        pbuf[tid8+5] = in->bxx   [l1];
-        pbuf[tid8+6] = in->bex_re[l1];
-        pbuf[tid8+7] = in->bex_im[l1];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  pbuf[tid8+f] = fvars.at(f)[l1];
     }
     }
 
@@ -132,14 +100,8 @@ void NuOsc::pack_buffer(const FieldVar* in) {
     for (int v=0;v<grid.nv; ++v) {
         auto r1 = grid.idx(i,j,v);
         auto tid8 = PBIZ(i,j,v);
-        pbuf[tid8+0] = in->ee    [r1];
-        pbuf[tid8+1] = in->xx    [r1];
-        pbuf[tid8+2] = in->ex_re [r1];
-        pbuf[tid8+3] = in->ex_im [r1];
-        pbuf[tid8+4] = in->bee   [r1];
-        pbuf[tid8+5] = in->bxx   [r1];
-        pbuf[tid8+6] = in->bex_re[r1];
-        pbuf[tid8+7] = in->bex_im[r1];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  pbuf[tid8+f] = fvars.at(f)[r1];
     }
     }
 
@@ -152,14 +114,8 @@ void NuOsc::pack_buffer(const FieldVar* in) {
     for (int v=0;v<grid.nv; ++v) {
         auto l1 = grid.idx(i,grid.nz-j-1,v);
         auto tid8 = PBIZ(i,j,v);
-        pbuf[tid8+0] = in->ee    [l1];
-        pbuf[tid8+1] = in->xx    [l1];
-        pbuf[tid8+2] = in->ex_re [l1];
-        pbuf[tid8+3] = in->ex_im [l1];
-        pbuf[tid8+4] = in->bee   [l1];
-        pbuf[tid8+5] = in->bxx   [l1];
-        pbuf[tid8+6] = in->bex_re[l1];
-        pbuf[tid8+7] = in->bex_im[l1];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  pbuf[tid8+f] = fvars.at(f)[l1];
     }
     }
 
@@ -167,6 +123,8 @@ void NuOsc::pack_buffer(const FieldVar* in) {
 }
 
 void NuOsc::unpack_buffer(FieldVar* out) {
+
+    std::vector<real*> fvars = out->getAllFields();
 
     { // recovery X upper halo from the neighbor lower side
     real *pbuf = &(grid.pbX[2*NPBX]);    // THINK: OpenACC error w/o this (ie., offset inside pragma)!!
@@ -177,14 +135,8 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     for (int v=0;v<grid.nv; ++v) {
         auto r0 = grid.idx(grid.nx+i,j,v);
         auto tid8 = PBIX(i,j,v);
-        out->ee    [r0] = pbuf[tid8+0];
-        out->xx    [r0] = pbuf[tid8+1];
-        out->ex_re [r0] = pbuf[tid8+2];
-        out->ex_im [r0] = pbuf[tid8+3];
-        out->bee   [r0] = pbuf[tid8+4];
-        out->bxx   [r0] = pbuf[tid8+5];
-        out->bex_re[r0] = pbuf[tid8+6];
-        out->bex_im[r0] = pbuf[tid8+7];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  fvars.at(f)[r0] = pbuf[tid8+f];
     }
     }
 
@@ -197,14 +149,8 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     for (int v=0;v<grid.nv; ++v) {
         auto l0 = grid.idx(-i-1,j,v);
         auto tid8 = PBIX(i,j,v);
-        out->ee    [l0] = pbuf[tid8+0];
-        out->xx    [l0] = pbuf[tid8+1];
-        out->ex_re [l0] = pbuf[tid8+2];
-        out->ex_im [l0] = pbuf[tid8+3];
-        out->bee   [l0] = pbuf[tid8+4];
-        out->bxx   [l0] = pbuf[tid8+5];
-        out->bex_re[l0] = pbuf[tid8+6];
-        out->bex_im[l0] = pbuf[tid8+7];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  fvars.at(f)[l0] = pbuf[tid8+f];
     }
     }
 
@@ -217,14 +163,8 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     for (int v=0;v<grid.nv; ++v) {
         auto r0 = grid.idx(i,grid.nz+j,v);
         auto tid8 = PBIZ(i,j,v);
-        out->ee    [r0] = pbuf[tid8+0];
-        out->xx    [r0] = pbuf[tid8+1];
-        out->ex_re [r0] = pbuf[tid8+2];
-        out->ex_im [r0] = pbuf[tid8+3];
-        out->bee   [r0] = pbuf[tid8+4];
-        out->bxx   [r0] = pbuf[tid8+5];
-        out->bex_re[r0] = pbuf[tid8+6];
-        out->bex_im[r0] = pbuf[tid8+7];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  fvars.at(f)[r0] = pbuf[tid8+f];
     }
     }
 
@@ -237,14 +177,8 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     for (int v=0;v<grid.nv; ++v) {
         auto l0 = grid.idx(i,-j-1,v);
         auto tid8 = PBIZ(i,j,v);
-        out->ee    [l0] = pbuf[tid8+0];
-        out->xx    [l0] = pbuf[tid8+1];
-        out->ex_re [l0] = pbuf[tid8+2];
-        out->ex_im [l0] = pbuf[tid8+3];
-        out->bee   [l0] = pbuf[tid8+4];
-        out->bxx   [l0] = pbuf[tid8+5];
-        out->bex_re[l0] = pbuf[tid8+6];
-        out->bex_im[l0] = pbuf[tid8+7];
+        #pragma unroll
+        for (int f=0;f<nvar;++f)  fvars.at(f)[l0] = pbuf[tid8+f];
     }
     }
     #pragma acc wait
