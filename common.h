@@ -18,7 +18,7 @@
 #define BC_PERI
 //#define IM_V2D_POLAR_GRID
 
-//#define COSENU_MPI
+#define COSENU_MPI
 //#define GDR_OFF
 //#define SYNC_NCCL
 //#define SYNC_COPY

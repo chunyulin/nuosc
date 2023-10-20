@@ -55,7 +55,7 @@ typedef struct Vars {
         #endif
     }
     
-    std::vector<real*> getAllFields() {
+    inline std::vector<real*> getAllFields() {
     #ifdef N_FLAVOR_3
     return std::vector<real*>{ee, mm, tt, emr, emi, mtr, mti, ter, tei,
                               bee, bmm, btt, bemr, bemi, bmtr, bmti, bter, btei};
@@ -171,17 +171,17 @@ class NuOsc {
         void step_rk4();
         void step_srk3();
         void calRHS(FieldVar* out, const FieldVar * in);
-        void vectorize(FieldVar* const v0, FieldVar * const v1, const real a, FieldVar * const v2);
-        void vectorize(FieldVar* const v0, FieldVar * const v1, const real a, FieldVar * const v2, FieldVar * const v3);
-        void vectorize(FieldVar* const __restrict v0, const real a, FieldVar * const __restrict v1, const real b, FieldVar * const __restrict v2, const real dt, FieldVar * const __restrict v3);
+        void vectorize(FieldVar* v0, FieldVar * v1, const real a, FieldVar *  v2);
+        void vectorize(FieldVar* v0, FieldVar * v1, const real a, FieldVar *  v2, FieldVar * v3);
+        void vectorize(FieldVar* v0, const real a, FieldVar * const v1, const real b, FieldVar * v2, const real dt, FieldVar * v3);
 
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
 
-        void pack_buffer(FieldVar* const v0);
-        void unpack_buffer(FieldVar* const v0);
-        void sync_boundary(FieldVar* const v0);
+        void pack_buffer(FieldVar* v0);
+        void unpack_buffer(FieldVar* v0);
+        void sync_boundary(FieldVar* v0);
 
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);

@@ -37,8 +37,28 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
         std::array<real,4> mmtt{{0,0,0,0}};
         #endif
 
+#ifdef _OPENACC
+#define IDEN(x) real &x##0 = x[0]; real &x##1 = x[1]; real &x##2 = x[2]; real &x##3 = x[3];
+        IDEN(emRm);
+        IDEN(emIp);
+        IDEN(eemm);
+        #ifdef N_FLAVOR_3
+        IDEN(mtRm);
+        IDEN(mtIp);
+        IDEN(teRm);
+        IDEN(teIp);
+        IDEN(mmtt);
+        #endif
+#undef IDEN
+#endif
+
         // OMP reduction not useful here
-#pragma acc loop reduction(+:idv_emRm[0:4],idv_emIp[0:4] )
+#define OA(x) x##0,x##1,x##2,x##3
+#ifdef N_FLAVOR_3
+#pragma acc loop reduction(+:OA(emRm),OA(emIp),OA(eemm),OA(mtRm),OA(mtIp),OA(teRm),OA(teIp),OA(mmtt) )
+#else
+#pragma acc loop reduction(+:OA(emRm),OA(emIp),OA(eemm))
+#endif
         for (int k=0;k<grid.nv; ++k) {
             auto ijk = grid.idx(i,j,k);
 
@@ -68,25 +88,25 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
             auto ijv = grid.idx(i,j,v);
 
             // The base pointer for this stencil
-            real *ee    = &(in->ee    [ijv]);
-            real *mm    = &(in->mm    [ijv]);
-            real *emr   = &(in->emr [ijv]);
-            real *emi   = &(in->emi [ijv]);
-            real *bee    = &(in->bee    [ijv]);
-            real *bmm    = &(in->bmm    [ijv]);
-            real *bemr   = &(in->bemr [ijv]);
-            real *bemi   = &(in->bemi [ijv]);
+            real *ee   = &(in->ee  [ijv]);
+            real *mm   = &(in->mm  [ijv]);
+            real *emr  = &(in->emr [ijv]);
+            real *emi  = &(in->emi [ijv]);
+            real *bee  = &(in->bee [ijv]);
+            real *bmm  = &(in->bmm [ijv]);
+            real *bemr = &(in->bemr[ijv]);
+            real *bemi = &(in->bemi[ijv]);
             #ifdef N_FLAVOR_3
-            real *tt    = &(in->tt  [ijv]);
-            real *mtr   = &(in->mtr [ijv]);
-            real *mti   = &(in->mti [ijv]);
-            real *ter   = &(in->ter [ijv]);
-            real *tei   = &(in->tei [ijv]);
-            real *btt    = &(in->btt [ijv]);
-            real *bmtr   = &(in->bmtr [ijv]);
-            real *bmti   = &(in->bmti [ijv]);
-            real *bter   = &(in->bter [ijv]);
-            real *btei   = &(in->btei [ijv]);
+            real *tt   = &(in->tt  [ijv]);
+            real *mtr  = &(in->mtr [ijv]);
+            real *mti  = &(in->mti [ijv]);
+            real *ter  = &(in->ter [ijv]);
+            real *tei  = &(in->tei [ijv]);
+            real *btt  = &(in->btt [ijv]);
+            real *bmtr = &(in->bmtr[ijv]);
+            real *bmti = &(in->bmti[ijv]);
+            real *bter = &(in->bter[ijv]);
+            real *btei = &(in->btei[ijv]);
             #endif
 
 #ifndef KO_ORD_3
@@ -303,28 +323,6 @@ inline void NuOsc::vectorize(FieldVar* const __restrict v0, FieldVar * const __r
         auto k = grid.idx(i,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fv0.at(f)[k] = fv1.at(f)[k] + a * fv2.at(f)[k];
-/*
-        v0->ee  [k] = v1->ee  [k] + a * v2->ee  [k];
-        v0->mm  [k] = v1->mm  [k] + a * v2->mm  [k];
-        v0->emr [k] = v1->emr [k] + a * v2->emr [k];
-        v0->emi [k] = v1->emi [k] + a * v2->emi [k];
-        v0->bee [k] = v1->bee [k] + a * v2->bee [k];
-        v0->bmm [k] = v1->bmm [k] + a * v2->bmm [k];
-        v0->bemr[k] = v1->bemr[k] + a * v2->bemr[k];
-        v0->bemi[k] = v1->bemi[k] + a * v2->bemi[k];
-        #ifdef FALVOR3
-        v0->tt  [k] = v1->tt  [k] + a * v2->tt  [k];
-        v0->mtr [k] = v1->mtr [k] + a * v2->mtr [k];
-        v0->mti [k] = v1->mti [k] + a * v2->mti [k];
-        v0->ter [k] = v1->ter [k] + a * v2->ter [k];
-        v0->tei [k] = v1->tei [k] + a * v2->tei [k];
-        v0->btt [k] = v1->btt [k] + a * v2->btt [k];
-        v0->bmtr[k] = v1->bmtr[k] + a * v2->bmtr[k];
-        v0->bmti[k] = v1->bmti[k] + a * v2->bmti[k];
-        v0->bter[k] = v1->bter[k] + a * v2->bter[k];
-        v0->btei[k] = v1->btei[k] + a * v2->btei[k];
-        #endif
-*/
     }
 #ifdef NVTX
     nvtxRangePop();
@@ -346,27 +344,6 @@ inline void NuOsc::vectorize(FieldVar * const __restrict v0, FieldVar * const __
         auto k = grid.idx(i,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fv0.at(f)[k] = fv1.at(f)[k] + a * (fv2.at(f)[k] + fv3.at(f)[k]);
-/*
-        v0->mm  [k] = v1->mm  [k] + a * (v2->mm  [k] + v3->mm  [k]);
-        v0->emr [k] = v1->emr [k] + a * (v2->emr [k] + v3->emr [k]);
-        v0->emi [k] = v1->emi [k] + a * (v2->emi [k] + v3->emi [k]);
-        v0->bee [k] = v1->bee [k] + a * (v2->bee [k] + v3->bee [k]);
-        v0->bmm [k] = v1->bmm [k] + a * (v2->bmm [k] + v3->bmm [k]);
-        v0->bemr[k] = v1->bemr[k] + a * (v2->bemr[k] + v3->bemr[k]);
-        v0->bemi[k] = v1->bemi[k] + a * (v2->bemi[k] + v3->bemi[k]);
-        #ifdef FALVOR3
-        v0->tt  [k] = v1->tt  [k] + a * (v2->tt  [k] + v3->tt  [k]);
-        v0->mtr [k] = v1->mtr [k] + a * (v2->mtr [k] + v3->mtr [k]);
-        v0->mti [k] = v1->mti [k] + a * (v2->mti [k] + v3->mti [k]);
-        v0->ter [k] = v1->ter [k] + a * (v2->ter [k] + v3->ter [k]);
-        v0->tei [k] = v1->tei [k] + a * (v2->tei [k] + v3->tei [k]);
-        v0->btt  [k] = v1->btt  [k] + a * (v2->btt  [k] + v3->btt  [k]);
-        v0->bmtr [k] = v1->bmtr [k] + a * (v2->bmtr [k] + v3->bmtr [k]);
-        v0->bmti [k] = v1->bmti [k] + a * (v2->bmti [k] + v3->bmti [k]);
-        v0->bter [k] = v1->bter [k] + a * (v2->bter [k] + v3->bter [k]);
-        v0->btei [k] = v1->btei [k] + a * (v2->btei [k] + v3->btei [k]);
-        #endif
-*/
     }
 #ifdef NVTX
     nvtxRangePop();
@@ -388,27 +365,6 @@ inline void NuOsc::vectorize(FieldVar* const __restrict v0, const real a, FieldV
         auto k = grid.idx(i,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fv0.at(f)[k] = a*fv1.at(f)[k] + b * (fv2.at(f)[k] + dt*fv3.at(f)[k]);
-/*
-        v0->mm  [k] = a*v1->mm  [k] + b * (v2->mm  [k] + dt*v3->mm  [k]);
-        v0->emr [k] = a*v1->emr [k] + b * (v2->emr [k] + dt*v3->emr [k]);
-        v0->emi [k] = a*v1->emi [k] + b * (v2->emi [k] + dt*v3->emi [k]);
-        v0->bee [k] = a*v1->bee [k] + b * (v2->bee [k] + dt*v3->bee [k]);
-        v0->bmm [k] = a*v1->bmm [k] + b * (v2->bmm [k] + dt*v3->bmm [k]);
-        v0->bemr[k] = a*v1->bemr[k] + b * (v2->bemr[k] + dt*v3->bemr[k]);
-        v0->bemi[k] = a*v1->bemi[k] + b * (v2->bemi[k] + dt*v3->bemi[k]);
-        #ifdef FALVOR3
-        v0->tt  [k] = a*v1->tt  [k] + b * (v2->tt  [k] + dt*v3->tt  [k]);
-        v0->mtr [k] = a*v1->mtr [k] + b * (v2->mtr [k] + dt*v3->mtr [k]);
-        v0->mti [k] = a*v1->mti [k] + b * (v2->mti [k] + dt*v3->mti [k]);
-        v0->ter [k] = a*v1->ter [k] + b * (v2->ter [k] + dt*v3->ter [k]);
-        v0->tei [k] = a*v1->tei [k] + b * (v2->tei [k] + dt*v3->tei [k]);
-        v0->btt [k] = a*v1->btt [k] + b * (v2->btt [k] + dt*v3->btt [k]);
-        v0->bmtr[k] = a*v1->bmtr[k] + b * (v2->bmtr[k] + dt*v3->bmtr[k]);
-        v0->bmti[k] = a*v1->bmti[k] + b * (v2->bmti[k] + dt*v3->bmti[k]);
-        v0->bter[k] = a*v1->bter[k] + b * (v2->bter[k] + dt*v3->bter[k]);
-        v0->btei[k] = a*v1->btei[k] + b * (v2->btei[k] + dt*v3->btei[k]);
-        #endif
-*/
     }
 #ifdef NVTX
     nvtxRangePop();
@@ -567,7 +523,7 @@ NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const
         dN  = new real[size];
         dPb = new real[size];
         dNb = new real[size];
-#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
+//#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
 
         // field variables~~
         v_stat = new FieldVar(size);
@@ -575,7 +531,7 @@ NuOsc::NuOsc(const int px_, const int pz_, const int nv_, const int nphi_, const
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
         v_stat0 = new FieldVar(size);
-#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+//#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
 
         if (myrank==0) {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);

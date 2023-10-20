@@ -7,41 +7,43 @@ void NuOsc::updatePeriodicBoundary(FieldVar * const __restrict in) {
 #endif
 
     // Assume cell-center:     [-i=nz-i,-1=nz-1] ,0,...,nz-1, [nz=0, nz+i=i]
-    std::vector<real*> fvars = in->getAllFields();
+    const std::vector<real*> fvars = in->getAllFields();
 
 #pragma omp parallel for collapse(3)
-#pragma acc parallel loop collapse(3)
+#pragma acc parallel loop collapse(3) independent
     for (int i=0;i<grid.nx; ++i)
     for (int j=0;j<grid.gz; ++j)
     for (int v=0;v<grid.nv; ++v) {
-        // z lower side of ghost <-- z upper
+        { // z lower side of ghost <-- z upper
         auto l0 = grid.idx(i,-j-1,v);
         auto l1 = grid.idx(i,grid.nz-j-1,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fvars.at(f)[l0] = fvars.at(f)[l1];
+        } {
         //z upper side of ghost <-- z lower
         auto r0 = grid.idx(i,grid.nz+j,v);
         auto r1 = grid.idx(i,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fvars.at(f)[r0] = fvars.at(f)[r1];
+        }
     }
 
-
 #pragma omp parallel for collapse(3)
-#pragma acc parallel loop collapse(3)
+#pragma acc parallel loop collapse(3) independent
     for (int i=0;i<grid.gx; ++i)
     for (int j=0;j<grid.nz; ++j)
     for (int v=0;v<grid.nv; ++v) {
-        //x lower side of ghost <-- x upper
+        { //x lower side of ghost <-- x upper
         auto l0 = grid.idx(-i-1,j,v);
         auto l1 = grid.idx(grid.nx-i-1,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fvars.at(f)[l0] = fvars.at(f)[l1];
-        //x upper side of ghost <-- x lower
+        } { //x upper side of ghost <-- x lower
         auto r0 = grid.idx(grid.nx+i,j,v);
         auto r1 = grid.idx(i,j,v);
         #pragma unroll
         for (int f=0; f<nvar; ++f) fvars.at(f)[r0] = fvars.at(f)[r1];
+        }
     }
 
 #ifdef NVTX
@@ -64,7 +66,7 @@ void NuOsc::pack_buffer(FieldVar* const in) {
     std::vector<real*> fvars = in->getAllFields();
 
     { // X lower side
-    real *pbuf = &(grid.pbX[0]);
+    real * const pbuf = &(grid.pbX[0]);
     #pragma omp parallel for collapse(3)
     #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.gx; ++i)
@@ -78,7 +80,7 @@ void NuOsc::pack_buffer(FieldVar* const in) {
     }
 
     {  // X upper side
-    real *pbuf = &(grid.pbX[NPBX]);
+    real * const pbuf = &(grid.pbX[NPBX]);
     #pragma omp parallel for collapse(3)
     #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.gx; ++i)
@@ -129,7 +131,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // recovery X upper halo from the neighbor lower side
     real *pbuf = &(grid.pbX[2*NPBX]);    // THINK: OpenACC error w/o this (ie., offset inside pragma)!!
     #pragma omp parallel for collapse(3)
-    #pragma acc parallel loop collapse(3) async
+    #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.gx; ++i)
     for (int j=0;j<grid.nz; ++j)
     for (int v=0;v<grid.nv; ++v) {
@@ -143,7 +145,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // recovery X lower halo from the neighbor upper side
     real *pbuf = &(grid.pbX[3*NPBX]);
     #pragma omp parallel for collapse(3)
-    #pragma acc parallel loop collapse(3) async
+    #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.gx; ++i)
     for (int j=0;j<grid.nz; ++j)
     for (int v=0;v<grid.nv; ++v) {
@@ -157,7 +159,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // Z lower side
     real *pbuf = &(grid.pbZ[2*NPBZ]);
     #pragma omp parallel for collapse(3)
-    #pragma acc parallel loop collapse(3) async
+    #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.nx; ++i)
     for (int j=0;j<grid.gz; ++j)
     for (int v=0;v<grid.nv; ++v) {
@@ -171,7 +173,7 @@ void NuOsc::unpack_buffer(FieldVar* out) {
     { // Z upper side
     real *pbuf = &(grid.pbZ[3*NPBZ]);
     #pragma omp parallel for collapse(3)
-    #pragma acc parallel loop collapse(3) async
+    #pragma acc parallel loop collapse(3) independent async
     for (int i=0;i<grid.nx; ++i)
     for (int j=0;j<grid.gz; ++j)
     for (int v=0;v<grid.nv; ++v) {
@@ -204,5 +206,3 @@ void NuOsc::sync_boundary(FieldVar* v0) {
 
 
 }
-
-

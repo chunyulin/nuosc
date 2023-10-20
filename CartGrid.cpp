@@ -226,13 +226,13 @@ CartGrid::CartGrid(int px_, int pz_, int nv_, int nphi_, int gx_, int gz_, real 
     #else
     pbX = new real[4*npbX];
     pbZ = new real[4*npbZ];
-    #pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
+    //  #pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
     #endif
 
 #else
     pbX = new real[4*npbX];
     pbZ = new real[4*npbZ];
-    #pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
+    //#pragma acc enter data create(this,pbX[0:4*npbX],pbZ[0:4*npbZ])
 #endif
 
     for (int i=0;i<ranks;++i) {
