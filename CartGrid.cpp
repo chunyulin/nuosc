@@ -170,12 +170,12 @@ CartGrid::CartGrid(int px_[], int nv_, const int nphi_, const int gx_[], const r
     for (int d=0;d<DIM;++d)  lpts *= (nx[d]+2*gx[d]);
 
     // prepare datatype for ghostzone block of each dimension
-    int nXYZV = nvar*nv;
+    uint nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
 
     #pragma acc enter data create(this)
     for (int d=0;d<DIM;++d) {
-        const auto npb = nXYZV/nx[d]*gx[d];   // total size of halo
+        ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
     #ifdef COSENU_MPI
         MPI_Type_contiguous(npb, MPI_DOUBLE, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
 
