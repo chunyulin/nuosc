@@ -6,7 +6,7 @@ void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
 #endif
 
     PARFORALL(i,j,k,v)   {
-        uint ijkv = grid.idx(i,j,k,v);
+        auto ijkv = grid.idx(i,j,k,v);
         real iG  = 1.0 / G0[ijkv];
         real iGb = 1.0 / G0b[ijkv];
         P1 [ijkv] =   2.0*v0->ex_re[ijkv] * iG;
@@ -38,92 +38,87 @@ void NuOsc::analysis() {
 
     eval_conserved(v_stat);
 
-    real maxdP = 0.0;
-    //real maxdN = 0.0;
-    real avgP  = 0.0, avgPb = 0.0;
-    real surv  = 0.0, survb  = 0.0;
-    real nor  = 0.0, norb = 0.0;
-    real aM01 = 0.0, aM02 = 0.0, aM03 = 0.0;
-    //real aM11 = 0.0, aM12 = 0.0, aM13 = 0.0;
+    // packed reduction variable for MPI send. TODO: check if these work for OpenACC 
+    real rv[10] = {0};
+
+    //real t_surv  = rv[0], t_survb = rv[1];
+    //real t_avgP  = rv[2], t_avgPb = rv[3];
+    //real t_nor  =  rv[4], t_norb =  rv[5];
+    //real t_aM01 =  rv[6], t_aM02 =  rv[7], t_aM03 =  rv[8];
+    //real t_maxdP = rv[9];
 #ifdef ADV_TEST
-    real I1=0., I2=0.;
-    #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb,I1,I2) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
-    #pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb,I1,I2) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
+    //real t_I1 = rv[10], t_I2 = rv[11];
+    #pragma omp parallel for  reduction(+:rv[:12]) reduction(max:rv[9]) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop reduction(+:t_avgP,t_avgPb,t_aM01,aM02,aM03,nor,norb,surv,survb,I1,I2) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
 #else
-    #pragma omp parallel for reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
-    #pragma acc parallel loop reduction(+:avgP,avgPb,aM01,aM02,aM03,nor,norb,surv,survb) reduction(max:maxdP) collapse(COLLAPSE_LOOP)
+    #pragma omp parallel for  reduction(+:rv[:10]) reduction(max:rv[9]) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #endif
     FORALL(i,j,k,v)  {
         int ijkv = grid.idx(i,j,k,v);
 
 #ifdef ADV_TEST
-        I1 += grid.vw[v]* v_stat->ee [ijkv];
-        I2 += grid.vw[v]* v_stat->ee [ijkv]* v_stat->ee [ijkv];
+        t_I1 += grid.vw[v]* v_stat->ee [ijkv];
+        t_I2 += grid.vw[v]* v_stat->ee [ijkv]* v_stat->ee [ijkv];
 #endif
 
         //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
-        maxdP = std::max( maxdP, std::max(dP[ijkv], dPb[ijkv]));
+        rv[9] = std::max( rv[9], std::max(dP[ijkv], dPb[ijkv]));
         //maxdN = std::max( std::max(maxdN,dN[ijkv]), dNb[ijkv]);  // What's this?
 
-        surv  += grid.vw[v]* v_stat->ee [ijkv];
-        survb += grid.vw[v]* v_stat->bee[ijkv];
+        rv[0]  += grid.vw[v]* v_stat->ee [ijkv];
+        rv[1] += grid.vw[v]* v_stat->bee[ijkv];
 
-        avgP  += grid.vw[v] * G0 [ijkv] * std::abs( 1.0 - std::sqrt(P1 [ijkv]*P1 [ijkv]+P2 [ijkv]*P2 [ijkv]+P3 [ijkv]*P3 [ijkv]) );
-        avgPb += grid.vw[v] * G0b[ijkv] * std::abs( 1.0 - std::sqrt(P1b[ijkv]*P1b[ijkv]+P2b[ijkv]*P2b[ijkv]+P3b[ijkv]*P3b[ijkv]) );
+        rv[2] += grid.vw[v] * G0 [ijkv] * std::abs( 1.0 - std::sqrt(P1 [ijkv]*P1 [ijkv]+P2 [ijkv]*P2 [ijkv]+P3 [ijkv]*P3 [ijkv]) );
+        rv[3] += grid.vw[v] * G0b[ijkv] * std::abs( 1.0 - std::sqrt(P1b[ijkv]*P1b[ijkv]+P2b[ijkv]*P2b[ijkv]+P3b[ijkv]*P3b[ijkv]) );
 
         // M0
-        aM01 += grid.vw[v]* ( v_stat->ex_re[ijkv] - v_stat->bex_re[ijkv]);                                 // = P1[ijkv]*G0[ijkv] - P1b[ijkv]*G0b[ijkv];
-        aM02 += grid.vw[v]* (-v_stat->ex_im[ijkv] - v_stat->bex_im[ijkv]);                                 // = P2[ijkv]*G0[ijkv] - P2b[ijkv]*G0b[ijkv];
-        aM03 += grid.vw[v]* 0.5*(v_stat->ee[ijkv] - v_stat->xx[ijkv] - v_stat->bee[ijkv] + v_stat->bxx[ijkv]); // = P3[ijkv]*G0[ijkv] - P3b[ijkv]*G0b[ijkv], which is also the net e-x lepton number;
+        rv[6] += grid.vw[v]* ( v_stat->ex_re[ijkv] - v_stat->bex_re[ijkv]);                                 // = P1[ijkv]*G0[ijkv] - P1b[ijkv]*G0b[ijkv];
+        rv[7] += grid.vw[v]* (-v_stat->ex_im[ijkv] - v_stat->bex_im[ijkv]);                                 // = P2[ijkv]*G0[ijkv] - P2b[ijkv]*G0b[ijkv];
+        rv[8] += grid.vw[v]* 0.5*(v_stat->ee[ijkv] - v_stat->xx[ijkv] - v_stat->bee[ijkv] + v_stat->bxx[ijkv]); // = P3[ijkv]*G0[ijkv] - P3b[ijkv]*G0b[ijkv], which is also the net e-x lepton number;
 
         // M1
         //aM11 += grid.vw[v]* grid.vz[i]* (v_stat->ex_re[ijkv] - v_stat->bex_re[ijkv]);
         //aM12 += grid.vw[v]* grid.vz[i]* (v_stat->ex_im[ijkv] + v_stat->bex_im[ijkv]);
         //aM13 += grid.vw[v]* grid.vz[i]* 0.5*(v_stat->ee[ijkv] - v_stat->xx[ijkv] - v_stat->bee[ijkv] + v_stat->bxx[ijkv]);
 
-        nor  += grid.vw[v]* G0 [ijkv];   // const: should be calculated initially
-        norb += grid.vw[v]* G0b[ijkv];
+        rv[4] += grid.vw[v]* G0 [ijkv];   // const: should be calculated initially
+        rv[5] += grid.vw[v]* G0b[ijkv];
     }
+    //rv[0] = t_surv, rv[1] = t_survb;
+    //rv[2] = t_avgP, rv[3] = t_avgPb;
+    //rv[4] = t_nor,  rv[5]  =  t_norb;
+    //rv[6] = t_aM01, rv[7]  =  t_aM02, rv[8] = t_aM03;
+    //rv[9] = t_maxdP;
 
 #ifdef COSENU_MPI
-    // TODO: pack multiple MPI_reduce into one.
-#define REDUCE(x, op) \
-    if (!myrank)  MPI_Reduce(MPI_IN_PLACE, &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM); \
-    else          MPI_Reduce(&x,           &x, 1, MPI_DOUBLE, op, 0, grid.CartCOMM);
-
-    //MPI_Allreduce(MPI_IN_PLACE, &x, 1, MPI_DOUBLE, op, grid.CartCOMM);
-    REDUCE(surv,MPI_SUM);   REDUCE(survb,MPI_SUM);
-    REDUCE(avgP,MPI_SUM);   REDUCE(avgPb,MPI_SUM);
-    REDUCE(nor, MPI_SUM);   REDUCE(norb, MPI_SUM);
-    REDUCE(aM01,MPI_SUM);   REDUCE(aM02, MPI_SUM);    REDUCE(aM03,MPI_SUM);
-    REDUCE(maxdP,MPI_MAX);
-#undef REDUCE
+    if (!myrank) MPI_Reduce(MPI_IN_PLACE, &rv[0], 10, MPI_DOUBLE, MPI_SUM, 0, grid.CartCOMM);
+    else         MPI_Reduce(&rv[0],       &rv[0], 10, MPI_DOUBLE, MPI_SUM, 0, grid.CartCOMM);
 #endif
-
 
     if (!myrank) {
 
-        surv  /= nor;   avgP  /= nor;
-        survb /= norb;  avgPb /= norb;
+        rv[0] /= rv[4];  rv[2] /= rv[4];
+        rv[1] /= rv[5];  rv[3] /= rv[5];
 
-        real aM0    = std::sqrt(aM01*aM01+aM02*aM02+aM03*aM03) * ds_L;
-        real ELNe  = std::abs(n_nue0[0]*(1.0-surv) - n_nue0[1]*(1.0-survb)) / (n_nue0[0]+n_nue0[1]); /// !!!
+        real aM0    = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * ds_L;
+        real ELNe  = std::abs(n_nue0[0]*(1.0-rv[0]) - n_nue0[1]*(1.0-rv[1])) / (n_nue0[0]+n_nue0[1]); /// !!!
         //real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
-        real Lex = aM03 * ds_L;
+        real Lex = rv[8] * ds_L;
 
         printf("T= %15f ", phy_time);
 #ifdef ADV_TEST
-        printf(" I1= %5.4e I2= %5.4e\n", I1/nor, I2/nor);
+        printf(" I1= %5.4e I2= %5.4e\n", rv[10]/rv[4], rv[11]/rv[4]);
 #else
         //printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
-        printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, ELNe, Lex);
+        printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g\n",rv[9],rv[0],rv[1],rv[2],rv[3],aM0, ELNe, Lex);
 #endif
-        anafile << phy_time << std::setprecision(13) << " " << maxdP << " " 
-            << surv << " " << survb << " " 
-            << avgP << " " << avgPb << " " 
+        anafile << phy_time << std::setprecision(13) << " " << rv[9] << " " 
+            << rv[0] << " " << rv[1] << " " 
+            << rv[2] << " " << rv[3] << " " 
             << aM0 << " " << Lex  << " " << ELNe << " " << endl;
 
-        assert(maxdP <10 );
+        assert(rv[9] <10 );
 
     }
 #ifdef NVTX

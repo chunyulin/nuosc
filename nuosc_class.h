@@ -123,7 +123,7 @@ class NuOsc {
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
             #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-            delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
+            delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; delete v_stat0;
 
             anafile.close();
 

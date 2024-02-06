@@ -1,6 +1,7 @@
 #include "CartGrid.h"
-#include "jacobi_poly.h"
 
+#if defined(IM_V2D_POLAR_GL_Z)
+#include "jacobi_poly.h"
 int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
     Vec r(nv);
     Vec w(nv);
@@ -20,6 +21,19 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
         }
     return nv*nphi;
 }
+int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
+    Vec r(nv,0);
+    Vec w(nv,0);
+    JacobiGL(nv-1,0,0,r,w);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = r[j];
+        vw[j] = w[j];
+    }
+    return nv;
+}
+#endif
 
 int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, Vec& vz) {
     vx.reserve(nv*nphi);
@@ -38,19 +52,6 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
             vw[j*nv+i] = dv/nphi;
         }
     return nv*nphi;
-}
-
-int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
-    Vec r(nv,0);
-    Vec w(nv,0);
-    JacobiGL(nv-1,0,0,r,w);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = r[j];
-        vw[j] = w[j];
-    }
-    return nv;
 }
 
 // v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
@@ -170,13 +171,14 @@ CartGrid::CartGrid(int px_[], int nv_, const int nphi_, const int gx_[], const r
     for (int d=0;d<DIM;++d)  lpts *= (nx[d]+2*gx[d]);
 
     // prepare datatype for ghostzone block of each dimension
-    uint nXYZV = nvar*nv;
+    ulong nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
 
     #pragma acc enter data create(this)
     for (int d=0;d<DIM;++d) {
-        ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
+        const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
     #ifdef COSENU_MPI
+
         MPI_Type_contiguous(npb, MPI_DOUBLE, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
 
         #ifdef SYNC_MPI_ONESIDE_COPY
@@ -230,12 +232,12 @@ void CartGrid::sync_put() {
     nvtxRangePush("Sync Put");
 #endif
 #ifdef COSENU_MPI
-    int nXYZ = nvar*nv;
+    ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
         
     #pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
-        const auto npb = nXYZ/nx[d]*gx[d];   // total size of halo
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         #ifdef GDR_OFF
             #pragma acc update self( pb[d][0:2*npb] )
         #else
@@ -262,14 +264,14 @@ void CartGrid::sync_isend() {
     nvtxRangePush("Sync Isend");
 #endif
 #ifdef COSENU_MPI
-    int nXYZ = nvar*nv;
+    ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
     const int n_reqs = DIM*4;
     MPI_Request reqs[n_reqs];
     #pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
-        const auto npb = nXYZ/nx[d]*gx[d];   // total size of halo
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         #ifdef GDR_OFF
           #pragma acc update self( pb[d][0:2*npb] )
         #else
@@ -288,7 +290,7 @@ void CartGrid::sync_isend() {
     #ifdef GDR_OFF
     #pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
-        const auto npb = nXYZ/nx[d]*gx[d];   // total size of halo
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         #pragma acc update device( pb[d][(2*npb):(4*npb)] )
     }
     #endif
@@ -300,11 +302,11 @@ void CartGrid::sync_isend() {
 
 void CartGrid::sync_copy() {   // Only for single-node test
 
-    int nXYZ = nvar*nv;
+    ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
     for (int d=0;d<DIM;++d) {
-        const auto npb = nXYZ/nx[d]*gx[d];   // total size of halo
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         memcpy(&pb[d][2*npb], &pb[d][0], 2*npb*sizeof(real));
     }
 }

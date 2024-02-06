@@ -201,7 +201,7 @@ int main(int argc, char *argv[]) {
 #else
     std::chrono::time_point<std::chrono::high_resolution_clock> t1;
 #endif
-    const int cooltime = 5;
+    const int cooltime = 3;
     for (int t=1; t<=END_STEP; t++) {
 
 #ifdef COSENU_MPI

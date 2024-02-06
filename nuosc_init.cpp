@@ -30,7 +30,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
         Vec phi(grid.nx[DIM-1]/10+1);
         const real pi2oL = 2.0*M_PI/(grid.bbox[DIM-1][1]-grid.bbox[DIM-1][0]);
-	#pragma omp parallel for
         for(int k=-amax;k<=amax;++k){
 	    phi[k+amax]=2.0*M_PI*rand()/RAND_MAX;
         }
@@ -39,7 +38,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
         for (int k=0;k<grid.nx[DIM-1]; ++k){
 	    real tmpr=0.0;
             real tmpi=0.0;
-	    #pragma omp parallel for reduction(+:tmpr,tmpi)
     	    for(int q=-amax;q<amax;++q) {
         	if(q!=0){
             	    tmpr += 1.e-7/abs(q)*cos(pi2oL*q*grid.X[DIM-1][k] + phi[q+amax]);
@@ -90,7 +88,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	#pragma omp parallel for reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
         FORALL(i,j,k,v) {
 
-            uint ijkv = grid.idx(i,j,k,v);
+            auto ijkv = grid.idx(i,j,k,v);
 
             // ELN profile
             G0 [ijkv] =         ng [v] * ing0;
