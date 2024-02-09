@@ -1,262 +1,216 @@
 #include "nuosc_class.h"
 
-void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
-#ifdef NVTX
-    nvtxRangePush("calRHS");
-#endif
-
-    // for abbreviation
-    auto vw = grid.vw.data();
-    auto vx = grid.vx.data();
-    auto vy = grid.vy.data();
-    auto vz = grid.vz.data();
-    const int nzv  = grid.nv*(grid.nx[2]+2*grid.gx[2]);
-    const int nyzv = nzv*(grid.nx[1] + 2*grid.gx[1]);
-// gang worker num_workers(64)
-#pragma omp parallel for collapse(3)
-#pragma acc parallel loop independent collapse(3)
-    for (int i=0;i<grid.nx[0]; ++i)
-    for (int j=0;j<grid.nx[1]; ++j)
-    for (int k=0;k<grid.nx[2]; ++k) {
-
-        // common integral over v'
-        real idv_bexR_m_exR  = 0;
-        real idv_bexI_p_exI  = 0;
-        real idv_bxx_m_bee_m_xx_p_ee  = 0;
-        real ivxdv_bexR_m_exR = 0;
-        real ivxdv_bexI_p_exI = 0;
-        real ivxdv_bxx_m_bee_m_xx_p_ee = 0;
-        real ivydv_bexR_m_exR = 0;
-        real ivydv_bexI_p_exI = 0;
-        real ivydv_bxx_m_bee_m_xx_p_ee = 0;
-        real ivzdv_bexR_m_exR = 0;
-        real ivzdv_bexI_p_exI = 0;
-        real ivzdv_bxx_m_bee_m_xx_p_ee = 0;
-
-        // Common integral factor over spatial points
-#pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee, ivxdv_bexR_m_exR,ivxdv_bexI_p_exI,ivxdv_bxx_m_bee_m_xx_p_ee, ivydv_bexR_m_exR,ivydv_bexI_p_exI,ivydv_bxx_m_bee_m_xx_p_ee, ivzdv_bexR_m_exR,ivzdv_bexI_p_exI,ivzdv_bxx_m_bee_m_xx_p_ee)
-        for (int v=0;v<grid.nv; ++v) {
-            auto ijkv = grid.idx(i,j,k,v);
-            idv_bexR_m_exR            += vw[v] *       (in->bex_re[ijkv] - in->ex_re[ijkv] );
-            idv_bexI_p_exI            += vw[v] *       (in->bex_im[ijkv] + in->ex_im[ijkv] );
-            idv_bxx_m_bee_m_xx_p_ee   += vw[v] *       (in->bxx[ijkv]-in->bee[ijkv]+in->ee[ijkv]-in->xx[ijkv] );
-
-            // integral over vx and vy is zero for axi-symm case.  ( VY TO BE CHECKED...)
-            ivxdv_bexR_m_exR          += vw[v] * vx[v]*(in->bex_re[ijkv] - in->ex_re[ijkv] );
-            ivxdv_bexI_p_exI          += vw[v] * vx[v]*(in->bex_im[ijkv] + in->ex_im[ijkv] );
-            ivxdv_bxx_m_bee_m_xx_p_ee += vw[v] * vx[v]*(in->bxx[ijkv]-in->bee[ijkv]+in->ee[ijkv]-in->xx[ijkv] );
-            ivydv_bexR_m_exR          += vw[v] * vy[v]*(in->bex_re[ijkv] - in->ex_re[ijkv] );
-            ivydv_bexI_p_exI          += vw[v] * vy[v]*(in->bex_im[ijkv] + in->ex_im[ijkv] );
-            ivydv_bxx_m_bee_m_xx_p_ee += vw[v] * vy[v]*(in->bxx[ijkv]-in->bee[ijkv]+in->ee[ijkv]-in->xx[ijkv] );
-            ivzdv_bexR_m_exR          += vw[v] * vz[v]*(in->bex_re[ijkv] - in->ex_re[ijkv] );
-            ivzdv_bexI_p_exI          += vw[v] * vz[v]*(in->bex_im[ijkv] + in->ex_im[ijkv] );
-            ivzdv_bxx_m_bee_m_xx_p_ee += vw[v] * vz[v]*(in->bxx[ijkv]-in->bee[ijkv]+in->ee[ijkv]-in->xx[ijkv] );
+#if defined(IM_V2D_POLAR_GL_Z)
+#include "jacobi_poly.h"
+int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
+    Vec r(nv);
+    Vec w(nv);
+    JacobiGL(nv-1,0,0,r,w);
+    vx.reserve(nv*nphi);
+    vy.reserve(nv*nphi);
+    vz.reserve(nv*nphi);
+    vw.reserve(nv*nphi);
+    real dp = 2*M_PI/nphi;
+    for (int j=0;j<nphi; ++j)
+        for (int i=0;i<nv; ++i)   {
+            real vxy = sqrt(1-r[i]*r[i]);
+            vx[j*nv+i] = cos(j*dp)*vxy;
+            vy[j*nv+i] = sin(j*dp)*vxy;
+            vz[j*nv+i] = r[i];
+            vw[j*nv+i] = w[i]/nphi;
         }
-        //cout << "===" << grid.nx << " " << grid.nz << " " << grid.nv << " " << grid.gx << " " << grid.gz << endl; 
-
-        #pragma acc loop
-        for (int v=0;v<grid.nv; ++v) {
-
-            auto ijkv = grid.idx(i,j,k,v);
-
-            // The base pointer for this stencil
-            real *ee    = &(in->ee    [ijkv]);
-            real *xx    = &(in->xx    [ijkv]);
-            real *exr   = &(in->ex_re [ijkv]);
-            real *exi   = &(in->ex_im [ijkv]);
-            real *bee   = &(in->bee   [ijkv]);
-            real *bxx   = &(in->bxx   [ijkv]);
-            real *bexr  = &(in->bex_re[ijkv]);
-            real *bexi  = &(in->bex_im[ijkv]);
-
-            // prepare KO operator
-#ifndef KO_ORD_3
-            // Kreiss-Oliger dissipation (5-th order)
-            real ko_eps = -ko/grid.dx/64.0;
-#define KO_FD(x) ko_eps*( \
-              ( x[-3*grid.nv] + x[3*grid.nv] - 6*(x[-2*grid.nv] +x[2*grid.nv])  + 15*(x[-grid.nv] + x[grid.nv]) - 20*x[0] ) + \
-              ( x[-3*nzv]     + x[3*nzv]     - 6*(x[-2*nzv]     +x[2*nzv])      + 15*(x[-nzv]     + x[nzv])     - 20*x[0] ) + \
-              ( x[-3*nyzv]    + x[3*nyzv]    - 6*(x[-2*nyzv]    +x[2*nyzv])     + 15*(x[-nyzv]    + x[nyzv])    - 20*x[0] ) )
-
-#else
-            // Kreiss-Oliger dissipation (3-nd order)
-            real ko_eps = -ko/grid.dx/16.0;
-#define KO_FD(x) ko_eps*( \
-             ( x[-2*grid.nv] + x[2*grid.nv] - 4*(x[-grid.nv] + x[grid.nv]) + 6*x[0] ) + \
-             ( x[-2*nzv]     + x[2*nzv]     - 4*(x[-nzv]     + x[nzv])     + 6*x[0] ) + \
-             ( x[-2*nyzv]    + x[2*nyzv]    - 4*(x[-nyzv]    + x[nyzv])    + 6*x[0] ) )
+    return nv*nphi;
+}
+int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
+    Vec r(nv,0);
+    Vec w(nv,0);
+    JacobiGL(nv-1,0,0,r,w);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = r[j];
+        vw[j] = w[j];
+    }
+    return nv;
+}
 #endif
 
-            // prepare advection FD operator
-            //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
-            real factor_z = -grid.vz[v]/(12*grid.dx);
-            real factor_y = -grid.vy[v]/(12*grid.dx);
-            real factor_x = -grid.vx[v]/(12*grid.dx);
-#ifdef ADVEC_OFF
-#define ADV_FD(x)     (0.0)
-#else
-#define ADV_FD(x) ( \
-              factor_z*(  (x[-2*grid.nv] - x[2*grid.nv]) - 8.0*( x[-grid.nv] -x[grid.nv] ) ) + \
-              factor_y*(  (x[-2*nzv]     - x[2*nzv])     - 8.0*( x[-nzv]     -x[nzv]     ) ) + \
-              factor_x*(  (x[-2*nyzv]    - x[2*nyzv])    - 8.0*( x[-nyzv]    -x[nyzv]    ) ) )
-
-#endif
-            // interaction term
-            real Iee    = 2*mu* (         exr[0]  *(idv_bexI_p_exI -vx[v]*ivxdv_bexI_p_exI -vy[v]*ivydv_bexI_p_exI -vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bexR_m_exR          -vx[v]*ivxdv_bexR_m_exR          -vy[v]*ivydv_bexR_m_exR          -vz[v]*ivzdv_bexR_m_exR         ) );
-            real Iexr   =   mu* (   (xx[0]-ee[0]) *(idv_bexI_p_exI -vx[v]*ivxdv_bexI_p_exI -vy[v]*ivydv_bexI_p_exI -vz[v]*ivzdv_bexI_p_exI ) +  exi[0]*(idv_bxx_m_bee_m_xx_p_ee -vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee -vy[v]*ivydv_bxx_m_bee_m_xx_p_ee -vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
-            real Iexi   =   mu* (   (xx[0]-ee[0]) *(idv_bexR_m_exR -vx[v]*ivxdv_bexR_m_exR -vy[v]*ivydv_bexR_m_exR -vz[v]*ivzdv_bexR_m_exR ) -  exr[0]*(idv_bxx_m_bee_m_xx_p_ee -vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee -vy[v]*ivydv_bxx_m_bee_m_xx_p_ee -vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
-            real Ibee   = 2*mu* (        bexr[0]  *(idv_bexI_p_exI -vx[v]*ivxdv_bexI_p_exI -vy[v]*ivydv_bexI_p_exI -vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bexR_m_exR          -vx[v]*ivxdv_bexR_m_exR          -vy[v]*ivydv_bexR_m_exR          -vz[v]*ivzdv_bexR_m_exR         ) );
-            real Ibexr  =   mu* ( (bxx[0]-bee[0]) *(idv_bexI_p_exI -vx[v]*ivxdv_bexI_p_exI -vy[v]*ivydv_bexI_p_exI -vz[v]*ivzdv_bexI_p_exI ) - bexi[0]*(idv_bxx_m_bee_m_xx_p_ee -vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee -vy[v]*ivydv_bxx_m_bee_m_xx_p_ee -vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
-            real Ibexi  =   mu* ( (bee[0]-bxx[0]) *(idv_bexR_m_exR -vx[v]*ivxdv_bexR_m_exR -vy[v]*ivydv_bexR_m_exR -vz[v]*ivzdv_bexR_m_exR ) + bexr[0]*(idv_bxx_m_bee_m_xx_p_ee -vx[v]*ivxdv_bxx_m_bee_m_xx_p_ee -vy[v]*ivydv_bxx_m_bee_m_xx_p_ee -vz[v]*ivzdv_bxx_m_bee_m_xx_p_ee) );
-
-#ifndef VACUUM_OFF
-            // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-            out->ee    [ijkv] =  Iee   + ADV_FD(ee)   + KO_FD(ee)   - pmo* 2*st*exi [0];
-            out->xx    [ijkv] = -Iee   + ADV_FD(xx)   + KO_FD(xx)   + pmo* 2*st*exi [0];
-            out->ex_re [ijkv] =  Iexr  + ADV_FD(exr)  + KO_FD(exr)  - pmo* 2*ct*exi [0];
-            out->ex_im [ijkv] =  Iexi  + ADV_FD(exi)  + KO_FD(exi)  + pmo*(2*ct*exr [0] + st*( ee[0] - xx[0] ) );
-            out->bee   [ijkv] =  Ibee  + ADV_FD(bee)  + KO_FD(bee)  - pmo* 2*st*bexi[0];
-            out->bxx   [ijkv] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx)  + pmo* 2*st*bexi[0];
-            out->bex_re[ijkv] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr) - pmo* 2*ct*bexi[0];
-            out->bex_im[ijkv] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi) + pmo*(2*ct*bexr[0] + st*( bee[0] - bxx[0] ) );
-#else
-            // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-            out->ee    [ijkv] =  Iee   + ADV_FD(ee)   + KO_FD(ee);
-            out->xx    [ijkv] = -Iee   + ADV_FD(xx)   + KO_FD(xx);
-            out->ex_re [ijkv] =  Iexr  + ADV_FD(exr)  + KO_FD(exr);
-            out->ex_im [ijkv] =  Iexi  + ADV_FD(exi)  + KO_FD(exi);
-            out->bee   [ijkv] =  Ibee  + ADV_FD(bee)  + KO_FD(bee);
-            out->bxx   [ijkv] = -Ibee  + ADV_FD(bxx)  + KO_FD(bxx);
-            out->bex_re[ijkv] =  Ibexr + ADV_FD(bexr) + KO_FD(bexr);
-            out->bex_im[ijkv] =  Ibexi + ADV_FD(bexi) + KO_FD(bexi);
-#endif
+int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, Vec& vz) {
+    vx.reserve(nv*nphi);
+    vy.reserve(nv*nphi);
+    vz.reserve(nv*nphi);
+    vw.reserve(nv*nphi);
+    real dp = 2*M_PI/nphi;
+    real dv = 2.0/(nv);     assert(nv%2==0);
+    for (int j=0;j<nphi; ++j)
+        for (int i=0;i<nv;   ++i)   {
+            real tmp = (i+0.5)*dv - 1;
+            real vxy = sqrt(1-tmp*tmp);
+            vx[j*nv+i] = cos(j*dp)*vxy;
+            vy[j*nv+i] = sin(j*dp)*vxy;
+            vz[j*nv+i] = tmp;
+            vw[j*nv+i] = dv/nphi;
         }
-    }
-
-#ifdef NVTX
-    nvtxRangePop();
-#endif
+    return nv*nphi;
 }
 
-/* v0 = v1 + a * v2 */
-void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2) {
-#ifdef NVTX
-    nvtxRangePush("VecMA");
-#endif
-
-    PARFORALL(i,j,k,v) {
-        auto ijkv = grid.idx(i,j,k,v);
-        v0->ee    [ijkv] = v1->ee    [ijkv] + a * v2->ee    [ijkv];
-        v0->xx    [ijkv] = v1->xx    [ijkv] + a * v2->xx    [ijkv];
-        v0->ex_re [ijkv] = v1->ex_re [ijkv] + a * v2->ex_re [ijkv];
-        v0->ex_im [ijkv] = v1->ex_im [ijkv] + a * v2->ex_im [ijkv];
-        v0->bee   [ijkv] = v1->bee   [ijkv] + a * v2->bee   [ijkv];
-        v0->bxx   [ijkv] = v1->bxx   [ijkv] + a * v2->bxx   [ijkv];
-        v0->bex_re[ijkv] = v1->bex_re[ijkv] + a * v2->bex_re[ijkv];
-        v0->bex_im[ijkv] = v1->bex_im[ijkv] + a * v2->bex_im[ijkv];
+// v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
+int gen_v1d_trapezoidal(const int nv, Vec vw, Vec vz) {
+    assert(nv%2==1);
+    real dv = 2.0/(nv-1);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = j*dv - 1;
+        vw[j] = dv;
     }
-#ifdef NVTX
-    nvtxRangePop();
-#endif
+    vw[0]    = 0.5*dv;
+    vw[nv-1] = 0.5*dv;
+    return nv;
 }
 
-// v0 = v1 + a * ( v2 + v3 )
-void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2, const FieldVar * __restrict v3) {
-#ifdef NVTX
-    nvtxRangePush("Vec");
-#endif
-
-    PARFORALL(i,j,k,v) {
-        auto ijkv = grid.idx(i,j,k,v);
-        v0->ee    [ijkv] = v1->ee    [ijkv] + a * (v2->ee    [ijkv] + v3->ee    [ijkv]);
-        v0->xx    [ijkv] = v1->xx    [ijkv] + a * (v2->xx    [ijkv] + v3->xx    [ijkv]);
-        v0->ex_re [ijkv] = v1->ex_re [ijkv] + a * (v2->ex_re [ijkv] + v3->ex_re [ijkv]);
-        v0->ex_im [ijkv] = v1->ex_im [ijkv] + a * (v2->ex_im [ijkv] + v3->ex_im [ijkv]);
-        v0->bee   [ijkv] = v1->bee   [ijkv] + a * (v2->bee   [ijkv] + v3->bee   [ijkv]);
-        v0->bxx   [ijkv] = v1->bxx   [ijkv] + a * (v2->bxx   [ijkv] + v3->bxx   [ijkv]);
-        v0->bex_re[ijkv] = v1->bex_re[ijkv] + a * (v2->bex_re[ijkv] + v3->bex_re[ijkv]);
-        v0->bex_im[ijkv] = v1->bex_im[ijkv] + a * (v2->bex_im[ijkv] + v3->bex_im[ijkv]);
+// v quaduture in [-1:1], vertex-center with Simpson 1/3 rule on uniform rgid.
+int gen_v1d_simpson(const int nv, Vec vw, Vec vz) {
+    assert(nv%2==1);
+    real dv = 2.0/(nv-1);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    const real o3dv = 1./3.*dv;
+    for (int j=0;j<nv; j++) {
+        vz[j] = j*dv - 1;
+        vw[j] = 2*((j%2)+1)*o3dv;
     }
-#ifdef NVTX
-    nvtxRangePop();
-#endif
+    vw[0]    = o3dv;
+    vw[nv-1] = o3dv;
+    return nv;
 }
 
-void NuOsc::step_rk4() {
-#ifdef NVTX
-    nvtxRangePush("Step");
-#endif
-    //Step-1
-#ifdef COSENU_MPI
-    sync_boundary(v_stat);
-#else
-    updatePeriodicBoundary(v_stat);
-#endif
-    calRHS(v_rhs, v_stat);
-    vectorize(v_pre, v_stat, 0.5*dt, v_rhs);
-
-    //Step-2
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
-    calRHS(v_cor, v_pre);
-    vectorize(v_rhs, v_rhs, 2.0, v_cor);
-    vectorize(v_cor, v_stat, 0.5*dt, v_cor);
-    swap(&v_pre, &v_cor);
-
-    //Step-3
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
-    calRHS(v_cor, v_pre);
-    vectorize(v_rhs, v_rhs, 2.0, v_cor);
-    vectorize(v_cor, v_stat, dt, v_cor);
-    swap(&v_pre, &v_cor);
-
-    //Step-4
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
-    calRHS(v_cor, v_pre);
-    vectorize(v_pre, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
-    swap(&v_pre, &v_stat);
-
-    if(renorm) renormalize(v_stat);
-
-    phy_time += dt;
-#ifdef NVTX
-    nvtxRangePop();
-#endif
+int gen_v1d_cellcenter(const int nv, Vec vw, Vec vz) {
+    assert(nv%2==0);
+    real dv = 2.0/(nv);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int j=0;j<nv; ++j) {
+        vz[j] = (j+0.5)*dv - 1;
+        vw[j] = dv;
+    }
+    return nv;
 }
 
 NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
-             const real bbox_[][2], const real dx_, const real CFL_, const real  ko_) :
-                 phy_time(0.), ko(ko_), dx(dx_), grid(px_,nv_,nphi_,gx_,bbox_, dx_) {
+             const real bbox_[][2], const real dx_, const real CFL_, const real ko_) :
+                 phy_time(0.), ko(ko_), dx(dx_), nphi(nphi_) {
 
-        auto size = grid.get_lpts();
-        real mem_per_var = size*8/1024./1024./1024;
+    ds_L = dx*dx*dx/(bbox_[0][1]-bbox_[0][0])/(bbox_[1][1]-bbox_[1][0])/(bbox_[2][1]-bbox_[2][0]);
+    CFL = CFL_;
+    dt = dx*CFL;
 
-        ds_L = dx*dx*dx/(bbox_[0][1]-bbox_[0][0])/(bbox_[1][1]-bbox_[1][0])/(bbox_[2][1]-bbox_[2][0]);
+    #ifdef COSENU_MPI
+    MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-        CFL = CFL_;
-        dt = dx*CFL;
+    //
+    // Create Cartesian topology
+    //
+    int period[3] = {1,1,1};
 
-#ifdef COSENU_MPI
-        MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MPI_Cart_create(MPI_COMM_WORLD, DIM, px_, period, 0, &CartCOMM);
+    for (int d=0;d<DIM;++d) px[d] = px_[d];   // MPI will determine new px if px_={0,0,0} 
 
-#endif
- 
-    //MPI_Barrier(MPI_COMM_WORLD);
+    // calcute local geometry from computational domain (x0_, x1_, z0_, z1_)
+    MPI_Cart_coords(CartCOMM, myrank, DIM, rx);
+    for (int d=0;d<DIM;++d) MPI_Cart_shift(CartCOMM, d, 1, &nb[d][0], &nb[d][1]);
+
+    // Get shared commnicator, which is used to determine the ranks within a node (shared memory)
+    MPI_Comm scomm;
+    MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &scomm);
+    MPI_Comm_rank(scomm, &srank);
+    #else
+    for (int d=0;d<DIM;++d) px[d] = 1;
+    #endif
+
+    // Local bbox and coordinates
+    for (int d=0;d<DIM;++d) {
+        gx[d] = gx_[d];
+
+        bbox[d][0] = bbox_[d][0] + rx[d]    *(bbox_[d][1]-bbox_[d][0])/px[d];
+        bbox[d][1] = bbox_[d][0] + (rx[d]+1)*(bbox_[d][1]-bbox_[d][0])/px[d];
+        if (1 == px[d] - rx[d]) bbox[d][1] = bbox_[d][1];
+        nx[d] = int((bbox[d][1]-bbox[d][0])/dx);
+
+        X[d].reserve(nx[d]);
+        for(int i=0;i<nx[d]; ++i) X[d][i] = bbox[d][0] + (i+0.5)*dx;
+    }
+
+    // set GPU
+    #ifdef _OPENACC
+    auto dev_type = acc_get_device_type();
+    ngpus = acc_get_num_devices( dev_type );
+    acc_set_device_num( srank%ngpus, dev_type );
+    #ifdef GDR_OFF
+    if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = OFF)\n", ngpus );
+    #else
+    if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = ON)\n", ngpus );
+    #endif
+    #endif
+
+    #if defined(SYNC_COPY)
+    if (!myrank) printf("SYNC_COPY for test.\n");
+    #elif defined(SYNC_MPI_ONESIDE_COPY)
+    if (!myrank) printf("MPI One-side copy.\n");
+    #elif defined(SYNC_MPI_SENDRECV)
+    if (!myrank) printf("MPI Sendrecv.\n");
+    #elif defined(SYNC_MPI_ISEND)
+    if (!myrank) printf("MPI Isendrecv.\n");
+    #else
+    if (!myrank) printf("MPI Isend / Irecv.\n");
+    #endif
+
+    // Determine nv, which could be complicated for say ICOSA grid.
+    #if defined(IM_V2D_POLAR_GL_Z)
+    nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
+    #else
+    nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
+    #endif
+
+    ulong size = nv;
+    for (int d=0;d<DIM;++d)  size *= (nx[d]+2*gx[d]);
+    lpts = size;
+    real mem_per_var = lpts*8/1024./1024./1024;
+
+    //
+    // Local geometry determinded.  (nx,ny,nz,nv)
+    // Now prepare datatype for ghostzone block of each dimension
+    //
+    ulong nXYZV = nvar*nv;
+    for (int d=0;d<DIM;++d) nXYZV *= nx[d];
+
+    #pragma acc enter data create(this)
+    for (int d=0;d<DIM;++d) {
+        const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
+      #ifdef COSENU_MPI
+        MPI_Type_contiguous(npb, MPI_DOUBLE, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
+        #ifdef SYNC_MPI_ONESIDE_COPY
+        // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
+        int ierr = 0;
+        ierr = MPI_Win_allocate(4*npb*sizeof(real), npb*sizeof(real), MPI_INFO_NULL, CartCOMM, &pb[d], &w_pb[d]);
+        if (ierr!=0) { cout << "MPI_Win_allocate error!" << endl; exit(0); }
+        #else
+        pb[d] = new real[4*npb];
+        #endif
+      #else
+        pb[d] = new real[4*npb];
+      #endif
+        #pragma acc enter data create(pb[d][0:4*npb])
+    }
+
+    #ifdef DEBUG
+    print_info();
+    #endif
 
     if (myrank==0) {
-            printf("\nNuOsc on %d MPI ranks: %d core per rank.\n", grid.ranks, omp_get_max_threads() );
-            printf("   Domain:  v: nv = %5d  ( w/ nphi = %5d ) on S2.\n", grid.get_nv(), grid.get_nphi() );
+            printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank.\n", ranks, px[0], px[1], px[2], omp_get_max_threads() );
+            printf("   Domain:  v: nv = %5d  ( w/ nphi = %5d ) on S2.\n", get_nv(), get_nphi() );
             printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
@@ -323,6 +277,4 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
         }
-
-    }
-
+}

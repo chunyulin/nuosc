@@ -47,14 +47,19 @@ int main(int argc, char *argv[]) {
     int DUMP_EVERY = 99999999;
 
     int ranks = 1, myrank = 0;
+
     #ifdef COSENU_MPI
     // THINK: consider to initialze MPI inside CartGrid, whcih need passing argc argv into.
     int provided;
-    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    // Thread support: SINGLE < FUNNELED < SERIALIZED < MULTIPLE.
+    //MPI_Init(&argc, &argv);
     //MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
+    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+    if (!myrank) printf("MPI_Init_thread mode: %d\n", provided);
     #endif
 
     // Parse input argument --------------------------------------------
@@ -148,10 +153,11 @@ int main(int argc, char *argv[]) {
     
     // === create simuation
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
-    long lpts = state.grid.get_lpts();
+    long lpts = state.get_lpts();
     state.set_mu(mu);
     state.set_pmo(pmo);
     state.set_renorm(renorm);
+    if (myrank==0) cout << std::flush;
 
     uint nx[DIM];
     for (int d=0; d<DIM; ++d) nx[d] = (bbox[d][1]-bbox[d][0])/dx;
@@ -166,6 +172,7 @@ int main(int argc, char *argv[]) {
 
     // === analysis for t=0
     state.analysis();
+    if (myrank==0) cout << std::flush;
 
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
@@ -249,8 +256,8 @@ int main(int argc, char *argv[]) {
        printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
     }
 
-    #ifdef COSENU_MPI
-    MPI_Finalize();    // error because this is called before the deconstructor of CartGrid
+    #if defined(COSENU_MPI)
+    //MPI_Finalize();    // Why segfault?
     #endif
     return 0;
 }

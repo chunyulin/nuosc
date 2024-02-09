@@ -1,14 +1,14 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o nuosc_boundary.cpp  CartGrid.o  nuosc_snapshot.o 
+OBJS  = nuosc.o nuosc_class.o nuosc_rhs.o nuosc_init.o nuosc_boundary.o nuosc_sync.o nuosc_ana.o nuosc_snapshot.o
 ## jacobi_poly.o
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"
 
 all: ${TARGET}
 
-${OBJS}: nuosc_class.h CartGrid.h common.h
+${OBJS}: nuosc_class.h common.h
 
 ${TARGET}: ${OBJS}
 	$(CXX) $(OPT) $(LIBS) $^ -o $@

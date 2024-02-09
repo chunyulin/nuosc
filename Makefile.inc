@@ -8,7 +8,7 @@ GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
 #INCLUDE=-I${ARMPL_INCLUDES}
 INCLUDE=-I${MPI_ROOT}/include ##-I${GSL_ROOT}/include 
 
-LIBS?=-Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
+LIBS?=-fopenmp -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
 
 #     -lnvToolsExt
 #-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \
@@ -16,7 +16,7 @@ LIBS?=-Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
 ## -lmpi_cxx   ## Intel2021 no need
 #DEBUG=-DPAPI
 #OPT=-Ofast -std=c++11 -fopenmp ${COSENU_OPT}
-OPT?= -Ofast -std=c++11 -fopenmp -armpl
+OPT?= -O3 -std=c++11 -fopenmp
 
 .SUFFIXES : .cpp .o .cu
 

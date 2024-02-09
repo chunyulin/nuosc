@@ -54,7 +54,7 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     snapshots.push_back(ss);
     int sv  = vidx.size();
 
-    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", grid.nx[0], grid.nx[2], sv, dumpstep);
+    if (myrank==0) printf("Add %d x %d x %d (XxZxV) snapshot every %d steps.\n", nx[0], nx[2], sv, dumpstep);
 
     std::ofstream outfile;
     char filename[32];
@@ -64,18 +64,18 @@ void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std:
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
     // grid information
-    outfile << dt <<" "<< grid.nx[0] <<" "<<  grid.nx[2] << " "<< sv << endl;
-    outfile << grid.bbox[0][0] <<" "<< grid.bbox[0][1] << endl;
-    outfile << grid.bbox[2][0] <<" "<< grid.bbox[2][0] << endl;
+    outfile << dt <<" "<< nx[0] <<" "<<  nx[2] << " "<< sv << endl;
+    outfile << bbox[0][0] <<" "<< bbox[0][1] << endl;
+    outfile << bbox[2][0] <<" "<< bbox[2][0] << endl;
 
-    for (int i=0;i<grid.nx[0]; ++i) {
-        outfile << grid.X[0][i]  << " ";  // X
+    for (int i=0;i<nx[0]; ++i) {
+        outfile << X[0][i]  << " ";  // X
     }   outfile << endl;
-    for (int i=0;i<grid.nx[2]; ++i) {
-        outfile << grid.X[2][i]  << " ";  // Z
+    for (int i=0;i<nx[2]; ++i) {
+        outfile << X[2][i]  << " ";  // Z
     }   outfile << endl;
-    for(auto &v:vidx)       outfile << grid.vx[v] << " ";   outfile << endl;
-    for(auto &v:vidx)       outfile << grid.vz[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << vx[v] << " ";   outfile << endl;
+    for(auto &v:vidx)       outfile << vz[v] << " ";   outfile << endl;
 #ifdef NVTX
     nvtxRangePop();
 #endif
@@ -99,23 +99,23 @@ void NuOsc::checkSnapShot(const int t) const {
         outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
         if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
-        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), grid.nx[0], grid.nx[2], sv, filename);
+        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), nx[0], nx[2], sv, filename);
 
         outfile.write((char *) &t,        sizeof(uint) );
         outfile.write((char *) &phy_time, sizeof(real) );
 
-        std::vector<real> carr(grid.nx[2]*grid.nx[0]*sv);
+        std::vector<real> carr(nx[2]*nx[0]*sv);
         for (auto const& var : ss.var_list) {
 
             #pragma omp parallel for collapse(3)
             //#pragma acc parallel loop collapse(2)
-            for(int i=0; i<grid.nx[0]; ++i)
-            for(int k=0; k<grid.nx[2]; ++k)
+            for(int i=0; i<nx[0]; ++i)
+            for(int k=0; k<nx[2]; ++k)
             for(int v=0; v<sv; ++v) {
-                carr[ (i*grid.nx[2] + k)*sv + v ] = var[ grid.idx(i,1/* fix Y*/ ,k,vc[v]) ];
+                carr[ (i*nx[2] + k)*sv + v ] = var[ idx(i,1/* fix Y*/ ,k,vc[v]) ];
             }
 
-            outfile.write((char *) carr.data(),  grid.nx[0]*grid.nx[2]*sv*sizeof(real));
+            outfile.write((char *) carr.data(),  nx[0]*nx[2]*sv*sizeof(real));
         }
         outfile.close();
     }
