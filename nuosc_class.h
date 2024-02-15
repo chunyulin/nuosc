@@ -97,6 +97,7 @@ class NuOsc {
     public:
         const int nvar = 8;
         int ranks = 1, myrank = 0;
+
         real phy_time;
         real dt, dx;       // dx, dy, dz
         real ds_L;         // = dx*dy*dz/(z1-z0)/(y1-y0)/(x1-x0)
@@ -113,7 +114,7 @@ class NuOsc {
         ulong lpts;
 
         int srank = 0;
-        int rx[DIM] = {0};
+        int rx[DIM] = {0};       // Index of my processor
         int nb[DIM][2] = {0};    // Cartensian neighbor ranks
 
         int ngpus = 0;
@@ -148,6 +149,10 @@ class NuOsc {
 
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
+
+        #ifdef PROFILING
+        float t_step=0, t_sync=0, t_packing=0;
+        #endif
 
         NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);

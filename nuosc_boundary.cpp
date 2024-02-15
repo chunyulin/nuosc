@@ -162,7 +162,6 @@ void NuOsc::pack_buffer(const FieldVar* in) {
                     pbuf[tid8+7] = in->bex_im[l1];
         }
     }
-
     { // Y lower side
         real *pbuf = &(pb[1][0]);
         #pragma omp parallel for collapse(4)
@@ -203,7 +202,6 @@ void NuOsc::pack_buffer(const FieldVar* in) {
                     pbuf[tid8+7] = in->bex_im[l1];
         }
     }
-
     { // Pack Z lower
         real *pbuf = &(pb[2][0]);    // THINK: OpenACC error w/o this!!
         #pragma omp parallel for collapse(4)
@@ -254,7 +252,6 @@ void NuOsc::unpack_buffer(FieldVar* out) {
 #ifdef NVTX
     nvtxRangePush("Unpack Buffer");
 #endif
-
     { // recovery X upper halo from the neighbor lower side
         real *pbuf = &(pb[0][2*NPBX]);    // THINK: OpenACC error w/o this (ie., offset inside pragma)!!
         #pragma omp parallel for collapse(4)
@@ -295,7 +292,6 @@ void NuOsc::unpack_buffer(FieldVar* out) {
                     out->bex_im[l0] = pbuf[tid8+7];
         }
     }
-
     { // recovery Y upper halo from the neighbor lower side
         real *pbuf = &(pb[1][2*NPBY]);
         #pragma omp parallel for collapse(4)
@@ -336,7 +332,6 @@ void NuOsc::unpack_buffer(FieldVar* out) {
                     out->bex_im[l0] = pbuf[tid8+7];
         }
     }
-
     { // Z lower side
         real *pbuf = &(pb[2][2*NPBZ]);
         #pragma omp parallel for collapse(4)

@@ -2,7 +2,14 @@
 
 void NuOsc::sync_boundary(FieldVar* v0) {
 
+    #ifdef PROFILING
+    auto t0 = std::chrono::high_resolution_clock::now();
+    #endif
     pack_buffer(v0);
+
+    #ifdef PROFILING
+    auto t1 = std::chrono::high_resolution_clock::now();
+    #endif
 #if defined(SYNC_COPY)
     sync_copy();
 #elif defined(SYNC_MPI_ONESIDE_COPY)
@@ -14,7 +21,15 @@ void NuOsc::sync_boundary(FieldVar* v0) {
 #else
     sync_isend();
 #endif
+    #ifdef PROFILING
+    auto t2 = std::chrono::high_resolution_clock::now();
+    #endif
     unpack_buffer(v0);
+
+    #ifdef PROFILING
+    t_packing += std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now()-t2+t1-t0 ).count();
+    t_sync += std::chrono::duration_cast<std::chrono::milliseconds>( t2-t1 ).count();
+    #endif
 }
 
 
@@ -109,7 +124,6 @@ void NuOsc::sync_isend() {
             MPI_Isend(&pb[d][  npb], 1, t_pb[d], nb[d][1], 1+d*2, CartCOMM, &reqs[d*4+3]);
         }
     }
-    #define DEBUG
     #ifdef DEBUG
     MPI_Status stats[n_reqs];
     if (MPI_SUCCESS != MPI_Waitall(n_reqs, reqs, stats) ) {

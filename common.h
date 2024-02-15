@@ -9,11 +9,12 @@
 #define KO_ORD_3
 #define BC_PERI
 
+//#define PROFILING
 #define COSENU_MPI
 //#define GDR_OFF
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
-#define SYNC_MPI_ONESIDE_COPY
+//#define SYNC_MPI_ONESIDE_COPY
 //#define ADV_TEST
 
 //==== End of global flags

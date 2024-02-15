@@ -182,12 +182,18 @@ void NuOsc::step_rk4() {
 #ifdef NVTX
     nvtxRangePush("Step");
 #endif
+
+    #ifdef PROFILING
+    auto t0 = std::chrono::high_resolution_clock::now();
+    #endif
+
     //Step-1
 #ifdef COSENU_MPI
     sync_boundary(v_stat);
 #else
     updatePeriodicBoundary(v_stat);
 #endif
+
     calRHS(v_rhs, v_stat);
     vectorize(v_pre, v_stat, 0.5*dt, v_rhs);
 
@@ -222,6 +228,10 @@ void NuOsc::step_rk4() {
     calRHS(v_cor, v_pre);
     vectorize(v_pre, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
     swap(&v_pre, &v_stat);
+
+    #ifdef PROFILING
+    t_step += std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now() -t0 ).count();
+    #endif
 
     if(renorm) renormalize(v_stat);
 

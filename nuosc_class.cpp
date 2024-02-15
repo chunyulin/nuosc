@@ -135,7 +135,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 
         bbox[d][0] = bbox_[d][0] + rx[d]    *(bbox_[d][1]-bbox_[d][0])/px[d];
         bbox[d][1] = bbox_[d][0] + (rx[d]+1)*(bbox_[d][1]-bbox_[d][0])/px[d];
-        if (1 == px[d] - rx[d]) bbox[d][1] = bbox_[d][1];
+        if (1 == px[d] - rx[d]) bbox[d][1] = bbox_[d][1];     // the leftmost processor
         nx[d] = int((bbox[d][1]-bbox[d][0])/dx);
 
         X[d].reserve(nx[d]);

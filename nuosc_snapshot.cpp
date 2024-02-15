@@ -99,7 +99,7 @@ void NuOsc::checkSnapShot(const int t) const {
         outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
         if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
-        printf("		Writing %d vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), nx[0], nx[2], sv, filename);
+        printf("		Writing %ld vars of size %d x %d x %d (XxZxV) into %s\n", ss.var_list.size(), nx[0], nx[2], sv, filename);
 
         outfile.write((char *) &t,        sizeof(uint) );
         outfile.write((char *) &phy_time, sizeof(real) );

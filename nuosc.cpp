@@ -200,8 +200,8 @@ int main(int argc, char *argv[]) {
     }
 
     std::cout << std::flush;
-    real stepms;
-    real stepms_max, stepms_min;
+    float stepms;
+    float stepms_max, stepms_min;
     
 #ifdef COSENU_MPI
     double t1;
@@ -227,8 +227,8 @@ int main(int argc, char *argv[]) {
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
 #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
-            MPI_Reduce(&stepms, &stepms_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-            MPI_Reduce(&stepms, &stepms_min, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+            MPI_Reduce(&stepms, &stepms_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
+            MPI_Reduce(&stepms, &stepms_min, 1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
 #else
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
             stepms_max = stepms_min = stepms;
@@ -239,14 +239,22 @@ int main(int argc, char *argv[]) {
                stepms_max/state.phy_time/1000,  stepms_max/(t-cooltime+1)/lpts*1e6 );
             }
         }
-    }
+
+        #ifdef PROFILING
+        printf("Step: %04d - %7f s (S: %5.2f P: %5.2f )%%\n", t, state.t_step/1000, state.t_sync/state.t_step*100,  state.t_packing/state.t_step*100);
+        state.t_step = 0;
+        state.t_sync = 0;
+        state.t_packing = 0;
+        #endif
+
+    }  // end of main loop
 
     // Get total memory
     float tmem = getMemoryUsage()/1024./1024;
     float tmem_max = tmem, tmem_min = tmem;
     #ifdef COSENU_MPI
-    MPI_Reduce(&tmem_max, &tmem, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&tmem_min, &tmem, 1, MPI_FLOAT, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&tmem, &tmem_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
+    MPI_Reduce(&tmem, &tmem_min, 1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
     #endif
     if (myrank==0) {
        double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
