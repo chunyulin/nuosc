@@ -1,4 +1,5 @@
 #include "nuosc_class.h"
+#include "utils.h"
 
 #if defined(IM_V2D_POLAR_GL_Z)
 #include "jacobi_poly.h"
@@ -125,6 +126,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     MPI_Comm scomm;
     MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &scomm);
     MPI_Comm_rank(scomm, &srank);
+    if (!myrank) printf("[%.4f] Cartesian MPI commincator done.\n", utils::msecs_since());
     #else
     for (int d=0;d<DIM;++d) px[d] = 1;
     #endif
@@ -160,10 +162,8 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     if (!myrank) printf("MPI One-side copy.\n");
     #elif defined(SYNC_MPI_SENDRECV)
     if (!myrank) printf("MPI Sendrecv.\n");
-    #elif defined(SYNC_MPI_ISEND)
-    if (!myrank) printf("MPI Isendrecv.\n");
     #else
-    if (!myrank) printf("MPI Isend / Irecv.\n");
+    if (!myrank) printf("MPI non-blocking send / recv.\n");
     #endif
 
     // Determine nv, which could be complicated for say ICOSA grid.
@@ -172,6 +172,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     #else
     nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
     #endif
+    if (!myrank) printf("[%.4f] v-grid generation done\n", utils::msecs_since());
 
     ulong size = nv;
     for (int d=0;d<DIM;++d)  size *= (nx[d]+2*gx[d]);

@@ -28,7 +28,6 @@ int gen_v1d_cellcenter(const int nv_, Vec vw, Vec vz);
     for (int k=0;k<nx[2]; ++k) \
     for (int v=0;v<nv; ++v)
 
-
 typedef struct Vars {
     real* ee;
     real* xx;
@@ -124,6 +123,7 @@ class NuOsc {
         MPI_Datatype t_pb[DIM];
         MPI_Win      w_pb[DIM];
 
+        MPI_Request reqs[DIM*4];
 #endif
         real *pb[DIM];     // TODO: can we use the storage of FieldVar directly w/o copying to this buffers ?
 
@@ -205,16 +205,23 @@ class NuOsc {
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
         void step_rk4();
-        void calRHS(FieldVar* out, const FieldVar * in);
+        void calRHS(FieldVar* out, FieldVar * in);
+        void calRHS_core(FieldVar* out, const FieldVar * in, const int bb[2*DIM]);
+        void packSend(const FieldVar* in);
+        void pack_buffer(const FieldVar* in);
+        void waitall();
+        void unpack_buffer(FieldVar* v0);
+
+        void sync_sendrecv();
+        void sync_nonblocking();
+        void sync_put();
+        void sync_copy();
+
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
-
-        void pack_buffer(const FieldVar* v0);
-        void unpack_buffer(FieldVar* v0);
-        void sync_boundary(FieldVar* v0);
 
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
@@ -235,11 +242,6 @@ class NuOsc {
                    myrank, rx[0],rx[1],rx[2], tag, nb[0][0],nb[0][1],nb[1][0],nb[1][1],nb[2][0],nb[2][1], 
                    nx[0],nx[1],nx[2], nv,nphi, bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1],bbox[2][0],bbox[2][1]);
         }
-
-        void sync_sendrecv();
-        void sync_isend();
-        void sync_put();
-        void sync_copy();
 
 #if DIM == 2
         inline ulong idx(const int i, const int j, const int k, const int v) const { return v + nv * ( (k+gx[2]) + (nx[1]+2*gx[1])*(  j+gx[1] )  ); }

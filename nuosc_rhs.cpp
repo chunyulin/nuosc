@@ -1,6 +1,71 @@
 #include "nuosc_class.h"
+#include "utils.h"
 
-void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
+void NuOsc::calRHS(FieldVar * __restrict out, FieldVar * __restrict in) {
+
+omp_set_max_active_levels(3);
+    #ifdef COSENU_MPI
+utils::reset_timer();
+    packSend(in);
+if (!myrank) printf("[%.4f] PackSend.\n", utils::msecs_since());
+
+    {
+    int bb[] = {gx[0],nx[0]-gx[0], gx[1],nx[1]-gx[1], gx[2],nx[2]-gx[2]};
+utils::reset_timer();
+    calRHS_core(out, in, bb);
+if (!myrank) printf("[%.4f] Interior RHS done.\n", utils::msecs_since());
+    }
+utils::reset_timer();
+    waitall();
+if (!myrank) printf("[%.4f] Waitall.\n", utils::msecs_since());
+    unpack_buffer(in);
+if (!myrank) printf("[%.4f] Unpack.\n", utils::msecs_since());
+
+utils::reset_timer();
+#pragma omp parallel sections
+{
+    #pragma omp section
+    {
+    int bb[] = {0,gx[0],           gx[1],nx[1]-gx[1], gx[2],nx[2]-gx[2]};
+    calRHS_core(out, in, bb);
+    }
+    #pragma omp section
+    {
+    int bb[] = {nx[0]-gx[0],nx[0], gx[1],nx[1]-gx[1], gx[2],nx[2]-gx[2]};
+    calRHS_core(out, in, bb);
+    }
+    #pragma omp section
+    {
+    int bb[] = {0,nx[0], 0,gx[1],           gx[2],nx[2]-gx[2]};
+    calRHS_core(out, in, bb);
+    }
+    #pragma omp section
+    {
+    int bb[] = {0,nx[0], nx[1]-gx[1],nx[1], gx[2],nx[2]-gx[2]};
+    calRHS_core(out, in, bb);
+    }
+    #pragma omp section
+    {
+    int bb[] = {0,nx[0], 0,nx[1], 0,gx[2]};
+    calRHS_core(out, in, bb);
+    }
+    #pragma omp section
+    {
+    int bb[] = {0,nx[0], 0,nx[1], nx[2]-gx[2],nx[2]};
+    calRHS_core(out, in, bb);
+    }
+}
+if (!myrank) printf("[%.4f] Boundary RHS done.\n", utils::msecs_since());
+
+
+    #else
+    updatePeriodicBoundary(in);
+    int bb[] = {0,nx[0], 0,nx[1], 0,nx[2]};
+    calRHS_core(out, in, bb);
+    #endif
+}
+
+void NuOsc::calRHS_core(FieldVar * __restrict out, const FieldVar * __restrict in, const int bb[2*DIM]) {
 #ifdef NVTX
     nvtxRangePush("calRHS");
 #endif
@@ -11,9 +76,9 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 // gang worker num_workers(64)
 #pragma omp parallel for collapse(3)
 #pragma acc parallel loop independent collapse(3)
-    for (int i=0;i<nx[0]; ++i)
-    for (int j=0;j<nx[1]; ++j)
-    for (int k=0;k<nx[2]; ++k) {
+    for (int i=bb[0];i<bb[1]; ++i)
+    for (int j=bb[2];j<bb[3]; ++j)
+    for (int k=bb[4];k<bb[5]; ++k) {
 
         // common integral over v'
         real idv_bexR_m_exR  = 0;
@@ -31,6 +96,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
         // Common integral factor over spatial points
 #pragma acc loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee, ivxdv_bexR_m_exR,ivxdv_bexI_p_exI,ivxdv_bxx_m_bee_m_xx_p_ee, ivydv_bexR_m_exR,ivydv_bexI_p_exI,ivydv_bxx_m_bee_m_xx_p_ee, ivzdv_bexR_m_exR,ivzdv_bexI_p_exI,ivzdv_bxx_m_bee_m_xx_p_ee)
+#pragma omp loop reduction(+:idv_bexR_m_exR,idv_bexI_p_exI,idv_bxx_m_bee_m_xx_p_ee, ivxdv_bexR_m_exR,ivxdv_bexI_p_exI,ivxdv_bxx_m_bee_m_xx_p_ee, ivydv_bexR_m_exR,ivydv_bexI_p_exI,ivydv_bxx_m_bee_m_xx_p_ee, ivzdv_bexR_m_exR,ivzdv_bexI_p_exI,ivzdv_bxx_m_bee_m_xx_p_ee)
         for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
             idv_bexR_m_exR            += vw[v] *       (in->bex_re[ijkv] - in->ex_re[ijkv] );
@@ -51,6 +117,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
         //cout << "===" << nx << " " << nz << " " << nv << " " << gx << " " << gz << endl; 
 
         #pragma acc loop
+        #pragma omp loop
         for (int v=0;v<nv; ++v) {
 
             auto ijkv = idx(i,j,k,v);
@@ -128,7 +195,6 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #endif
         }
     }
-
 #ifdef NVTX
     nvtxRangePop();
 #endif
@@ -182,49 +248,24 @@ void NuOsc::step_rk4() {
 #ifdef NVTX
     nvtxRangePush("Step");
 #endif
-
     #ifdef PROFILING
     auto t0 = std::chrono::high_resolution_clock::now();
     #endif
 
     //Step-1
-#ifdef COSENU_MPI
-    sync_boundary(v_stat);
-#else
-    updatePeriodicBoundary(v_stat);
-#endif
-
     calRHS(v_rhs, v_stat);
     vectorize(v_pre, v_stat, 0.5*dt, v_rhs);
-
     //Step-2
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
     calRHS(v_cor, v_pre);
     vectorize(v_rhs, v_rhs, 2.0, v_cor);
     vectorize(v_cor, v_stat, 0.5*dt, v_cor);
     swap(&v_pre, &v_cor);
-
     //Step-3
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
     calRHS(v_cor, v_pre);
     vectorize(v_rhs, v_rhs, 2.0, v_cor);
     vectorize(v_cor, v_stat, dt, v_cor);
     swap(&v_pre, &v_cor);
-
     //Step-4
-#ifdef COSENU_MPI
-    sync_boundary(v_pre);
-#else
-    updatePeriodicBoundary(v_pre);
-#endif
     calRHS(v_cor, v_pre);
     vectorize(v_pre, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
     swap(&v_pre, &v_stat);
@@ -232,9 +273,7 @@ void NuOsc::step_rk4() {
     #ifdef PROFILING
     t_step += std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now() -t0 ).count();
     #endif
-
     if(renorm) renormalize(v_stat);
-
     phy_time += dt;
 #ifdef NVTX
     nvtxRangePop();

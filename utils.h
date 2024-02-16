@@ -1,16 +1,16 @@
 #pragma once
 
+#include <chrono>
 #include <iostream>
 #include <sys/resource.h>
-void printMemoryUsage() {
-  struct rusage r;
-  getrusage(RUSAGE_SELF, &r);
-  std::cout << "Max resident memory: " << r.ru_maxrss/1024.0/1024.0 << " GB" << std::endl;
-}
-double getMemoryUsage() {
-  struct rusage r;
-  getrusage(RUSAGE_SELF, &r);
-  return r.ru_maxrss;
-}
 
+namespace utils {
 
+void printMemoryUsage();
+double getMemoryUsage();
+
+// Simple timer for single node
+static std::chrono::time_point<std::chrono::high_resolution_clock> _t0 = std::chrono::high_resolution_clock::now();
+void reset_timer();
+float msecs_since();
+}

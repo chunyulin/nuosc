@@ -9,8 +9,8 @@
 #define KO_ORD_3
 #define BC_PERI
 
-//#define PROFILING
 #define COSENU_MPI
+//#define PROFILING
 //#define GDR_OFF
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV

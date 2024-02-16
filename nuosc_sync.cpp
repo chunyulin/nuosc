@@ -1,12 +1,11 @@
 #include "nuosc_class.h"
 
-void NuOsc::sync_boundary(FieldVar* v0) {
+void NuOsc::packSend(const FieldVar* v0) {
 
     #ifdef PROFILING
     auto t0 = std::chrono::high_resolution_clock::now();
     #endif
     pack_buffer(v0);
-
     #ifdef PROFILING
     auto t1 = std::chrono::high_resolution_clock::now();
     #endif
@@ -16,23 +15,48 @@ void NuOsc::sync_boundary(FieldVar* v0) {
     sync_put();
 #elif defined(SYNC_MPI_SENDRECV)
     sync_sendrecv();
-#elif defined(SYNC_MPI_ISENDRECV)
-    sync_isendrecv();
 #else
-    sync_isend();
+    sync_nonblocking();
 #endif
     #ifdef PROFILING
     auto t2 = std::chrono::high_resolution_clock::now();
-    #endif
-    unpack_buffer(v0);
-
-    #ifdef PROFILING
-    t_packing += std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now()-t2+t1-t0 ).count();
+    t_packing += std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0 ).count();
     t_sync += std::chrono::duration_cast<std::chrono::milliseconds>( t2-t1 ).count();
     #endif
 }
 
+void NuOsc::waitall() {
+#ifdef NVTX
+    nvtxRangePush("Wait and unpack");
+#endif
+#ifdef COSENU_MPI
+    ulong nXYZ = nvar*nv;
+    for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
+    const int n_reqs = DIM*4;
+    #ifdef DEBUG
+    MPI_Status stats[n_reqs];
+    if (MPI_SUCCESS != MPI_Waitall(n_reqs, reqs, stats) ) {
+        for (int i=0; i<n_reqs; ++i) {
+         printf("MPI_ERROR: Rank %d sent to %d of %d.\n", stats[i].MPI_SOURCE, myrank, stats[i].MPI_TAG );
+        }
+    }
+    #else
+    MPI_Waitall(n_reqs, reqs, MPI_STATUSES_IGNORE);
+    #endif
+
+    #if defined (_OPENACC) && defined (GDR_OFF)
+    #pragma omp parallel for num_threads(DIM)
+    for (int d=0;d<DIM;++d) {
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
+        #pragma acc update device( pb[d][(2*npb):(4*npb)] )
+    }
+    #endif
+#endif
+#ifdef NVTX
+    nvtxRangePop();
+#endif
+}
 
 void NuOsc::sync_put() {
 #ifdef NVTX
@@ -99,7 +123,7 @@ void NuOsc::sync_sendrecv() {
 #endif
 }
 
-void NuOsc::sync_isend() {
+void NuOsc::sync_nonblocking() {
 #ifdef NVTX
     nvtxRangePush("Sync Isend");
 #endif
@@ -107,8 +131,6 @@ void NuOsc::sync_isend() {
     ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
-    const int n_reqs = DIM*4;
-    MPI_Request reqs[n_reqs];
     #pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
@@ -124,24 +146,6 @@ void NuOsc::sync_isend() {
             MPI_Isend(&pb[d][  npb], 1, t_pb[d], nb[d][1], 1+d*2, CartCOMM, &reqs[d*4+3]);
         }
     }
-    #ifdef DEBUG
-    MPI_Status stats[n_reqs];
-    if (MPI_SUCCESS != MPI_Waitall(n_reqs, reqs, stats) ) {
-        for (int i=0; i<n_reqs; ++i) {
-         printf("MPI_ERROR: Rank %d sent to %d of %d.\n", stats[i].MPI_SOURCE, myrank, stats[i].MPI_TAG );
-        }
-    }
-    #else
-    MPI_Waitall(n_reqs, reqs, MPI_STATUSES_IGNORE);
-    #endif
-
-    #if defined (_OPENACC) && defined (GDR_OFF)
-    #pragma omp parallel for num_threads(DIM)
-    for (int d=0;d<DIM;++d) {
-        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
-        #pragma acc update device( pb[d][(2*npb):(4*npb)] )
-    }
-    #endif
 #endif
 #ifdef NVTX
     nvtxRangePop();

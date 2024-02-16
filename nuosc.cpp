@@ -16,6 +16,16 @@ void handle_gpu_errors(char *err_msg) {
 
 int main(int argc, char *argv[]) {
 
+    // Timing utilities
+    float stepms;
+    float stepms_max, stepms_min;
+    #ifdef COSENU_MPI
+    float t1;
+    #else
+    std::chrono::time_point<std::chrono::high_resolution_clock> t1;
+    #endif
+
+    // Nuosc parameters
     int px[DIM];
     real bbox[DIM][2];
     real dx = 0.1;
@@ -23,10 +33,9 @@ int main(int argc, char *argv[]) {
         px[d] = 1;
         bbox[d][0] = -0.2; bbox[d][1] = 0.2;
     }
-
     bbox[DIM-1][0] = -1; bbox[DIM-1][1] = 1;
 
-    int nv_in = 17, nphi = 10;
+    int nv_in = 8, nphi = 8;
     real cfl = 0.5;      real ko = 0.0;
 
     real mu  = 1.0;
@@ -49,7 +58,7 @@ int main(int argc, char *argv[]) {
     int ranks = 1, myrank = 0;
 
     #ifdef COSENU_MPI
-    // THINK: consider to initialze MPI inside CartGrid, whcih need passing argc argv into.
+    // THINK: consider to initialze MPI inside main class, may need passing argc argv into.
     int provided;
     // Thread support: SINGLE < FUNNELED < SERIALIZED < MULTIPLE.
     //MPI_Init(&argc, &argv);
@@ -59,7 +68,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-    if (!myrank) printf("MPI_Init_thread mode: %d\n", provided);
+    if (!myrank) printf("[%.4f] MPI_Init_thread mode: %d\n", utils::msecs_since(), provided);
     #endif
 
     // Parse input argument --------------------------------------------
@@ -153,11 +162,12 @@ int main(int argc, char *argv[]) {
     
     // === create simuation
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
+    if (!myrank) printf("[%.4f] Initialize main class.\n", utils::msecs_since());
+    
     long lpts = state.get_lpts();
     state.set_mu(mu);
     state.set_pmo(pmo);
     state.set_renorm(renorm);
-    if (myrank==0) cout << std::flush;
 
     uint nx[DIM];
     for (int d=0; d<DIM; ++d) nx[d] = (bbox[d][1]-bbox[d][0])/dx;
@@ -169,10 +179,11 @@ int main(int argc, char *argv[]) {
 #else
     state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb, lnuex, lnuebx);
 #endif
+    if (!myrank) printf("[%.4f] Initialize data done.\n", utils::msecs_since());
 
     // === analysis for t=0
     state.analysis();
-    if (myrank==0) cout << std::flush;
+    if (!myrank) printf("[%.4f] First analysis done.\n", utils::msecs_since());
 
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
@@ -199,23 +210,17 @@ int main(int argc, char *argv[]) {
         //state.write_fz();
     }
 
-    std::cout << std::flush;
-    float stepms;
-    float stepms_max, stepms_min;
-    
-#ifdef COSENU_MPI
-    double t1;
-#else
-    std::chrono::time_point<std::chrono::high_resolution_clock> t1;
-#endif
+    if (!myrank) printf("[%.4f] Pre-loop checkpoint done.\n", utils::msecs_since());
+    if (!myrank) std::cout << std::flush;
+
     const int cooltime = 3;
     for (int t=1; t<=END_STEP; t++) {
 
-#ifdef COSENU_MPI
+        #ifdef COSENU_MPI
         if (t==cooltime)  t1 = MPI_Wtime();
-#else
+        #else
         if (t==cooltime)  t1 = std::chrono::high_resolution_clock::now();
-#endif
+        #endif
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
@@ -225,14 +230,14 @@ int main(int argc, char *argv[]) {
         state.checkSnapShot(t);
 
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
-#ifdef COSENU_MPI
+            #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
             MPI_Reduce(&stepms, &stepms_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
             MPI_Reduce(&stepms, &stepms_min, 1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
-#else
+            #else
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
             stepms_max = stepms_min = stepms;
-#endif
+            #endif
             if (myrank==0) {
                printf("%d Walltime: (Min) %.3f s/T, %.2f ns/step-grid.    (Max) %.3f s/T, %.2f ns/step-grid.\n", t,
                stepms_min/state.phy_time/1000,  stepms_min/(t-cooltime+1)/lpts*1e6,
@@ -250,7 +255,7 @@ int main(int argc, char *argv[]) {
     }  // end of main loop
 
     // Get total memory
-    float tmem = getMemoryUsage()/1024./1024;
+    float tmem = utils::getMemoryUsage()/1024./1024;
     float tmem_max = tmem, tmem_min = tmem;
     #ifdef COSENU_MPI
     MPI_Reduce(&tmem, &tmem_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
