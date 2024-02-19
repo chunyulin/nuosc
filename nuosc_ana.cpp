@@ -129,7 +129,7 @@ void NuOsc::analysis() {
 }
 
 
-void NuOsc::renormalize(const FieldVar* __restrict v0) {
+void NuOsc::renormalize(FieldVar* __restrict v0) {
 
     PARFORALL(i,j,k,v)   {
         int ijkv = idx(i,j,k,v);

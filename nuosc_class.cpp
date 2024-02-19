@@ -282,4 +282,38 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
         }
+
+        {   // Hvac
+#if NFLAVOR == 3
+            const real dms12=7.39e-5*1267.*2., dms13=2.5229e-3* 1267.*2., theta12=33.82/180., theta13=8.61/180., theta23=48.3/180., theta_cp=0.;
+            const real c12=cos(theta12), s12=sin(theta12), c13=cos(theta13), s13=sin(theta13), c23=cos(theta23), s23=sin(theta23);
+            const real Ue2 = s12*c13;
+            const real Um2r= c12*c23-s12*s13*s23*cos(theta_cp);
+            const real Ut2r=-c12*s23-s12*s13*c23*cos(theta_cp);
+            const real Um2i=        -s12*s13*s23*sin(theta_cp);
+            const real Ut2i=        -s12*s13*c23*sin(theta_cp);
+            const real Ue3r= s13*cos(theta_cp);
+            const real Ue3i=-s13*sin(theta_cp);
+            const real Um3 = c13*s23;
+            const real Ut3 = c13*c23;
+
+            hee  = dms12*(Ue2*Ue2)            +dms13*(s13*s13);
+            hmm  = dms12*(Um2r*Um2r+Um2i*Um2i)+dms13*(Um3*Um3);
+            htt  = dms12*(Ut2r*Ut2r+Ut2i*Ut2i)+dms13*(Ut3*Ut3);
+            hemr = dms12*( Ue2*Um2r)          +dms13*(Ue3r*Um3);
+            hemi = dms12*(-Ue2*Um2i)          +dms13*(Ue3i*Um3);
+            hmtr = dms12*( Ue2*Ut2r)          +dms13*(Ue3r*Ut3);
+            hmti = dms12*(-Ue2*Ut2i)          +dms13*(Ue3i*Ut3);
+            hter = dms12*(Um2r*Ut2r+Um2i*Ut2i)+dms13*(Um3*Ut3);
+            htei = dms12*(Ut2r*Um2i-Um2r*Ut2i);
+            real Hvac_trace = (hee+hmm+htt)/3.0;
+            hee -= Hvac_trace;
+            hmm -= Hvac_trace;
+            htt -= Hvac_trace;
+#elif NFLAVOR == 2
+            const real theta = 37 * M_PI / 180.;  //1e-6;
+            const real ct = cos(2*theta);
+            const real st = sin(2*theta);
+#endif
+        }
 }

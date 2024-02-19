@@ -31,23 +31,24 @@ enum ff {
      ee = 0,  mm,  emr,  emi,
     bee,     bmm, bemr, bemi,     // Total  8 flavor fields.
 #if NFLAVOR == 3
-     tt,  emr,  emi,  etr,   eti,
-    btt, bemr, bemi, betr,  beti, // Total 18 flavor fields.
+     tt,  mtr,  mti,  ter,   tei,
+    btt, bmtr, bmti, bter,  btei, // Total 18 flavor fields.
 #endif
 };
 
 struct FieldVar {
 
     //std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
-    std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
+    std::array<std::vector<real>, 2*NFLAVOR*NFLAVOR> wf;
 
     FieldVar(int size) {
-        #pragma omp parallel for num_threads(2) proc_bind(spread) 
-        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size](); // all init to zero
+        #pragma omp parallel for num_threads(2*NFLAVOR*NFLAVOR) proc_bind(spread) 
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = std::vector<real>(size); // all init to zero
+        //for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size](); // all init to zero
         //for (auto w: wf) w = new real[size](); // Why this fail!?
     }
     ~FieldVar() {
-        for (auto w: wf) delete[] w;
+        //for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
     }
 } ;
 
@@ -130,8 +131,15 @@ class NuOsc {
         real ko;
 
         const real theta = 37 * M_PI / 180.;  //1e-6;
+#if NFLAVOR == 3
+        real hee,hmm,htt,hemr,hemi,hmtr,hmti,hter,htei;
+#elif NFLAVOR == 2
         const real ct = cos(2*theta);
         const real st = sin(2*theta);
+#else
+#error NFLAVOR can be 2 or 3 only.
+#endif
+        
         real pmo = 0.1;      // 1 (-1) for normal (inverted) mass ordering, 0.0 for no vacuum term
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
@@ -210,7 +218,7 @@ class NuOsc {
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
         void analysis();
         void eval_conserved(const FieldVar* v0);
-        void renormalize(const FieldVar* v0);
+        void renormalize(FieldVar* v0);
 
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
