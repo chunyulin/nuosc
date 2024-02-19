@@ -12,6 +12,7 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
     vz.reserve(nv*nphi);
     vw.reserve(nv*nphi);
     real dp = 2*M_PI/nphi;
+    #pragma omp parallel for simd collapse(2)
     for (int j=0;j<nphi; ++j)
         for (int i=0;i<nv; ++i)   {
             real vxy = sqrt(1-r[i]*r[i]);
@@ -43,6 +44,7 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
     vw.reserve(nv*nphi);
     real dp = 2*M_PI/nphi;
     real dv = 2.0/(nv);     assert(nv%2==0);
+    #pragma omp parallel for simd collapse(2)
     for (int j=0;j<nphi; ++j)
         for (int i=0;i<nv;   ++i)   {
             real tmp = (i+0.5)*dv - 1;
@@ -181,7 +183,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 
     //
     // Local geometry determinded.  (nx,ny,nz,nv)
-    // Now prepare datatype for ghostzone block of each dimension
+    // Now, prepare datatype for ghostzone block of each dimension
     //
     ulong nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
@@ -208,6 +210,8 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     #ifdef DEBUG
     print_info();
     #endif
+
+    omp_set_max_active_levels(3);  // mainly for calRHS.
 
     if (myrank==0) {
             printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank.\n", ranks, px[0], px[1], px[2], omp_get_max_threads() );

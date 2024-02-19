@@ -1,9 +1,9 @@
 #include "nuosc_class.h"
 
 // for init data
-inline real eps_c(real z, real z0, real eps0, real sigma){return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
-inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
-inline real eps_p(real z, real z0, real eps0, real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
+inline real eps_c(real eps0, real z, real z0, real sigma){return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
+inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) {return eps0*rand()/RAND_MAX;}
+inline real eps_p(real eps0, real z, real z0,  real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
 double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
     // ELN for vx,vz
@@ -52,17 +52,17 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 		G0 [kv] =         g(vz[v], lnue );
 		G0b[kv] = alpha * g(vz[v], lnueb);
 
-                v_stat->ee    [kv] =  0.5* G0 [kv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-                v_stat->xx    [kv] =  0.5* G0 [kv]*(1.0-tmp2);
-                v_stat->ex_re [kv] =  0.5* G0 [kv]*tmpr;//1e-6;
-                v_stat->ex_im [kv] =  0.5* G0 [kv]*tmpi;//random_amp(0.001);
-                v_stat->bee   [kv] =  0.5* G0b[kv]*(1.0+tmp2);
-                v_stat->bxx   [kv] =  0.5* G0b[kv]*(1.0-tmp2);
-                v_stat->bex_re[kv] =  0.5* G0b[kv]*tmpr;//1e-6;
-                v_stat->bex_im[kv] = -0.5* G0b[kv]*tmpi;//random_amp(0.001);
+                v_stat->wf[ff::ee]  [kv] =  0.5* G0 [kv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+                v_stat->wf[ff::mm]  [kv] =  0.5* G0 [kv]*(1.0-tmp2);
+                v_stat->wf[ff::emr] [kv] =  0.5* G0 [kv]*tmpr;//1e-6;
+                v_stat->wf[ff::emi] [kv] =  0.5* G0 [kv]*tmpi;//random_amp(0.001);
+                v_stat->wf[ff::bee] [kv] =  0.5* G0b[kv]*(1.0+tmp2);
+                v_stat->wf[ff::bmm] [kv] =  0.5* G0b[kv]*(1.0-tmp2);
+                v_stat->wf[ff::bemr][kv] =  0.5* G0b[kv]*tmpr;//1e-6;
+                v_stat->wf[ff::bemi][kv] = -0.5* G0b[kv]*tmpi;//random_amp(0.001);
                 // initial nv_e
-                n00 += vw[v]*v_stat->ee [kv];
-                n01 += vw[v]*v_stat->bee[kv];
+                n00 += vw[v]*v_stat->wf[ff::ee][kv];
+                n01 += vw[v]*v_stat->wf[ff::bee][kv];
             }
         }
 
@@ -74,7 +74,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	Vec ng(nv), ngb(nv);
 	
         real ing0=0, ing1=0;
-        #pragma omp parallel for reduction(+:ing0, ing1)
+        #pragma omp parallel for simd reduction(+:ing0, ing1)
 	for (int v=0;v<nv;++v) {
 	    ng [v] = g(vx[v], vz[v], lnue_x,  lnue );   // large vx sigma to reduce to 1D case (axi-symmetric case)
 	    ngb[v] = g(vx[v], vz[v], lnueb_x, lnueb );
@@ -85,35 +85,35 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	ing0 = 1.0/ing0;
 	ing1 = 1.0/ing1;
 
-	#pragma omp parallel for reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
-        FORALL(i,j,k,v) {
+        real (*spatialeps)(real,real,real,real);
+        if      (ipt==0) { spatialeps = &eps_c; }      // center Z perturbation
+        else if (ipt==1) { spatialeps = &eps_r; }      // random
+        else if (ipt==2) { spatialeps = &eps_p; }      // periodic Z perturbation
+        //else if (ipt==3) { spatialeps = 0;  }       // constant
+        else             { assert(0); }                         // Not implemented
 
+        #pragma omp parallel for simd reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
+        FORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
 
             // ELN profile
             G0 [ijkv] =         ng [v] * ing0;
             G0b[ijkv] = alpha * ngb[v] * ing1;
 
-            real tmpr;
-            if      (ipt==0) { tmpr = eps_c(X[DIM-1][k],0.0,eps0,sigma); }      // center Z perturbation
-            else if (ipt==1) { tmpr = eps_r(eps0); }                                 // random
-            else if (ipt==2) { tmpr = eps_p(X[DIM-1][k],0.0,eps0,sigma);}       // periodic Z perturbation
-            else if (ipt==3) { tmpr = eps0;}
-            else             { assert(0); }                         // Not implemented
-
+            real tmpr = spatialeps(eps0, X[DIM-1][k], 0., sigma);
             real p3o = sqrt(1.0-tmpr*tmpr);
-            v_stat->ee    [ijkv] = 0.5* G0[ijkv]*(1.0+p3o);
-            v_stat->xx    [ijkv] = 0.5* G0[ijkv]*(1.0-p3o);
-            v_stat->ex_re [ijkv] = 0.5* G0[ijkv]*tmpr;
-            v_stat->ex_im [ijkv] = 0.0;
-            v_stat->bee   [ijkv] = 0.5* G0b[ijkv]*(1.0+p3o);
-            v_stat->bxx   [ijkv] = 0.5* G0b[ijkv]*(1.0-p3o);
-            v_stat->bex_re[ijkv] = 0.5* G0b[ijkv]*tmpr;
-            v_stat->bex_im[ijkv] = 0.0;
+            v_stat->wf[ff::ee]  [ijkv] = 0.5* G0[ijkv]*(1.0+p3o);
+            v_stat->wf[ff::mm]  [ijkv] = 0.5* G0[ijkv]*(1.0-p3o);
+            v_stat->wf[ff::emr] [ijkv] = 0.5* G0[ijkv]*tmpr;
+            v_stat->wf[ff::emi] [ijkv] = 0.0;
+            v_stat->wf[ff::bee] [ijkv] = 0.5* G0b[ijkv]*(1.0+p3o);
+            v_stat->wf[ff::bmm] [ijkv] = 0.5* G0b[ijkv]*(1.0-p3o);
+            v_stat->wf[ff::bemr][ijkv] = 0.5* G0b[ijkv]*tmpr;
+            v_stat->wf[ff::bemi][ijkv] = 0.0;
 
             // initial nv_e
-            n00 += vw[v]*v_stat->ee [ijkv];
-            n01 += vw[v]*v_stat->bee[ijkv];
+            n00 += vw[v]*v_stat->wf[ff::ee ][ijkv];
+            n01 += vw[v]*v_stat->wf[ff::bee][ijkv];
         }
 
         real n0[] = {n00, n01};
@@ -148,14 +148,14 @@ void NuOsc::fillInitGaussian(real eps0, real sigma) {
 
             real tmp = eps0* exp( - ((X[0][i])*(X[0][i]))/(1.0*sigma*sigma)
                                   - ((X[2][k])*(X[2][k]))/(1.0*sigma*sigma)  );
-            v_stat->ee    [ijkv] = tmp;
-            v_stat->xx    [ijkv] = 0;
-            v_stat->ex_re [ijkv] = 0;
-            v_stat->ex_im [ijkv] = 0;
-            v_stat->bee   [ijkv] = 0;
-            v_stat->bxx   [ijkv] = 0;
-            v_stat->bex_re[ijkv] = 0;
-            v_stat->bex_im[ijkv] = 0;
+            v_stat->wf[ff::ee]  [ijkv] = tmp;
+            v_stat->wf[ff::mm]  [ijkv] = 0;
+            v_stat->wf[ff::emr] [ijkv] = 0;
+            v_stat->wf[ff::emi] [ijkv] = 0;
+            v_stat->wf[ff::bee] [ijkv] = 0;
+            v_stat->wf[ff::bmm] [ijkv] = 0;
+            v_stat->wf[ff::bemr][ijkv] = 0;
+            v_stat->wf[ff::bemi][ijkv] = 0;
     }
 }
 
@@ -171,14 +171,14 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
 
             real tmp = 0;
             if (X[DIM-1][k]*X[DIM-1][k]+X[0][i]*X[0][i] <= sigma*sigma) tmp = eps0;
-            v_stat->ee    [ijkv] = tmp;
-            v_stat->xx    [ijkv] = 0;
-            v_stat->ex_re [ijkv] = 0;
-            v_stat->ex_im [ijkv] = 0;
-            v_stat->bee   [ijkv] = 0;
-            v_stat->bxx   [ijkv] = 0;
-            v_stat->bex_re[ijkv] = 0;
-            v_stat->bex_im[ijkv] = 0;
+            v_stat->wf[ff::ee]  [ijkv] = tmp;
+            v_stat->wf[ff::mm]  [ijkv] = 0;
+            v_stat->wf[ff::emr] [ijkv] = 0;
+            v_stat->wf[ff::emi] [ijkv] = 0;
+            v_stat->wf[ff::bee] [ijkv] = 0;
+            v_stat->wf[ff::bmm] [ijkv] = 0;
+            v_stat->wf[ff::bemr][ijkv] = 0;
+            v_stat->wf[ff::bemi][ijkv] = 0;
     }
 }
 
@@ -192,15 +192,15 @@ void NuOsc::fillInitTriangle(real eps0, real sigma) {
             G0 [ijkv] = 1.0;
             G0b[ijkv] = 1.0;
 
-            if      (X[DIM-1][k]<0  && X[DIM-1][k] > -sigma)  v_stat->ee[ijkv] = ( sigma + X[DIM-1][k] ) * eps0 / sigma;
-            else if (X[DIM-1][k]>=0 && X[DIM-1][k] <  sigma)  v_stat->ee[ijkv] = ( sigma - X[DIM-1][k] ) * eps0 / sigma;
-            else    v_stat->ee[ijkv] = 0.0;
-            v_stat->xx    [ijkv] = 0;
-            v_stat->ex_re [ijkv] = 0;
-            v_stat->ex_im [ijkv] = 0;
-            v_stat->bee   [ijkv] = 0;
-            v_stat->bxx   [ijkv] = 0;
-            v_stat->bex_re[ijkv] = 0;
-            v_stat->bex_im[ijkv] = 0;
+            if      (X[DIM-1][k]<0  && X[DIM-1][k] > -sigma)  v_stat->wf[ff::ee][ijkv] = ( sigma + X[DIM-1][k] ) * eps0 / sigma;
+            else if (X[DIM-1][k]>=0 && X[DIM-1][k] <  sigma)  v_stat->wf[ff::ee][ijkv] = ( sigma - X[DIM-1][k] ) * eps0 / sigma;
+            else    v_stat->wf[ff::ee][ijkv] = 0.0;
+            v_stat->wf[ff::mm]  [ijkv] = 0;
+            v_stat->wf[ff::emr] [ijkv] = 0;
+            v_stat->wf[ff::emi] [ijkv] = 0;
+            v_stat->wf[ff::bee] [ijkv] = 0;
+            v_stat->wf[ff::bmm] [ijkv] = 0;
+            v_stat->wf[ff::bemr][ijkv] = 0;
+            v_stat->wf[ff::bemi][ijkv] = 0;
     }
 }

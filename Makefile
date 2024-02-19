@@ -1,7 +1,7 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_class.o nuosc_rhs.o nuosc_init.o nuosc_boundary.o nuosc_sync.o nuosc_ana.o nuosc_snapshot.o utils.o
+OBJS  = nuosc.o nuosc_class.o nuosc_rhs.o nuosc_init.o nuosc_boundary.o nuosc_sync.o nuosc_ana.o utils.o nuosc_snapshot.o 
 ## jacobi_poly.o
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"
@@ -11,10 +11,10 @@ all: ${TARGET}
 ${OBJS}: nuosc_class.h common.h
 
 ${TARGET}: ${OBJS}
-	$(CXX) $(OPT) $(LIBS) $^ -o $@
+	$(CXX) $(LIBS) $^ -o $@
 
 test3d:
-	mpiexec -np 8 ./nuosc --np 2 2 2 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .5 .5 .5 --dx 0.1 --nv 4 --nphi 4 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 1 --END_STEP 6
+	./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .5 .5 .5 --dx 0.1 --nv 4 --nphi 4 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 6 --END_STEP 5
 
 test3d_gaussian:
 	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f

@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        #ifdef PROFILING
+        #ifdef PROFILING_BREAKDOWNS
         printf("Step: %04d - %7f s (S: %5.2f P: %5.2f )%%\n", t, state.t_step/1000, state.t_sync/state.t_step*100,  state.t_packing/state.t_step*100);
         state.t_step = 0;
         state.t_sync = 0;

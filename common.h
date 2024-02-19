@@ -1,6 +1,7 @@
 #pragma once
 
 //==== Start of global flags
+#define NFLAVOR 2
 #define DIM 3
 #if DIM != 3
 #error Only DIM=3 is supported

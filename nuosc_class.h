@@ -12,11 +12,10 @@ int gen_v1d_trapezoidal(const int nv_, Vec vw, Vec vz);
 int gen_v1d_simpson(const int nv_, Vec vw, Vec vz);
 int gen_v1d_cellcenter(const int nv_, Vec vw, Vec vz);
 
-
 #define COLLAPSE_LOOP 4
 #define PARFORALL(i,j,k,v) \
-    _Pragma("omp parallel for collapse(4)") \
     _Pragma("acc parallel loop collapse(4)") \
+    _Pragma("omp parallel for collapse(4)") \
     for (int i=0;i<nx[0]; ++i) \
     for (int j=0;j<nx[1]; ++j) \
     for (int k=0;k<nx[2]; ++k) \
@@ -28,39 +27,29 @@ int gen_v1d_cellcenter(const int nv_, Vec vw, Vec vz);
     for (int k=0;k<nx[2]; ++k) \
     for (int v=0;v<nv; ++v)
 
-typedef struct Vars {
-    real* ee;
-    real* xx;
-    real* ex_re;
-    real* ex_im;
-    real* bee;
-    real* bxx;
-    real* bex_re;
-    real* bex_im;
+enum ff {
+     ee = 0,  mm,  emr,  emi,
+    bee,     bmm, bemr, bemi,     // Total  8 flavor fields.
+#if NFLAVOR == 3
+     tt,  emr,  emi,  etr,   eti,
+    btt, bemr, bemi, betr,  beti, // Total 18 flavor fields.
+#endif
+};
 
-    Vars(int size) {
-        ee     = new real[size](); // all init to zero
-        xx     = new real[size]();
-        ex_re  = new real[size]();
-        ex_im  = new real[size]();
-        bee    = new real[size]();
-        bxx    = new real[size]();
-        bex_re = new real[size]();
-        bex_im = new real[size]();
-        #pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
+struct FieldVar {
+
+    //std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
+    std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
+
+    FieldVar(int size) {
+        #pragma omp parallel for num_threads(2) proc_bind(spread) 
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size](); // all init to zero
+        //for (auto w: wf) w = new real[size](); // Why this fail!?
     }
-    ~Vars() {
-        #pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
-        delete[] ee;
-        delete[] xx;
-        delete[] ex_re;
-        delete[] ex_im;
-        delete[] bee;
-        delete[] bxx;
-        delete[] bex_re;
-        delete[] bex_im;
+    ~FieldVar() {
+        for (auto w: wf) delete[] w;
     }
-} FieldVar;
+} ;
 
 typedef struct SnapShot_struct {
     std::list<real*> var_list;
@@ -94,7 +83,7 @@ std::vector<int> gen_skimmed_vslice_index(int nv_target, int nv_in);
 
 class NuOsc {
     public:
-        const int nvar = 8;
+        const int nvar = 2*NFLAVOR*NFLAVOR;
         int ranks = 1, myrank = 0;
 
         real phy_time;
@@ -150,7 +139,7 @@ class NuOsc {
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
-        #ifdef PROFILING
+        #ifdef PROFILING_BREAKDOWNS
         float t_step=0, t_sync=0, t_packing=0;
         #endif
 

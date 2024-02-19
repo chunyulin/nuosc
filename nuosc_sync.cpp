@@ -2,11 +2,11 @@
 
 void NuOsc::packSend(const FieldVar* v0) {
 
-    #ifdef PROFILING
+    #ifdef PROFILING_BREAKDOWNS
     auto t0 = std::chrono::high_resolution_clock::now();
     #endif
     pack_buffer(v0);
-    #ifdef PROFILING
+    #ifdef PROFILING_BREAKDOWNS
     auto t1 = std::chrono::high_resolution_clock::now();
     #endif
 #if defined(SYNC_COPY)
@@ -18,7 +18,7 @@ void NuOsc::packSend(const FieldVar* v0) {
 #else
     sync_nonblocking();
 #endif
-    #ifdef PROFILING
+    #ifdef PROFILING_BREAKDOWNS
     auto t2 = std::chrono::high_resolution_clock::now();
     t_packing += std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0 ).count();
     t_sync += std::chrono::duration_cast<std::chrono::milliseconds>( t2-t1 ).count();
