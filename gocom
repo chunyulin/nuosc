@@ -30,14 +30,14 @@ elif [[ $host == "lgn"* ]]; then
 
   echo "==== on Twnia-3"
   module purge
-  #module load compiler/intel/2020u4 OpenMPI/4.1.1
-  module load compiler/intel/2021 IntelMPI/2021
-  module load libs/GSL/2.6
+  #module load libs/GSL/2.6
+  #module load compiler/intel/2022 IntelMPI/2021.6
+  source  /opt/ohpc/Taiwania3/pkg/intel/2024/oneapi/setvars.sh
 
   unset CFLAGS
-  ##export CXX=mpic++
-  export CXX=mpiicpc
-  export OPT="-qopenmp -O3 -std=c++14"
+  export CXX=mpiicpx
+  export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
+  export LIBS="-qopenmp -O3 -xCASCADELAKE"
 
 
 elif [[ $host == "node1" ]]; then
@@ -71,4 +71,4 @@ else
 
 fi
 
-make
+make -j

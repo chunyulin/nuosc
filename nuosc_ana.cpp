@@ -39,7 +39,7 @@ void NuOsc::analysis() {
     eval_conserved(v_stat);
 
     // packed reduction variable for MPI send. TODO: check if these work for OpenACC 
-    real rv[10] = {0};
+    real rv[12] = {0};
 
     real t_surv  = rv[0], t_survb = rv[1];
     real t_avgP  = rv[2], t_avgPb = rv[3];
@@ -48,9 +48,9 @@ void NuOsc::analysis() {
     real t_maxdP = rv[9];
 
 #ifdef ADV_TEST
-    real I1=0., I2=0.;
-    #pragma omp parallel for  simd reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,I1,I2) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
-    #pragma acc parallel loop reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,I1,I2) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    real t_I1=rv[10], t_I2=rv[11];
+    #pragma omp parallel for  simd reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_I1,t_I2) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_I1,t_I2) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #else
     #pragma omp parallel for  simd reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma acc parallel loop reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
@@ -59,15 +59,15 @@ void NuOsc::analysis() {
         int ijkv = idx(i,j,k,v);
 
 #ifdef ADV_TEST
-        I1 += vw[v]* v_stat->wf[ff::ee][ijkv];
-        I2 += vw[v]* v_stat->wf[ff::ee][ijkv]* v_stat->wf[ff::ee][ijkv];
+        t_I1 += vw[v]* v_stat->wf[ff::ee][ijkv];
+        t_I2 += vw[v]* v_stat->wf[ff::ee][ijkv]* v_stat->wf[ff::ee][ijkv];
 #endif
 
         //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
         t_maxdP = std::max( t_maxdP, std::max(dP[ijkv], dPb[ijkv]));
         //maxdN = std::max( std::max(maxdN,dN[ijkv]), dNb[ijkv]);  // What's this?
 
-        t_surv  += vw[v]* v_stat->wf[ff::ee][ijkv];
+        t_surv  += vw[v]* v_stat->wf[ff::ee] [ijkv];
         t_survb += vw[v]* v_stat->wf[ff::bee][ijkv];
 
         t_avgP  += vw[v] * G0 [ijkv] * std::abs( 1.0 - std::sqrt(P1 [ijkv]*P1 [ijkv]+P2 [ijkv]*P2 [ijkv]+P3 [ijkv]*P3 [ijkv]) );
@@ -89,9 +89,13 @@ void NuOsc::analysis() {
 
     rv[0] = t_surv, rv[1] = t_survb;
     rv[2] = t_avgP, rv[3] = t_avgPb;
-    rv[4] = t_nor,  rv[5]  =  t_norb;
-    rv[6] = t_aM01, rv[7]  =  t_aM02, rv[8] = t_aM03;
+    rv[4] = t_nor,  rv[5] =  t_norb;
+    rv[6] = t_aM01, rv[7] =  t_aM02, rv[8] = t_aM03;
     rv[9] = t_maxdP;
+#ifdef ADV_TEST
+    rv[10] = t_I1;
+    rv[11] = t_I2;
+#endif
 
 #ifdef COSENU_MPI
     if (!myrank) MPI_Reduce(MPI_IN_PLACE, &rv[0], 10, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);

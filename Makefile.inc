@@ -6,7 +6,7 @@ GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
 #CXX=armclang++
 
 #INCLUDE=-I${ARMPL_INCLUDES}
-INCLUDE=-I${MPI_ROOT}/include ##-I${GSL_ROOT}/include 
+INCLUDE= #-I${MPI_ROOT}/include
 
 LIBS?=-fopenmp -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
 

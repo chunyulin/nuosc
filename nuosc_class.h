@@ -38,36 +38,51 @@ enum ff {
 
 struct FieldVar {
 
-    //std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
     std::array<std::vector<real>, 2*NFLAVOR*NFLAVOR> wf;
 
     FieldVar(int size) {
-        #pragma omp parallel for num_threads(2*NFLAVOR*NFLAVOR) proc_bind(spread) 
-        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = std::vector<real>(size); // all init to zero
-        //for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size](); // all init to zero
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
+            wf[f] = std::vector<real>(size,0); // all init to zero
+
+        //wf[f] = new real[size]();
         //for (auto w: wf) w = new real[size](); // Why this fail!?
     }
     ~FieldVar() {
         //for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
     }
-} ;
+};
+#ifdef WENO7
+struct Flux {
+    int size;
+    real *l2h; // Flux: from low to high.
+    real *h2l; // Flux: from high to low.
+    Flux(int size_) : size(size_)  {
+        l2h = new real[size]();
+        h2l = new real[size]();
+    }
+    ~Flux() {
+        delete[] l2h;
+        delete[] h2l;
+    }
+};
+#endif
 
 typedef struct SnapShot_struct {
-    std::list<real*> var_list;
+    std::list<std::vector<real>> var_list;
     string fntpl;
     int every;
     std::vector<int> x_slices;   // coordinate for the reduced dimension
     std::vector<int> v_slices;
 
     // init with specified v-coordinate
-    SnapShot_struct(std::list<real*> var_list_, string fntpl_, int every_,  std::vector<int> v_slices_) {
+    SnapShot_struct(std::list<std::vector<real>> var_list_, string fntpl_, int every_,  std::vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
         v_slices = v_slices_;
     }
     // init with specified y and v-coordinate
-    SnapShot_struct(std::list<real*> var_list_, string fntpl_, int every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
+    SnapShot_struct(std::list<std::vector<real>> var_list_, string fntpl_, int every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
         var_list = var_list_;
         fntpl = fntpl_;
         every = every_;
@@ -121,7 +136,9 @@ class NuOsc {
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
         FieldVar *v_stat0;   // NOT used.
-
+#ifdef WENO7
+        Flux *flux;
+#endif
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
         real *G0,*G0b;
@@ -162,6 +179,9 @@ class NuOsc {
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
             #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; delete v_stat0;
+            #ifdef WENO7
+            delete flux;
+            #endif
             anafile.close();
 
             for (int d=0;d<DIM;++d) {
@@ -203,16 +223,20 @@ class NuOsc {
         void updateInjetOpenBoundary(FieldVar * in);
         void step_rk4();
         void calRHS(FieldVar* out, FieldVar * in);
-        void calRHS_core(FieldVar* out, const FieldVar * in, const int bb[2*DIM]);
+        //void calRHS_core(FieldVar* out, const FieldVar * in, const int bb[2*DIM]);
+        void calRHS_with_bdry(FieldVar* out, const FieldVar * in);
+        void calRHS_wo_bdry(FieldVar* out, const FieldVar * in);
         void packSend(const FieldVar* in);
         void pack_buffer(const FieldVar* in);
         void waitall();
         void unpack_buffer(FieldVar* v0);
-
         void sync_sendrecv();
         void sync_nonblocking();
         void sync_put();
         void sync_copy();
+#ifdef WENO7
+        void get_flux(Flux *, const std::vector<real>, const int, const int, const int, const int);
+#endif
 
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2, const FieldVar * v3);
@@ -221,7 +245,7 @@ class NuOsc {
         void renormalize(FieldVar* v0);
 
         // 1D output:
-        void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
+        void addSnapShotAtV(std::list<std::vector<real>> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
         // 2D output:
         void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);

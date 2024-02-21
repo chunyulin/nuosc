@@ -1,7 +1,8 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_class.o nuosc_rhs.o nuosc_init.o nuosc_boundary.o nuosc_sync.o nuosc_ana.o utils.o nuosc_snapshot.o 
+OBJS  = nuosc.o nuosc_class.o nuosc_rhs.o nuosc_init.o nuosc_boundary.o nuosc_sync.o nuosc_ana.o \
+        utils.o gen_vgrid.o nuosc_snapshot.o
 ## jacobi_poly.o
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"
@@ -14,11 +15,14 @@ ${TARGET}: ${OBJS}
 	$(CXX) $(LIBS) $^ -o $@
 
 test3d:
-	./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .5 .5 .5 --dx 0.1 --nv 4 --nphi 4 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 6 --END_STEP 5
+	./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .4 .4 .4 --dx 0.1 --nv 4 --nphi 4 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .2 --ANA_EVERY 2 --END_STEP 6
+
+test3d_square:
+	./nuosc --ipt 20 --nv 4 --dx 0.1 --xmax 0.5 0.5 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --END_STEP 10 --ANA_EVERY 1
 
 test3d_gaussian:
 	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	mpirun -np 1 ./nuosc --np 1 1 1 --ipt 10 --nv 4 --dx 0.05 --xmax 1.5 .1 1.5 --mu 0 --pmo 0 --eps0 1 --sigma 10 --ko 1e-3 --cfl 0.1 --END_STEP 10 --ANA_EVERY 1 --DUMP_EVERY 2
+	./nuosc --np 1 1 1 --ipt 10 --nv 4 --dx 0.05 --xmax 1.5 .1 1.5 --mu 0 --pmo 0 --eps0 1 --sigma 10 --ko 1e-3 --cfl 0.1 --END_STEP 10 --ANA_EVERY 1 --DUMP_EVERY 200
 	#python3 ./plt_ZX.py ee*.bin
 	#scp *.png lincy@arm.nchc.org.tw:~/public_html/tmp/tmp/
 
@@ -31,12 +35,6 @@ test2d_gaussian:
 test_gaussian:
 	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
 	./nuosc --ipt 10 --nv 3 --dz 0.02 --zmax 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --DUMP_EVERY_T 5 --END_STEP_T 50 --ANA_EVERY_T 5
-	python3 ./plt_overlay.py ee*.bin
-	cp -f *.png ~/public_html/tmp/tmp/
-
-test_square:
-	rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f
-	./nuosc --ipt 20 --nv 3 --dz 0.001 --zmax 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --DUMP_EVERY_T 0.25 --END_STEP_T 1 --ANA_EVERY_T 1
 	python3 ./plt_overlay.py ee*.bin
 	cp -f *.png ~/public_html/tmp/tmp/
 

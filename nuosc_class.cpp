@@ -1,105 +1,5 @@
 #include "nuosc_class.h"
 #include "utils.h"
-
-#if defined(IM_V2D_POLAR_GL_Z)
-#include "jacobi_poly.h"
-int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
-    Vec r(nv);
-    Vec w(nv);
-    JacobiGL(nv-1,0,0,r,w);
-    vx.reserve(nv*nphi);
-    vy.reserve(nv*nphi);
-    vz.reserve(nv*nphi);
-    vw.reserve(nv*nphi);
-    real dp = 2*M_PI/nphi;
-    #pragma omp parallel for simd collapse(2)
-    for (int j=0;j<nphi; ++j)
-        for (int i=0;i<nv; ++i)   {
-            real vxy = sqrt(1-r[i]*r[i]);
-            vx[j*nv+i] = cos(j*dp)*vxy;
-            vy[j*nv+i] = sin(j*dp)*vxy;
-            vz[j*nv+i] = r[i];
-            vw[j*nv+i] = w[i]/nphi;
-        }
-    return nv*nphi;
-}
-int gen_v1d_GL(const int nv, Vec vw, Vec vz) {
-    Vec r(nv,0);
-    Vec w(nv,0);
-    JacobiGL(nv-1,0,0,r,w);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = r[j];
-        vw[j] = w[j];
-    }
-    return nv;
-}
-#endif
-
-int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, Vec& vz) {
-    vx.reserve(nv*nphi);
-    vy.reserve(nv*nphi);
-    vz.reserve(nv*nphi);
-    vw.reserve(nv*nphi);
-    real dp = 2*M_PI/nphi;
-    real dv = 2.0/(nv);     assert(nv%2==0);
-    #pragma omp parallel for simd collapse(2)
-    for (int j=0;j<nphi; ++j)
-        for (int i=0;i<nv;   ++i)   {
-            real tmp = (i+0.5)*dv - 1;
-            real vxy = sqrt(1-tmp*tmp);
-            vx[j*nv+i] = cos(j*dp)*vxy;
-            vy[j*nv+i] = sin(j*dp)*vxy;
-            vz[j*nv+i] = tmp;
-            vw[j*nv+i] = dv/nphi;
-        }
-    return nv*nphi;
-}
-
-// v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
-int gen_v1d_trapezoidal(const int nv, Vec vw, Vec vz) {
-    assert(nv%2==1);
-    real dv = 2.0/(nv-1);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = j*dv - 1;
-        vw[j] = dv;
-    }
-    vw[0]    = 0.5*dv;
-    vw[nv-1] = 0.5*dv;
-    return nv;
-}
-
-// v quaduture in [-1:1], vertex-center with Simpson 1/3 rule on uniform rgid.
-int gen_v1d_simpson(const int nv, Vec vw, Vec vz) {
-    assert(nv%2==1);
-    real dv = 2.0/(nv-1);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    const real o3dv = 1./3.*dv;
-    for (int j=0;j<nv; j++) {
-        vz[j] = j*dv - 1;
-        vw[j] = 2*((j%2)+1)*o3dv;
-    }
-    vw[0]    = o3dv;
-    vw[nv-1] = o3dv;
-    return nv;
-}
-
-int gen_v1d_cellcenter(const int nv, Vec vw, Vec vz) {
-    assert(nv%2==0);
-    real dv = 2.0/(nv);
-    vz.reserve(nv);
-    vw.reserve(nv);
-    for (int j=0;j<nv; ++j) {
-        vz[j] = (j+0.5)*dv - 1;
-        vw[j] = dv;
-    }
-    return nv;
-}
-
 NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
              const real bbox_[][2], const real dx_, const real CFL_, const real ko_) :
                  phy_time(0.), ko(ko_), dx(dx_), nphi(nphi_) {
@@ -211,7 +111,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     print_info();
     #endif
 
-    omp_set_max_active_levels(3);  // mainly for calRHS.
+    omp_set_max_active_levels(1);  // May casue too large thread overhead, mainly for calRHS.
 
     if (myrank==0) {
             printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank.\n", ranks, px[0], px[1], px[2], omp_get_max_threads() );
@@ -219,7 +119,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
-            printf("   Local size per field var = %.2f GB, totol memory per rank roughly %.2f GB\n", mem_per_var, mem_per_var*50);
+            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*nvar*6.5);
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
             printf("   Use Periodic boundary\n");
@@ -252,6 +152,11 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 #else
             printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
 #endif
+#ifdef WENO7
+            printf("   WENO7 scheme.\n");
+#else
+            printf("   FD scheme.\n");
+#endif
         }
 
         // field variables for analysis~~
@@ -276,6 +181,9 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         v_cor  = new FieldVar(size);
         v_stat0 = new FieldVar(size);
 #pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+        #ifdef WENO7
+        flux = new Flux(size);
+        #endif
 
         if (myrank==0) {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
@@ -297,15 +205,15 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             const real Um3 = c13*s23;
             const real Ut3 = c13*c23;
 
-            hee  = dms12*(Ue2*Ue2)            +dms13*(s13*s13);
-            hmm  = dms12*(Um2r*Um2r+Um2i*Um2i)+dms13*(Um3*Um3);
-            htt  = dms12*(Ut2r*Ut2r+Ut2i*Ut2i)+dms13*(Ut3*Ut3);
             hemr = dms12*( Ue2*Um2r)          +dms13*(Ue3r*Um3);
             hemi = dms12*(-Ue2*Um2i)          +dms13*(Ue3i*Um3);
             hmtr = dms12*( Ue2*Ut2r)          +dms13*(Ue3r*Ut3);
             hmti = dms12*(-Ue2*Ut2i)          +dms13*(Ue3i*Ut3);
             hter = dms12*(Um2r*Ut2r+Um2i*Ut2i)+dms13*(Um3*Ut3);
             htei = dms12*(Ut2r*Um2i-Um2r*Ut2i);
+            hee  = dms12*(Ue2*Ue2)            +dms13*(s13*s13);
+            hmm  = dms12*(Um2r*Um2r+Um2i*Um2i)+dms13*(Um3*Um3);
+            htt  = dms12*(Ut2r*Ut2r+Ut2i*Ut2i)+dms13*(Ut3*Ut3);
             real Hvac_trace = (hee+hmm+htt)/3.0;
             hee -= Hvac_trace;
             hmm -= Hvac_trace;

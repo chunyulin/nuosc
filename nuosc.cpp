@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
     //acc_set_error_routine(&handle_gpu_errors);  // undefined 
 #endif
 
-#ifndef KO_ORD_3
+#if defined(WENO7) || !defined(KO_ORD_3)
     #if   DIM == 2
     int gx[] = {3,3};
     #elif DIM == 3
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
     // === create simuation
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
     if (!myrank) printf("[%.4f] Initialize main class.\n", utils::msecs_since());
-    
+
     long lpts = state.get_lpts();
     state.set_mu(mu);
     state.set_pmo(pmo);
@@ -200,7 +200,7 @@ int main(int argc, char *argv[]) {
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
 #ifdef ADV_TEST
-        std::list<real*> vlist( { state.v_stat->ee } );
+        std::list<std::vector<real>> vlist( { state.v_stat->wf[ff::ee] } );
         state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
         //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
 #endif
@@ -215,7 +215,6 @@ int main(int argc, char *argv[]) {
 
     const int cooltime = 3;
     for (int t=1; t<=END_STEP; t++) {
-
         #ifdef COSENU_MPI
         if (t==cooltime)  t1 = MPI_Wtime();
         #else

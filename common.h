@@ -7,16 +7,16 @@
 #error Only DIM=3 is supported
 #endif
 
-#define KO_ORD_3
-#define BC_PERI
-
 #define COSENU_MPI
+#define WENO7
 //#define PROFILING
 //#define GDR_OFF
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
 //#define SYNC_MPI_ONESIDE_COPY
 //#define ADV_TEST
+#define BC_PERI
+#define KO_ORD_3
 
 //==== End of global flags
 
@@ -70,4 +70,3 @@ typedef std::vector<double> Vec;
 #ifdef COSENU_MPI
 #include <mpi.h>
 #endif
-

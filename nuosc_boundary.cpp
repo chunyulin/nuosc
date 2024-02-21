@@ -17,14 +17,16 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
     for (int j=0;j<nx[1]; ++j)
     for (int k=0;k<nx[2]; ++k)
     for (int v=0;v<nv;    ++v) {
-                //x lower side of ghost <-- x upper
-                auto l0 = idx( -i-1,j,k,v );
-                auto l1 = idx( nx[0]-i-1,j,k,v );
-                for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
-                //x upper side of ghost <-- x lower
-                auto r0 = idx( nx[0]+i,j,k,v );
-                auto r1 = idx( i,j,k,v );
-                for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
+        //x lower side of ghost <-- x upper
+        auto l0 = idx( -i-1,j,k,v );
+        auto l1 = idx( nx[0]-i-1,j,k,v );
+        #pragma unroll
+        for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
+        //x upper side of ghost <-- x lower
+        auto r0 = idx( nx[0]+i,j,k,v );
+        auto r1 = idx( i,j,k,v );
+        #pragma unroll
+        for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
     }
 
     #pragma acc parallel loop collapse(4)
@@ -33,29 +35,34 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
     for (int j=0;j<gx[1]; ++j)
     for (int k=0;k<nx[2]; ++k)
     for (int v=0;v<nv;    ++v) {
-                // y lower side of ghost <-- y upper
-                auto l0 = idx(i,-j-1,k,v);
-                auto l1 = idx(i,nx[1]-j-1,k,v);
-                for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
-                //y upper side of ghost <-- y lower
-                auto r0 = idx(i,nx[1]+j,k,v);
-                auto r1 = idx(i,j,k,v);
-                for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
+        // y lower side of ghost <-- y upper
+        auto l0 = idx(i,-j-1,k,v);
+        auto l1 = idx(i,nx[1]-j-1,k,v);
+        #pragma unroll
+        for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
+        //y upper side of ghost <-- y lower
+        auto r0 = idx(i,nx[1]+j,k,v);
+        auto r1 = idx(i,j,k,v);
+        #pragma unroll
+        for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
     }
 
     #pragma acc parallel loop collapse(4)
+    #pragma omp parallel for simd collapse(4)
     for (int i=0;i<nx[0]; ++i)
     for (int j=0;j<nx[1]; ++j)
     for (int k=0;k<gx[2]; ++k)
     for (int v=0;v<nv;    ++v) {
-                // z lower side of ghost <-- z upper
-                auto l0 = idx(i,j,-k-1,v);
-                auto l1 = idx(i,j,nx[2]-k-1,v);
-                for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
-                //z upper side of ghost <-- z lower
-                auto r0 = idx(i,j,nx[2]+k,v);
-                auto r1 = idx(i,j,k,v);
-                for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
+        // z lower side of ghost <-- z upper
+        auto l0 = idx(i,j,-k-1,v);
+        auto l1 = idx(i,j,nx[2]-k-1,v);
+        #pragma unroll
+        for(int f=0;f<nvar;++f)  in->wf[f][l0] = in->wf[f][l1];
+        //z upper side of ghost <-- z lower
+        auto r0 = idx(i,j,nx[2]+k,v);
+        auto r1 = idx(i,j,k,v);
+        #pragma unroll
+        for(int f=0;f<nvar;++f)   in->wf[f][r0] = in->wf[f][r1];
     }
 #ifdef NVTX
     nvtxRangePop();

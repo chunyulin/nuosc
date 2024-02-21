@@ -45,7 +45,7 @@ void NuOsc::addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std
 }
 */
 
-void NuOsc::addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> vidx)  {
+void NuOsc::addSnapShotAtV(std::list<std::vector<real>> var, char *fntpl, int dumpstep, std::vector<int> vidx)  {
 #ifdef NVTX
     nvtxRangePush(__FUNCTION__);
 #endif

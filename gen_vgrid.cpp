@@ -1,5 +1,4 @@
 #include "nuosc_class.h"
-
 #if defined(IM_V2D_POLAR_GL_Z)
 #include "jacobi_poly.h"
 int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
@@ -11,6 +10,7 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
     vz.reserve(nv*nphi);
     vw.reserve(nv*nphi);
     real dp = 2*M_PI/nphi;
+    #pragma omp parallel for simd collapse(2)
     for (int j=0;j<nphi; ++j)
         for (int i=0;i<nv; ++i)   {
             real vxy = sqrt(1-r[i]*r[i]);
@@ -42,6 +42,7 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
     vw.reserve(nv*nphi);
     real dp = 2*M_PI/nphi;
     real dv = 2.0/(nv);     assert(nv%2==0);
+    #pragma omp parallel for simd collapse(2)
     for (int j=0;j<nphi; ++j)
         for (int i=0;i<nv;   ++i)   {
             real tmp = (i+0.5)*dv - 1;

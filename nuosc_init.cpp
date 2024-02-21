@@ -92,7 +92,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
         //else if (ipt==3) { spatialeps = 0;  }       // constant
         else             { assert(0); }                         // Not implemented
 
-        #pragma omp parallel for simd reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
+        #pragma omp parallel for reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
         FORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
 
@@ -147,6 +147,7 @@ void NuOsc::fillInitGaussian(real eps0, real sigma) {
             G0b[ijkv] = 1.0;
 
             real tmp = eps0* exp( - ((X[0][i])*(X[0][i]))/(1.0*sigma*sigma)
+                                  - ((X[1][j])*(X[1][j]))/(1.0*sigma*sigma)
                                   - ((X[2][k])*(X[2][k]))/(1.0*sigma*sigma)  );
             v_stat->wf[ff::ee]  [ijkv] = tmp;
             v_stat->wf[ff::mm]  [ijkv] = 0;
@@ -163,14 +164,14 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
 
     if (myrank==0) printf("   Init Square eps0= %g sigma= %g for testing.\n", eps0, sigma);
 
-    PARFORALL(i,j,k,v) {
-	    auto ijkv = idx(i,j,k,v);
+        PARFORALL(i,j,k,v) {
+            auto ijkv = idx(i,j,k,v);
 
             G0 [ijkv] = 1.0;
             G0b[ijkv] = 1.0;
 
             real tmp = 0;
-            if (X[DIM-1][k]*X[DIM-1][k]+X[0][i]*X[0][i] <= sigma*sigma) tmp = eps0;
+            if (X[2][j]*X[2][j]+X[0][i]*X[0][i] <= sigma*sigma) tmp = eps0;
             v_stat->wf[ff::ee]  [ijkv] = tmp;
             v_stat->wf[ff::mm]  [ijkv] = 0;
             v_stat->wf[ff::emr] [ijkv] = 0;
@@ -179,7 +180,7 @@ void NuOsc::fillInitSquare(real eps0, real sigma) {
             v_stat->wf[ff::bmm] [ijkv] = 0;
             v_stat->wf[ff::bemr][ijkv] = 0;
             v_stat->wf[ff::bemi][ijkv] = 0;
-    }
+        }
 }
 
 void NuOsc::fillInitTriangle(real eps0, real sigma) {
