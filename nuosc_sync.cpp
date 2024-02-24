@@ -49,7 +49,8 @@ void NuOsc::waitall() {
     #pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
-        #pragma acc update device( pb[d][(2*npb):(4*npb)] )
+        real *pbuf = &(pb[d][0]);
+        #pragma acc update device( pbuf[(2*npb):(4*npb)] )
     }
     #endif
 #endif
@@ -130,15 +131,22 @@ void NuOsc::sync_nonblocking() {
 #ifdef COSENU_MPI
     ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
-
-    #pragma omp parallel for num_threads(DIM)
+    #if defined (_OPENACC)
     for (int d=0;d<DIM;++d) {
-        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         #ifdef GDR_OFF
-          #pragma acc update self( pb[d][0:2*npb] )
+          const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
+          real *pbuf = &(pb[d][0]);
+          #pragma acc update self( pbuf[0:2*npb] ) async
         #else
           #pragma acc host_data use_device(pb[d])
         #endif
+    }
+    #pragma acc wait
+    #endif
+    
+    #pragma omp parallel for num_threads(DIM)
+    for (int d=0;d<DIM;++d) {
+        const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         {
             MPI_Irecv(&pb[d][2*npb], 1, t_pb[d], nb[d][1],   d*2, CartCOMM, &reqs[d*4]);
             MPI_Irecv(&pb[d][3*npb], 1, t_pb[d], nb[d][0], 1+d*2, CartCOMM, &reqs[d*4+1]);

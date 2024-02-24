@@ -1,7 +1,7 @@
 #pragma once
 
 //==== Start of global flags
-#define NFLAVOR 3
+#define NFLAVOR 2
 #define DIM 3
 #if DIM != 3
 #error Only DIM=3 is supported
@@ -9,8 +9,8 @@
 
 #define COSENU_MPI
 #define WENO7
-//#define PROFILING
 //#define GDR_OFF
+//#define PROFILING
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
 //#define SYNC_MPI_ONESIDE_COPY

@@ -38,18 +38,23 @@ enum ff {
 
 struct FieldVar {
 
+#if 1
     std::array<std::vector<real>, 2*NFLAVOR*NFLAVOR> wf;
 
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
-            wf[f] = std::vector<real>(size,0); // all init to zero
-
-        //wf[f] = new real[size]();
-        //for (auto w: wf) w = new real[size](); // Why this fail!?
+            wf[f] = std::vector<real>(size,0); // initialize to zero
+    }
+#else
+    std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
+    FieldVar(int size) {
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size]();
     }
     ~FieldVar() {
-        //for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
     }
+
+#endif
 };
 #ifdef WENO7
 struct Flux {
@@ -172,12 +177,12 @@ class NuOsc {
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);
 
         ~NuOsc() {
-            #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
+            //#pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-            #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; delete v_stat0;
             #ifdef WENO7
             delete flux;

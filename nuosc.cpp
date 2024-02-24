@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
     }
 
     #if defined(COSENU_MPI)
-    //MPI_Finalize();    // Why segfault?
+    MPI_Finalize();    // Why segfault?
     #endif
     return 0;
 }

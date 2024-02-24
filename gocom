@@ -13,6 +13,16 @@ if [[ $host == "ilgn01" ]]; then
   export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas -I/pkg/x86/apps/oneapi/mpi/2021.9.0/include"
   export LIBS="-qopenmp -O3 -xsapphirerapids -L/pkg/x86/apps/oneapi/mpi/2021.9.0/lib/release -L/pkg/x86/apps/oneapi/mpi/2021.9.0/lib -Xlinker --enable-new-dtags -Xlinker -rpath -Xlinker /pkg/x86/apps/oneapi/mpi/2021.9.0/lib/release -Xlinker -rpath -Xlinker /pkg/x86/apps/oneapi/mpi/2021.9.0/lib -lmpicxx -lmpifort -lmpi -ldl -lrt -lpthread"
 
+elif [[ $host == "quantum."* ]]; then
+
+  echo "==== on Quantum"
+  ml purge
+  ml nvhpc-hpcx
+
+  export CXX=mpic++
+  export OPT="-O3 -acc=gpu -Minfo=accel -gpu=managed,cc70"
+  export LIBS=${OPT}
+
 elif [[ $host == *"twcc.ai" ]]; then
 
   echo "==== on TWCC"
@@ -38,7 +48,6 @@ elif [[ $host == "lgn"* ]]; then
   export CXX=mpiicpx
   export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -xCASCADELAKE"
-
 
 elif [[ $host == "node1" ]]; then
 

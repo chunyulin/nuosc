@@ -39,7 +39,11 @@ void NuOsc::analysis() {
     eval_conserved(v_stat);
 
     // packed reduction variable for MPI send. TODO: check if these work for OpenACC 
+#ifdef ADV_TEST
     real rv[12] = {0};
+#else
+    real rv[10] = {0};
+#endif
 
     real t_surv  = rv[0], t_survb = rv[1];
     real t_avgP  = rv[2], t_avgPb = rv[3];
@@ -107,8 +111,8 @@ void NuOsc::analysis() {
         rv[0] /= rv[4];  rv[2] /= rv[4];
         rv[1] /= rv[5];  rv[3] /= rv[5];
 
-        real aM0    = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * ds_L;
-        real ELNe  = std::abs(n_nue0[0]*(1.0-rv[0]) - n_nue0[1]*(1.0-rv[1])) / (n_nue0[0]+n_nue0[1]); /// !!!
+        real aM0   = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * ds_L;
+        real ELNe  = std::abs(n_nue0[0]*(1.0-rv[0]) - n_nue0[1]*(1.0-rv[1])) / (n_nue0[0]+n_nue0[1]);
         //real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
         real Lex = rv[8] * ds_L;
 

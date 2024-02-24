@@ -47,29 +47,29 @@ void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restr
 
 #ifdef WENO7
         // adv-x
+        get_flux(flux, in->wf[f], nyzv, 1, 0, 0);
         #pragma acc parallel loop independent collapse(4)
         #pragma omp parallel for simd collapse(4)
         FORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
-            get_flux(flux, in->wf[f], nyzv, 0, 0, 0);
             int s = sgn(vx[v]);
             out->wf[f][ijkv] += -0.5*vx[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nyzv]) + std::abs(1-s)*(flux->h2l[ijkv+nyzv]-flux->h2l[ijkv]));
         }
         // adv-y
+        get_flux(flux, in->wf[f], nzv, 0, 1, 0);
         #pragma acc parallel loop independent collapse(4)
         #pragma omp parallel for simd collapse(4)
         FORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
-            get_flux(flux, in->wf[f], nzv, 0, 0, 0);
             int s = sgn(vy[v]);
             out->wf[f][ijkv] += -0.5*vy[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nzv]) + std::abs(1-s)*(flux->h2l[ijkv+nzv]-flux->h2l[ijkv]));
         }
         // adv-z
+        get_flux(flux, in->wf[f], nv, 0, 0, 1);
         #pragma acc parallel loop independent collapse(4)
         #pragma omp parallel for simd collapse(4)
         FORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
-            get_flux(flux, in->wf[f], nv, 0, 0, 0);
             int s = sgn(vz[v]);
             out->wf[f][ijkv] += -0.5*vz[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nv]) + std::abs(1-s)*(flux->h2l[ijkv+nv]-flux->h2l[ijkv]));
         }
@@ -123,8 +123,8 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
 #ifdef NVTX
     nvtxRangePush("calRHS_wo_bdry");
 #endif
+    //#pragma ivdeps
     #pragma acc parallel loop independent collapse(3)
-    #pragma ivdeps
     #pragma omp parallel for collapse(3)
     for (int i=0;i<nx[0]; ++i)
     for (int j=0;j<nx[1]; ++j)
@@ -143,7 +143,7 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
         std::array<real,4> mmtt{{0,0,0,0}};
         #endif
 
-#define IDEN(x) real &x##0 = x[0]; real &x##1 = x[1]; real &x##2 = x[2]; real &x##3 = x[3];
+#define IDEN(x) real x##0 = x[0]; real x##1 = x[1]; real x##2 = x[2]; real x##3 = x[3];
         IDEN(emRm);  IDEN(emIp);
         IDEN(eemm);
         #if NFLAVOR == 3
@@ -152,31 +152,76 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
         IDEN(mmtt);
         #endif
 #undef IDEN
-
+        // Many temp variable for reduction as OpenACC doesn't support reduction into array.
         #define RV(x) x##0,x##1,x##2,x##3
         #if NFLAVOR == 3
           #pragma acc loop reduction(+:RV(emRm),RV(emIp),RV(eemm),RV(mtRm),RV(mtIp),RV(teRm),RV(teIp),RV(mmtt) )
         #elif NFLAVOR == 2
           #pragma acc loop reduction(+:RV(emRm),RV(emIp),RV(eemm))
         #endif
+        #undef RV
         for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
             const std::array<real,4> v4{1,vx[k],vy[k],vz[k]};
-            #pragma omp simd
-            for(int s=0;s<4;++s) {
-                emRm[s]   += v4[s]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
-                emIp[s]   += v4[s]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
-                eemm[s]   += v4[s]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+            {
+                emRm0   += v4[0]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp0   += v4[0]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm0   += v4[0]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
                 #if NFLAVOR == 3
-                mtRm[s]   += v4[s]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
-                mtIp[s]   += v4[s]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
-                teRm[s]   += v4[s]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
-                teIp[s]   += v4[s]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
-                mmtt[s]   += v4[s]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                mtRm0   += v4[0]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp0   += v4[0]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm0   += v4[0]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp0   += v4[0]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt0   += v4[0]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                #endif
+            }
+            {
+                emRm1   += v4[1]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp1   += v4[1]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm1   += v4[1]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                #if NFLAVOR == 3
+                mtRm1   += v4[1]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp1   += v4[1]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm1   += v4[1]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp1   += v4[1]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt1   += v4[1]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                #endif
+            }
+            {
+                emRm2   += v4[2]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp2   += v4[2]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm2   += v4[2]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                #if NFLAVOR == 3
+                mtRm2   += v4[2]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp2   += v4[2]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm2   += v4[2]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp2   += v4[2]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt2   += v4[2]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                #endif
+            }
+            {
+                emRm3   += v4[3]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp3   += v4[3]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm3   += v4[3]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                #if NFLAVOR == 3
+                mtRm3   += v4[3]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp3   += v4[3]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm3   += v4[3]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp3   += v4[3]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt3   += v4[3]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
                 #endif
             }
             // integral over vx and vy is zero for axi-symm case.  ( VY TO BE CHECKED...)
         }
+#define IDEN(x)  x[0]=x##0; x[1]=x##1; x[2]=x##2; x[3]=x##3;
+        IDEN(emRm);  IDEN(emIp);
+        IDEN(eemm);
+        #if NFLAVOR == 3
+        IDEN(mtRm);  IDEN(mtIp);
+        IDEN(teRm);  IDEN(teIp);
+        IDEN(mmtt);
+        #endif
+#undef IDEN
 
         //
         // Interaction and vacuum parts.
@@ -394,12 +439,11 @@ void NuOsc::get_flux(Flux *out_flux, const std::vector<real> in_field, const int
      *   SI2 -> for stensil S3 = {i-3, i-2, i-1, i} -> r = 3 left shift.
      */
 
-    #pragma acc parallel loop collapse(3)
+    #pragma acc parallel loop independent collapse(4)
     #pragma omp parallel for simd collapse(4)
     for (int xid = -xdelta; xid < nx[0] + xdelta; xid++)
     for (int yid = -ydelta; yid < nx[1] + ydelta; yid++)
     for (int zid = -zdelta; zid < nx[2] + zdelta; zid++)
-    #pragma acc loop seq
     for (int bin = 0; bin < nv; bin++)    {
                     auto ijkv = idx(xid, yid, zid, bin);
                     const real *u = &in_field[ijkv];

@@ -88,7 +88,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     ulong nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
 
-    #pragma acc enter data create(this)
+    //#pragma acc enter data create(this)
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
       #ifdef COSENU_MPI
@@ -104,7 +104,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
       #else
         pb[d] = new real[4*npb];
       #endif
-        #pragma acc enter data create(pb[d][0:4*npb])
+        //#pragma acc enter data create(pb[d][0:4*npb])
     }
 
     #ifdef DEBUG
@@ -172,7 +172,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         dN  = new real[size];
         dPb = new real[size];
         dNb = new real[size];
-#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
+//#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
 
         // field variables~~
         v_stat = new FieldVar(size);
@@ -180,7 +180,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
         v_stat0 = new FieldVar(size);
-#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+//#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
         #ifdef WENO7
         flux = new Flux(size);
         #endif
