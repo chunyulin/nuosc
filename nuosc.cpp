@@ -268,6 +268,9 @@ int main(int argc, char *argv[]) {
        printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
     }
 
+    #ifdef SYNC_NCCL
+    ncclCommDestroy(state._ncclcomm);   // FIXME: should redesign class moving this to another place
+    #endif
     #if defined(COSENU_MPI)
     MPI_Finalize();    // Why segfault?
     #endif

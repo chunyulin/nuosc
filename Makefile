@@ -15,7 +15,8 @@ ${TARGET}: ${OBJS}
 	$(CXX) $(LIBS) $^ -o $@
 
 test3d:
-	./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .4 .4 .4 --dx 0.1 --nv 4 --nphi 4 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .2 --ANA_EVERY 2 --END_STEP 6
+	export CUDA_VISIBLE_DEVICES=0,1
+	mpirun -np 2 -hostfile ~/hosts ./nuosc --np 2 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 2 2 2  --dx 0.1 --nv 4 --nphi 10 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 1 --END_STEP 6
 
 test3d_square:
 	./nuosc --ipt 20 --nv 4 --dx 0.1 --xmax 0.5 0.5 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --END_STEP 10 --ANA_EVERY 1

@@ -11,6 +11,9 @@ Note:
 - FD-code essentailly memory bound that 112-core has little marginal speedup over 56-core in a node. FV version should be more compute intensive and utiliztion.
 - On T4, mpich and intel mpi has the same performance. OpenMPI seems has trouble to initize large rank.
 
+TODO:
+- Check results for SYNC_NCCL and SYNC_MPI_ONESIDE_COPY, which are incorrects on A100 test node.
+
 
 ## Typical eariler workflow on ARM/TWCC cluster
 

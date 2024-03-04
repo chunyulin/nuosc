@@ -6,6 +6,7 @@
 
 int gen_v2d_GL_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
 int gen_v2d_rsum_zphi(const int nvz_, const int nphi_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
+int gen_v2d_icosahedron(const int nv_, Vec& vw, Vec& vx, Vec& vy, Vec& vz);
 
 int gen_v1d_GL(const int nv, Vec vw, Vec vz);
 int gen_v1d_trapezoidal(const int nv_, Vec vw, Vec vz);
@@ -136,6 +137,10 @@ class NuOsc {
         MPI_Request reqs[DIM*4];
 #endif
         real *pb[DIM];     // TODO: can we use the storage of FieldVar directly w/o copying to this buffers ?
+#ifdef SYNC_NCCL
+        ncclComm_t _ncclcomm;
+        cudaStream_t stream[2*DIM];
+#endif
 
 //--------------
 
@@ -233,12 +238,9 @@ class NuOsc {
         void calRHS_wo_bdry(FieldVar* out, const FieldVar * in);
         void packSend(const FieldVar* in);
         void pack_buffer(const FieldVar* in);
-        void waitall();
         void unpack_buffer(FieldVar* v0);
-        void sync_sendrecv();
-        void sync_nonblocking();
-        void sync_put();
-        void sync_copy();
+        void sync_launch();
+        void waitall();
 #ifdef WENO7
         void get_flux(Flux *, const std::vector<real>, const int, const int, const int, const int);
 #endif

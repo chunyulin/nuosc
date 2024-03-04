@@ -21,7 +21,7 @@ elif [[ $host == "quantum."* ]]; then
 
   export CXX=mpic++
   export OPT="-O3 -acc=gpu -Minfo=accel -gpu=managed,cc70"
-  export LIBS=${OPT}
+  export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 elif [[ $host == *"twcc.ai" ]]; then
 
@@ -33,7 +33,7 @@ elif [[ $host == *"twcc.ai" ]]; then
   
   export CXX=mpic++
   export GSL_ROOT=/opt/ohpc/pkg/kagra/nv/gsl-2.7.1
-  export OPT="-acc=gpu -O3 -Minfo=acc -gpu=manage"
+  export OPT="-acc=gpu -O3 -Minfo=acc -gpu=managed"
 
 
 elif [[ $host == "lgn"* ]]; then
@@ -53,17 +53,12 @@ elif [[ $host == "node1" ]]; then
 
   echo "==== on N1 A100"
   module purge
-  module load nvhpc/22.2
-  #module load nvhpc/23.1
-
-  unset CUDA_VISIBLE_DEVICES
-  unset CFLAGS
-
-  #export GSL_ROOT=/pkg/gsl-2.7.1
+  module load nvhpc-hpcx
 
   export CXX=mpic++
-  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=manage,cc80"
   export OPT="-mp -O4 -Minfo=mp"
+  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed,cc80"
+  export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
   echo "==== on ARM"

@@ -1,4 +1,6 @@
 #include "nuosc_class.h"
+#include "icosahedron.h"
+
 #if defined(IM_V2D_POLAR_GL_Z)
 #include "jacobi_poly.h"
 int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
@@ -53,6 +55,21 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
             vw[j*nv+i] = dv/nphi;
         }
     return nv*nphi;
+}
+int gen_v2d_icosahedron(const int nv_, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
+    IcosahedronVoronoi icosa(nv_);
+    int nv=icosa.N;
+    vx.reserve(nv);
+    vy.reserve(nv);
+    vz.reserve(nv);
+    vw.reserve(nv);
+    for (int i=0; i<nv; ++i) {
+        vx[i] = icosa.X[i].x;
+        vy[i] = icosa.X[i].y;
+        vz[i] = icosa.X[i].z;
+        vw[i] = icosa.vw[i];
+    }
+    return nv;
 }
 
 // v quaduture in [-1:1], vertex-center with simple trapezoidal rules.

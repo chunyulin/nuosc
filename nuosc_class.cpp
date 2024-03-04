@@ -8,6 +8,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     CFL = CFL_;
     dt = dx*CFL;
 
+
     #ifdef COSENU_MPI
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -29,6 +30,17 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &scomm);
     MPI_Comm_rank(scomm, &srank);
     if (!myrank) printf("[%.4f] Cartesian MPI commincator done.\n", utils::msecs_since());
+
+    #ifdef SYNC_NCCL
+    ncclUniqueId id;
+    if (myrank == 0) ncclGetUniqueId(&id);
+    MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, CartCOMM);
+    NCCLCHECK( ncclGroupStart() );
+    ncclCommInitRank(&_ncclcomm, ranks, id, myrank);     // should this be put after acc_set_device() ?
+    NCCLCHECK( ncclGroupEnd() );
+    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
+    #endif
+
     #else
     for (int d=0;d<DIM;++d) px[d] = 1;
     #endif
@@ -46,7 +58,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         for(int i=0;i<nx[d]; ++i) X[d][i] = bbox[d][0] + (i+0.5)*dx;
     }
 
-    // set GPU
     #ifdef _OPENACC
     auto dev_type = acc_get_device_type();
     ngpus = acc_get_num_devices( dev_type );
@@ -56,10 +67,12 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     #else
     if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = ON)\n", ngpus );
     #endif
-    #endif
+    #endif   // End if _OPENACC
 
     #if defined(SYNC_COPY)
     if (!myrank) printf("SYNC_COPY for test.\n");
+    #elif defined(SYNC_NCCL)
+    if (!myrank) printf("Sync by NCCL.\n");
     #elif defined(SYNC_MPI_ONESIDE_COPY)
     if (!myrank) printf("MPI One-side copy.\n");
     #elif defined(SYNC_MPI_SENDRECV)
@@ -71,9 +84,12 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     // Determine nv, which could be complicated for say ICOSA grid.
     #if defined(IM_V2D_POLAR_GL_Z)
     nv = gen_v2d_GL_zphi(nv_,nphi_, vw, vx, vy, vz);
+    #elif defined(IM_V2D_ICOSAHEDRA)
+    nv = gen_v2d_icosahedron(nv_, vw, vx, vy, vz);
     #else
     nv = gen_v2d_rsum_zphi(nv_,nphi_, vw, vx, vy, vz);
     #endif
+
     if (!myrank) printf("[%.4f] v-grid generation done\n", utils::msecs_since());
 
     ulong size = nv;
@@ -88,7 +104,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     ulong nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
 
-    //#pragma acc enter data create(this)
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
       #ifdef COSENU_MPI
@@ -104,7 +119,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
       #else
         pb[d] = new real[4*npb];
       #endif
-        //#pragma acc enter data create(pb[d][0:4*npb])
     }
 
     #ifdef DEBUG
@@ -129,8 +143,10 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 
 #if defined(IM_V2D_POLAR_GL_Z)
             printf("   Use Gauss-Lobatto z-grid and uniform phi-grid.\n");
+#elif defined(IM_V2D_ICOSAHEDRA)
+            printf("   Use Icosahedra grid for v2d grid.\n");
 #else
-            printf("   Use uniform z- and phi- grid.\n");
+            printf("   Use uniform z- and polar phi- grid.\n");
 #endif
 
 #ifndef KO_ORD_3
@@ -180,7 +196,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
         v_stat0 = new FieldVar(size);
-//#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+        //#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
         #ifdef WENO7
         flux = new Flux(size);
         #endif

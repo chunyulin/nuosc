@@ -9,14 +9,16 @@
 
 #define COSENU_MPI
 #define WENO7
-//#define GDR_OFF
+#define GDR_OFF
 //#define PROFILING
+//#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
-//#define SYNC_MPI_ONESIDE_COPY
-//#define ADV_TEST
+#define SYNC_MPI_ONESIDE_COPY
 #define BC_PERI
 #define KO_ORD_3
+//#define ADV_TEST
+//#define IM_V2D_ICOSAHEDRA
 
 //==== End of global flags
 
@@ -69,4 +71,16 @@ typedef std::vector<double> Vec;
 // Halo size is 16* nv* (nx*gz + nz*gx).
 #ifdef COSENU_MPI
 #include <mpi.h>
+#endif
+
+
+#ifdef SYNC_NCCL
+#include "nccl.h"
+#define NCCLCHECK(cmd) do {     \
+    ncclResult_t res = cmd;     \
+    if (res != ncclSuccess) {   \
+        printf("Failed, NCCL error %s:%d '%s'\n", __FILE__,__LINE__,ncclGetErrorString(res)); \
+        exit(EXIT_FAILURE);     \
+    }                           \
+    } while(0)
 #endif
