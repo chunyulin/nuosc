@@ -5,7 +5,7 @@ if [[ $host == "ilgn01" ]]; then
 
   echo "=== on T4 ==="
   ml purge
-  ml sys/intelmpi/2021.9
+  ml sys/intelmpi
 
   export CXX=mpiicpc
   export CXX=icpx

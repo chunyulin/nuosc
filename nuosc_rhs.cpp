@@ -4,7 +4,6 @@
 void NuOsc::calRHS(FieldVar * __restrict out, FieldVar * __restrict in) {
 
     #ifdef COSENU_MPI
-//#define PROFILING
 #ifdef PROFILING
 if (!myrank) utils::reset_timer();
 #endif
@@ -24,7 +23,9 @@ if (!myrank) printf("  [%.4f] Waitall.\n", utils::msecs_since());
 #ifdef PROFILING
 if (!myrank) printf("  [%.4f] Unpack.\n", utils::msecs_since());
 #endif
+    #ifndef ADVEC_OFF
     calRHS_with_bdry(out, in);
+    #endif
 #ifdef PROFILING
 if (!myrank) printf("  [%.4f] calRHS_with_bdry done.\n", utils::msecs_since());
 #endif
@@ -84,15 +85,11 @@ void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restr
             real factor_z = -vz[v]/(12*dx);
             real factor_y = -vy[v]/(12*dx);
             real factor_x = -vx[v]/(12*dx);
-            #ifdef ADVEC_OFF
-            #define ADV_FD(x)     (0.0)
-            #else
             #define ADV_FD(x) ( \
               factor_z*(  (x[-2*nv] - x[2*nv]) - 8.0*( x[-nv] -x[nv] ) ) + \
               factor_y*(  (x[-2*nzv]     - x[2*nzv])     - 8.0*( x[-nzv]     -x[nzv]     ) ) + \
               factor_x*(  (x[-2*nyzv]    - x[2*nyzv])    - 8.0*( x[-nyzv]    -x[nyzv]    ) ) )
-            #endif
-    
+
             // prepare KO operator
             #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)

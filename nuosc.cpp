@@ -146,7 +146,13 @@ int main(int argc, char *argv[]) {
     //acc_set_error_routine(&handle_gpu_errors);  // undefined 
 #endif
 
-#if defined(WENO7) || !defined(KO_ORD_3)
+#if defined(WENO7)
+    #if   DIM == 2
+    int gx[] = {4,4};
+    #elif DIM == 3
+    int gx[] = {4,4,4};
+    #endif
+#elif !defined(KO_ORD_3)
     #if   DIM == 2
     int gx[] = {3,3};
     #elif DIM == 3

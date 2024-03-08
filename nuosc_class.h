@@ -59,16 +59,11 @@ struct FieldVar {
 };
 #ifdef WENO7
 struct Flux {
-    int size;
-    real *l2h; // Flux: from low to high.
-    real *h2l; // Flux: from high to low.
-    Flux(int size_) : size(size_)  {
-        l2h = new real[size]();
-        h2l = new real[size]();
-    }
-    ~Flux() {
-        delete[] l2h;
-        delete[] h2l;
+    std::vector<real> l2h; // Flux: from low to high.
+    std::vector<real> h2l; // Flux: from high to low.
+    Flux(int size)  {
+        l2h.reserve(size);
+        h2l.reserve(size);
     }
 };
 #endif

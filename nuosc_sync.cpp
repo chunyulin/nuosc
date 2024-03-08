@@ -62,7 +62,6 @@ void NuOsc::sync_launch() {
     ulong nXYZ = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
-    #pragma omp parallel for num_threads(DIM)
     #if defined (_OPENACC) && !defined(SYNC_NCCL)
     for (int d=0;d<DIM;++d) {
         real *pbuf = &(pb[d][0]);

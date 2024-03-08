@@ -106,7 +106,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
-      #ifdef COSENU_MPI
+        #ifdef COSENU_MPI
         MPI_Type_contiguous(npb, MPI_DOUBLE, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
         #ifdef SYNC_MPI_ONESIDE_COPY
         // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
@@ -133,7 +133,11 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
+#ifdef WENO7
+            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*6.5 + 2*DIM));
+#else
             printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*nvar*6.5);
+#endif
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
             printf("   Use Periodic boundary\n");
@@ -149,29 +153,27 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("   Use uniform z- and polar phi- grid.\n");
 #endif
 
-#ifndef KO_ORD_3
-            printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
+#ifdef VACUUM_OFF
+            printf("   Vacuum term OFF.\n");
 #else
-            printf("   Use 3-th order KO dissipation, KO eps = %g\n", ko);
+            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
 #endif
 
 #ifndef ADVEC_OFF
             printf("   Advection ON. (Center-FD)\n");
             //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
             //printf("   Use lopsided FD for advaction\n");
+    #ifdef WENO7
+            printf("   WENO7 scheme.\n");
+    #else
+            #ifndef KO_ORD_3
+            printf("   FD scheme with 5-th order KO dissipation, KO eps = %g\n", ko);
+            #else
+            printf("   FD scheme with 3-th order KO dissipation, KO eps = %g\n", ko);
+            #endif
+    #endif
 #else
             printf("   Advection OFF.\n");
-#endif
-
-#ifdef VACUUM_OFF
-            printf("   Vacuum term OFF.\n");
-#else
-            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
-#endif
-#ifdef WENO7
-            printf("   WENO7 scheme.\n");
-#else
-            printf("   FD scheme.\n");
 #endif
         }
 
