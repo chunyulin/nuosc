@@ -6,11 +6,12 @@
 #if DIM != 3
 #error Only DIM=3 is supported
 #endif
+#define _SIMD_ simd
 
 #define COSENU_MPI
-#define WENO7
+//#define WENO7
+//#define PROFILE
 //#define GDR_OFF
-//#define PROFILING
 //#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
@@ -37,6 +38,9 @@
 #include <list>
 #include <algorithm>
 #include <string>
+
+#include <tuple>
+#include <stack>
 
 using std::cout;
 using std::endl;

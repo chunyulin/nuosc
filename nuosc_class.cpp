@@ -134,7 +134,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
 #ifdef WENO7
-            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*6.5 + 2*DIM));
+            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*6.5 + 2));
 #else
             printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*nvar*6.5);
 #endif
@@ -203,10 +203,22 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         flux = new Flux(size);
         #endif
 
+#ifdef PROFILE
+        {  // TODO: move profile log to random folder at local scratch and copy back after.
+        char hname[20];
+        gethostname(hname,sizeof(hname));
+
+        utils::reset_timer();
+        std::string fname = "profile." + std::to_string(myrank);
+        profile.open(fname.c_str(), std::ofstream::out | std::ofstream::trunc);
+        if(!profile) cout << "*** Open profile fails: " << "./analysis.dat" << endl;
+        profile << "## Timing for rank " << myrank << " @ " << hname << endl;
+        }
+#endif
         if (myrank==0) {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
-            anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
+            anafile << "### [ phy_time, 1:maxrelP, 2:surv, survb, 4:avgP, avgPb, 6:aM0, 7:Lex, 8:ELNe, 9:mm, mmb, (11: tt,ttb) ]" << endl;
         }
 
         {   // Hvac
@@ -243,3 +255,19 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 #endif
         }
 }
+
+#ifdef PROFILE   /* Remove this for Nsight */
+static std::stack<std::tuple<std::string, float>> tstack;
+void NuOsc::nvtxRangePush(std::string tag) {
+ auto tms = utils::msecs_since();
+ profile << std::string(tstack.size(),' ')+"BEG " << tag << " " << tms << endl;
+ tstack.push({tag, tms});
+}
+
+void NuOsc::nvtxRangePop() {
+ auto tms = utils::msecs_since();
+ auto tt = tstack.top();
+ tstack.pop();
+ profile << std::string(tstack.size(),' ')+"END " << std::get<0>(tt)  << " " << tms << " --- " << tms-std::get<1>(tt) << endl;
+}
+#endif

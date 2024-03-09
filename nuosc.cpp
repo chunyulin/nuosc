@@ -44,9 +44,23 @@ int main(int argc, char *argv[]) {
 
     // === initial value
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
-    real lnue  = 0.6,   lnueb  = 0.53;  // width of nu/nubar in z
-    real lnuex  = std::numeric_limits<real>::max();
-    real lnuebx = std::numeric_limits<real>::max();
+    real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6};
+    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.53};
+    #if 0
+    // case=25
+    real lnue [] = {1.7225780329928866, std::numeric_limits<real>::max(), 0.6,   0.6005827898015417};
+    real lnueb[] = {1.55              , std::numeric_limits<real>::max(), 0.5,   0.47891794098715224};
+    // case=50
+    real lnue [] = {1.1399810727728898, std::numeric_limits<real>::max(), 0.6,   0.48486963891423884};  // the last (normalization) factor is not needed.
+    real lnueb[] = {1.0               , std::numeric_limits<real>::max(), 0.5,   0.3705140263099512};
+    // case=75
+    real lnue [] = {0.8614776421914219, std::numeric_limits<real>::max(), 0.6,   0.39970494858533934};
+    real lnueb[] = {0.7               , std::numeric_limits<real>::max(), 0.5,   0.3705140263099512};
+    // case=95
+    real lnue [] = {0.7638215519017106, std::numeric_limits<real>::max(), 0.6,   0.3667199753407259};
+    real lnueb[] = {0.5               , std::numeric_limits<real>::max(), 0.5,   0.2317214158353605};
+    #endif
+
     real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
     real eps0  = 0.1;
     real sigma  = 100.0;    // lzpt = 2*simga**2
@@ -116,13 +130,13 @@ int main(int argc, char *argv[]) {
             if (!myrank) cout << " ** END_STEP: " << END_STEP << endl;
             // for intial data
         } else if (strcmp(argv[t], "--lnue") == 0 )  {
-            lnue   = atof(argv[t+1]);    t+=1;
+            lnue[2]   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--lnueb") == 0 )  {
-            lnueb  = atof(argv[t+1]);    t+=1;
+            lnueb[2]  = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--lnuex") == 0 )  {
-            lnuex   = atof(argv[t+1]);    t+=1;
+            lnue[0]   = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--lnuebx") == 0 )  {
-            lnuebx  = atof(argv[t+1]);    t+=1;
+            lnueb[0]  = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--sigma") == 0 )  {
             sigma = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--eps0") == 0 )  {
@@ -183,7 +197,7 @@ int main(int argc, char *argv[]) {
     else if (ipt==20) state.fillInitSquare( eps0, sigma);
     else if (ipt==30) state.fillInitTriangle( eps0, sigma);
 #else
-    state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb, lnuex, lnuebx);
+    state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb);
 #endif
     if (!myrank) printf("[%.4f] Initialize data done.\n", utils::msecs_since());
 
@@ -229,6 +243,7 @@ int main(int argc, char *argv[]) {
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
+            //state.fft();
             state.analysis();
         }
 
@@ -273,6 +288,10 @@ int main(int argc, char *argv[]) {
        printf("Memory usage (GB) per rank: %.2f ~ %.2f\n", tmem_min, tmem_max );
        printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
     }
+    #ifdef PROFILE
+    state.profile << "Memory GB " << tmem << endl;
+    state.profile << "ms_per_step_grid: " << stepms/(END_STEP-cooltime+1)/lpts*1e6 << " " << stepms/state.phy_time/1000 << endl;
+    #endif
 
     #ifdef SYNC_NCCL
     ncclCommDestroy(state._ncclcomm);   // FIXME: should redesign class moving this to another place

@@ -7,11 +7,11 @@ if [[ $host == "ilgn01" ]]; then
   ml purge
   ml sys/intelmpi
 
-  export CXX=mpiicpc
-  export CXX=icpx
-  export OPT="-parallel-source-info=2 -qopt-report=max -g -qopt-zmm-usage=high -xsapphirerapids -O3 -qopenmp -Wno-unknown-pragmas -I/pkg/x86/apps/oneapi/mpi/2021.9.0/include"
-  export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas -I/pkg/x86/apps/oneapi/mpi/2021.9.0/include"
-  export LIBS="-qopenmp -O3 -xsapphirerapids -L/pkg/x86/apps/oneapi/mpi/2021.9.0/lib/release -L/pkg/x86/apps/oneapi/mpi/2021.9.0/lib -Xlinker --enable-new-dtags -Xlinker -rpath -Xlinker /pkg/x86/apps/oneapi/mpi/2021.9.0/lib/release -Xlinker -rpath -Xlinker /pkg/x86/apps/oneapi/mpi/2021.9.0/lib -lmpicxx -lmpifort -lmpi -ldl -lrt -lpthread"
+  export CXX=mpiicpx
+  export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
+  export OPT="-parallel-source-info=2  -g -qopt-zmm-usage=high -xsapphirerapids -O3 -qopenmp -Wno-unknown-pragmas"
+  export OPT="-qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
+  export LIBS="-qopenmp -O3 -xsapphirerapids"
 
 elif [[ $host == "quantum."* ]]; then
 

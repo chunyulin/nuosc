@@ -1,27 +1,8 @@
 #include "nuosc_class.h"
 
-void NuOsc::packSend(const FieldVar* v0) {
-
-    #ifdef PROFILING_BREAKDOWNS
-    auto t0 = std::chrono::high_resolution_clock::now();
-    #endif
-    pack_buffer(v0);
-    #ifdef PROFILING_BREAKDOWNS
-    auto t1 = std::chrono::high_resolution_clock::now();
-    #endif
-
-    sync_launch();
-
-    #ifdef PROFILING_BREAKDOWNS
-    auto t2 = std::chrono::high_resolution_clock::now();
-    t_packing += std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0 ).count();
-    t_sync += std::chrono::duration_cast<std::chrono::milliseconds>( t2-t1 ).count();
-    #endif
-}
-
 void NuOsc::waitall() {
-#ifdef NVTX
-    nvtxRangePush("Wait and unpack");
+#ifdef PROFILE
+    nvtxRangePush("Waitall");
 #endif
 #ifdef COSENU_MPI
     ulong nXYZ = nvar*nv;
@@ -35,8 +16,7 @@ void NuOsc::waitall() {
     #elif defined(SYNC_MPI_SENDRECV)
     #elif defined(SYNC_COPY)
     #else // default for nonblocking
-    const int n_reqs = DIM*4;
-    MPI_Waitall(n_reqs, reqs, MPI_STATUSES_IGNORE);
+    MPI_Waitall(4*DIM, reqs, MPI_STATUSES_IGNORE);
     #endif
 
     #if defined (_OPENACC) && defined (GDR_OFF) && !defined (SYNC_NCCL)
@@ -49,14 +29,14 @@ void NuOsc::waitall() {
     #pragma acc wait
     #endif
 #endif
-#ifdef NVTX
+#ifdef PROFILE
     nvtxRangePop();
 #endif
 }
 
 void NuOsc::sync_launch() {
-#ifdef NVTX
-    nvtxRangePush("Sync launch");
+#ifdef PROFILE
+nvtxRangePush("Sync");
 #endif
 #ifdef COSENU_MPI
     ulong nXYZ = nvar*nv;
@@ -107,17 +87,17 @@ void NuOsc::sync_launch() {
         memcpy(&pb[d][2*npb], &pb[d][0], 2*npb*sizeof(real));
     }
     #else
-    #pragma omp parallel for num_threads(DIM)
+    //#pragma omp parallel for num_threads(DIM)
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
-        MPI_Irecv(&pb[d][2*npb], 1, t_pb[d], nb[d][1],   d*2, CartCOMM, &reqs[d*4]);
-        MPI_Irecv(&pb[d][3*npb], 1, t_pb[d], nb[d][0], 1+d*2, CartCOMM, &reqs[d*4+1]);
-        MPI_Isend(&pb[d][    0], 1, t_pb[d], nb[d][0],   d*2, CartCOMM, &reqs[d*4+2]);
-        MPI_Isend(&pb[d][  npb], 1, t_pb[d], nb[d][1], 1+d*2, CartCOMM, &reqs[d*4+3]);
+        MPI_Isend(&pb[d][    0], 1, t_pb[d], nb[d][0],   d*2, CartCOMM, &reqs[d*4]);
+        MPI_Isend(&pb[d][  npb], 1, t_pb[d], nb[d][1], 1+d*2, CartCOMM, &reqs[d*4+1]);
+        MPI_Irecv(&pb[d][2*npb], 1, t_pb[d], nb[d][1],   d*2, CartCOMM, &reqs[d*4+2]);
+        MPI_Irecv(&pb[d][3*npb], 1, t_pb[d], nb[d][0], 1+d*2, CartCOMM, &reqs[d*4+3]);
     }
     #endif
 #endif
-#ifdef NVTX
+#ifdef PROFILE
     nvtxRangePop();
 #endif
 }

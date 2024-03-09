@@ -1,12 +1,14 @@
 #include "nuosc_class.h"
 
 // for init data
-inline real eps_c(real eps0, real z, real z0, real sigma){return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
-inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) {return eps0*rand()/RAND_MAX;}
-inline real eps_p(real eps0, real z, real z0,  real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
+inline real eps_c(real eps0, real z, real z0, real sigma)        { return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
+inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) { return eps0*rand()/RAND_MAX;}
+inline real eps_p(real eps0, real z, real z0,  real sigma)       { return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
+double g(double vx, double vy, double vz, double s[], double v0 = 1.0) {
+    return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) );
+}
 double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
-    // ELN for vx,vz
     return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
 }
 double g(double v, double sigma, double v0 = 1.0){
@@ -15,8 +17,8 @@ double g(double v, double sigma, double v0 = 1.0){
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
-void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue, real lnueb, real lnue_x, real lnueb_x) {
-#ifdef NVTX
+void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]) {
+#ifdef PROFILE
     nvtxRangePush(__FUNCTION__);
 #endif
 
@@ -26,7 +28,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
         int amax=nx[DIM-1]/2/10;
 
-	if (myrank==0) printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue, lnueb, sigma, amax);
+	if (myrank==0) printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue[2], lnueb[2], sigma, amax);
 
         Vec phi(nx[DIM-1]/10+1);
         const real pi2oL = 2.0*M_PI/(bbox[DIM-1][1]-bbox[DIM-1][0]);
@@ -49,8 +51,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 		auto kv = idx(0,0,k,v);
 
 		// ELN profile
-		G0 [kv] =         g(vz[v], lnue );
-		G0b[kv] = alpha * g(vz[v], lnueb);
+		G0 [kv] =         g(vz[v], lnue [3]);
+		G0b[kv] = alpha * g(vz[v], lnueb[3]);
 
                 v_stat->wf[ff::ee]  [kv] =  0.5* G0 [kv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
                 v_stat->wf[ff::mm]  [kv] =  0.5* G0 [kv]*(1.0-tmp2);
@@ -68,7 +70,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
     } else {
 
-	if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu_z= %g %g lnu_x= %g %g\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue, lnueb, lnue_x, lnueb_x);
+	if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
 
         // calulate normalization factor numerically...
 	Vec ng(nv), ngb(nv);
@@ -76,13 +78,13 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
         real ing0=0, ing1=0;
         #pragma omp parallel for simd reduction(+:ing0, ing1)
 	for (int v=0;v<nv;++v) {
-	    ng [v] = g(vx[v], vz[v], lnue_x,  lnue );   // large vx sigma to reduce to 1D case (axi-symmetric case)
-	    ngb[v] = g(vx[v], vz[v], lnueb_x, lnueb );
+	    ng [v] = g(vx[v], vy[v], vz[v], lnue );
+	    ngb[v] = g(vx[v], vy[v], vz[v], lnueb );
             ing0 += vw[v]*ng [v];
             ing1 += vw[v]*ngb[v];
 	}
 
-	ing0 = 1.0/ing0;
+	ing0 = 1.0/ing0;    // for normalize G0, which means we don't need provide N actually.
 	ing1 = 1.0/ing1;
 
         real (*spatialeps)(real,real,real,real);
@@ -110,6 +112,18 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
             v_stat->wf[ff::bmm] [ijkv] = 0.5* G0b[ijkv]*(1.0-p3o);
             v_stat->wf[ff::bemr][ijkv] = 0.5* G0b[ijkv]*tmpr;
             v_stat->wf[ff::bemi][ijkv] = 0.0;
+            #if NFLAVOR == 3
+            v_stat->wf[ff::tt]  [ijkv] = 0.0;
+            v_stat->wf[ff::mtr] [ijkv] = 0.0;// 0.5* G0[ijkv]*tmpr;
+            v_stat->wf[ff::mti] [ijkv] = 0.0;
+            v_stat->wf[ff::ter] [ijkv] = 0.0;// 0.5* G0[ijkv]*tmpr;
+            v_stat->wf[ff::tei] [ijkv] = 0.0;
+            v_stat->wf[ff::btt] [ijkv] = 0.0;
+            v_stat->wf[ff::bmtr][ijkv] = 0.0;// 0.5* G0b[ijkv]*tmpr;
+            v_stat->wf[ff::bmti][ijkv] = 0.0;
+            v_stat->wf[ff::bter][ijkv] = 0.0;// 0.5* G0b[ijkv]*tmpr;
+            v_stat->wf[ff::btei][ijkv] = 0.0;
+            #endif
 
             // initial nv_e
             n00 += vw[v]*v_stat->wf[ff::ee ][ijkv];
@@ -130,7 +144,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
     if (myrank==0) printf("      init number density of nu_e: %g %g\n", n_nue0[0], n_nue0[1]);
 
-#ifdef NVTX
+#ifdef PROFILE
     nvtxRangePop();
 #endif
 }

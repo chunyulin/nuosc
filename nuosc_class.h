@@ -41,10 +41,9 @@ struct FieldVar {
 
 #if 1
     std::array<std::vector<real>, 2*NFLAVOR*NFLAVOR> wf;
-
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
-            wf[f] = std::vector<real>(size,0); // initialize to zero
+            wf[f] = std::vector<real>(size,0);
     }
 #else
     std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
@@ -166,6 +165,9 @@ class NuOsc {
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
+#ifdef PROFILE
+        std::ofstream profile;
+#endif
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
@@ -220,7 +222,7 @@ class NuOsc {
         int  get_nphi()  const  {  return nphi;   }
 
 
-        void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue, real lnueb, real lnuex, real lnuebx);
+        void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]);
         void fillInitGaussian(real eps0, real sigma);
         void fillInitSquare(real eps0, real sigma);
         void fillInitTriangle(real eps0, real sigma);
@@ -231,7 +233,6 @@ class NuOsc {
         //void calRHS_core(FieldVar* out, const FieldVar * in, const int bb[2*DIM]);
         void calRHS_with_bdry(FieldVar* out, const FieldVar * in);
         void calRHS_wo_bdry(FieldVar* out, const FieldVar * in);
-        void packSend(const FieldVar* in);
         void pack_buffer(const FieldVar* in);
         void unpack_buffer(FieldVar* v0);
         void sync_launch();
@@ -246,6 +247,11 @@ class NuOsc {
         void eval_conserved(const FieldVar* v0);
         void renormalize(FieldVar* v0);
 
+        void fft();
+#ifdef PROFILE   /* Remove this for Nsight */
+        void nvtxRangePush(const std::string);
+        void nvtxRangePop();
+#endif
         // 1D output:
         void addSnapShotAtV(std::list<std::vector<real>> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
