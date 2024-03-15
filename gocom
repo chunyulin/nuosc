@@ -56,8 +56,8 @@ elif [[ $host == "node"[12] ]]; then
   module load nvhpc-hpcx
 
   export CXX=mpic++
-  export OPT="-mp -O4 -Minfo=mp"
-  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed,cc80"
+  export OPT="-O4 -Kieee -acc=gpu -Minfo=acc -gpu=managed,cc80"
+  export OPT="-O4 -Kieee -mp -Minfo=mp"
   export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
