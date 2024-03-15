@@ -1,28 +1,28 @@
 #pragma once
 
 //==== Start of global flags
-#define NFLAVOR 3
+#define NFLAVOR 2
 #define DIM 3
 #if DIM != 3
 #error Only DIM=3 is supported
 #endif
-#define _SIMD_ simd
 
+#define WENO7
+#define BC_PERI
+#define KO_ORD_3
+//#define IM_V2D_ICOSAHEDRA
+//#define ADV_TEST
+
+#define PROFILE
+#define DEBUG
 #define COSENU_MPI
-//#define WENO7
-//#define PROFILE
 //#define GDR_OFF
 //#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
 //#define SYNC_MPI_ONESIDE_COPY
-#define BC_PERI
-#define KO_ORD_3
-//#define ADV_TEST
-//#define IM_V2D_ICOSAHEDRA
 
 //==== End of global flags
-
 
 #include <chrono>
 #include <cmath>
@@ -54,9 +54,15 @@ using std::min;
 using std::cos;
 using std::sin;
 
-
 typedef double real;
 typedef std::vector<double> Vec;
+
+#define _SIMD_ simd
+#if defined(INTEL_COMPILER)
+  #define RESTRICT restrict
+#else
+  #define RESTRICT __restrict
+#endif
 
 #ifdef PAPI
 #include <papi.h>

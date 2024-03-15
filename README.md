@@ -14,6 +14,24 @@ Note:
 TODO:
 - Check results for SYNC_NCCL and SYNC_MPI_ONESIDE_COPY, which are incorrects on A100 test node.
 
+## Simple benchmark on Neoverse-N1 with A100
+
+- 3D: via `make test3d`
+
+|   Time per step-grid (ns)   |   80-core (Neo N1)   |   A100 x 1   |
+| --- | --- | --- |
+|   FD, 2-flavor (8 vars)   |   40   |   3   (13x)   |
+|   FD, 3-flavor (18 vars)   |   100   |   8  (13x)   |
+|   FV, 2-flavor (8 vars)   |   400   |   8  (50x)   |
+|   FV, 3-flavor (18 vars)   |   1000   |   20  (50x)   |
+
+- Eariler 1D test has difference tendency, maybe due to implementation and lower arithmetic intgensity.
+
+|   Time per step-grid (ns)   |   80-core (Neo N1)   |   A100 x 1   |
+| --- | --- | --- |
+|   FD, 2-flavor |   16   |    3    (5x)   |
+|   FV, 2-flavor |   20   |   10    (2x)   |
+
 
 ## Typical eariler workflow on ARM/TWCC cluster
 

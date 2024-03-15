@@ -1,7 +1,7 @@
 #include "nuosc_class.h"
 #include "utils.h"
 
-void NuOsc::calRHS(FieldVar * __restrict out, FieldVar * __restrict in) {
+void NuOsc::calRHS(FieldVar * RESTRICT out, FieldVar * RESTRICT in) {
 #ifdef PROFILE
 nvtxRangePush("calRHS");
 #endif
@@ -9,12 +9,15 @@ nvtxRangePush("calRHS");
 #ifdef COSENU_MPI
     pack_buffer(in);
     sync_launch();
-
-    calRHS_wo_bdry(out, in);  // overlap with non-blocking sync
-
+#if 1
+    calRHS_wo_bdry(out, in);
     waitall();
     unpack_buffer(in);
-
+#else
+    waitall();
+    unpack_buffer(in);
+    calRHS_wo_bdry(out, in);
+#endif
     #ifndef ADVEC_OFF
     calRHS_with_bdry(out, in);
     #endif
@@ -28,7 +31,7 @@ nvtxRangePop();
 #endif
 }
 
-void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restrict in) {
+void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in) {
 #ifdef PROFILE
     nvtxRangePush("calRHS_with_bdry");
 #endif
@@ -39,29 +42,33 @@ void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restr
     for (int f=0;f<nvar; ++f) {
 
 #ifdef WENO7
+    //_Pragma("pragma block_loop factor(256) level(1:2)")
+#define WENOPARFOR(i,j,k,v) \
+    _Pragma("acc parallel loop independent collapse(4)") \
+    _Pragma("omp parallel loop collapse(3)") \
+    for (int i=0;i<nx[0]; ++i) \
+    for (int j=0;j<nx[1]; ++j) \
+    for (int k=0;k<nx[2]; ++k) \
+    _Pragma("omp simd") \
+    for (int v=0;v<nv; ++v)
+
         // adv-x
         get_flux(flux, in->wf[f], nyzv, 1, 0, 0);
-        #pragma acc parallel loop independent collapse(4)
-        #pragma omp parallel for _SIMD_ collapse(4)
-        FORALL(i,j,k,v) {
+        WENOPARFOR(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
             int s = sgn(vx[v]);
             out->wf[f][ijkv] += -0.5*vx[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nyzv]) + std::abs(1-s)*(flux->h2l[ijkv+nyzv]-flux->h2l[ijkv]));
         }
         // adv-y
         get_flux(flux, in->wf[f], nzv, 0, 1, 0);
-        #pragma acc parallel loop independent collapse(4)
-        #pragma omp parallel for _SIMD_ collapse(4)
-        FORALL(i,j,k,v) {
+        WENOPARFOR(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
             int s = sgn(vy[v]);
             out->wf[f][ijkv] += -0.5*vy[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nzv]) + std::abs(1-s)*(flux->h2l[ijkv+nzv]-flux->h2l[ijkv]));
         }
         // adv-z
         get_flux(flux, in->wf[f], nv, 0, 0, 1);
-        #pragma acc parallel loop independent collapse(4)
-        #pragma omp parallel for _SIMD_ collapse(4)
-        FORALL(i,j,k,v) {
+        WENOPARFOR(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
             int s = sgn(vz[v]);
             out->wf[f][ijkv] += -0.5*vz[v]/dx * (std::abs(1+s) * (flux->l2h[ijkv]-flux->l2h[ijkv-nv]) + std::abs(1-s)*(flux->h2l[ijkv+nv]-flux->h2l[ijkv]));
@@ -100,7 +107,7 @@ void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restr
             #endif
             out->wf[f][ijkv] += ADV_FD(ff) + KO_FD(ff);
         } // end for xyzv.
-#endif  // end if WENO7
+#endif // end of WENO7
     } // end for fields.
 
 #ifdef PROFILE
@@ -108,7 +115,7 @@ void NuOsc::calRHS_with_bdry(FieldVar * __restrict out, const FieldVar * __restr
 #endif
 }
 
-void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restrict in) {
+void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in) {
 #ifdef PROFILE
     nvtxRangePush("calRHS_wo_bdry");
 #endif
@@ -125,6 +132,7 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
         std::array<real,4> emIp{{0,0,0,0}};
         std::array<real,4> eemm{{0,0,0,0}};
         #if NFLAVOR == 3
+        
         std::array<real,4> mtRm{{0,0,0,0}};
         std::array<real,4> mtIp{{0,0,0,0}};
         std::array<real,4> teRm{{0,0,0,0}};
@@ -149,6 +157,7 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
           #pragma acc loop reduction(+:RV(emRm),RV(emIp),RV(eemm))
         #endif
         #undef RV
+        #pragma omp _SIMD_
         for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
             const std::array<real,4> v4{1,vx[k],vy[k],vz[k]};
@@ -325,15 +334,15 @@ void NuOsc::calRHS_wo_bdry(FieldVar * __restrict out, const FieldVar * __restric
 }
 
 /* v0 = v1 + a * v2 */
-void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2) {
+void NuOsc::vectorize(FieldVar* RESTRICT v0, const FieldVar * RESTRICT v1, const real a, const FieldVar * RESTRICT v2) {
 #ifdef PROFILE
     nvtxRangePush("Vec1");
 #endif
 
+    for(int f=0;f<nvar;++f)   // field-loop in the outer hoping to make memory access continuous ( but not effective )
     PARFORALL(i,j,k,v) {
         auto ijkv = idx(i,j,k,v);
-        for(int f=0;f<nvar;++f)
-          v0->wf[f][ijkv] = v1->wf[f][ijkv] + a * v2->wf[f][ijkv];
+        v0->wf[f][ijkv] = v1->wf[f][ijkv] + a * v2->wf[f][ijkv];
     }
 #ifdef PROFILE
     nvtxRangePop();
@@ -341,15 +350,15 @@ void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, c
 }
 
 // v0 = v1 + a * ( v2 + v3 )
-void NuOsc::vectorize(FieldVar* __restrict v0, const FieldVar * __restrict v1, const real a, const FieldVar * __restrict v2, const FieldVar * __restrict v3) {
+void NuOsc::vectorize(FieldVar* RESTRICT v0, const FieldVar * RESTRICT v1, const real a, const FieldVar * RESTRICT v2, const FieldVar * RESTRICT v3) {
 #ifdef PROFILE
     nvtxRangePush("Vec2");
 #endif
 
+    for(int f=0;f<nvar;++f)   // field-loop in the outer hoping to make memory access continuous ( but not effective )
     PARFORALL(i,j,k,v) {
         auto ijkv = idx(i,j,k,v);
-        for(int f=0;f<nvar;++f)
-          v0->wf[f][ijkv] = v1->wf[f][ijkv] + a * (v2->wf[f][ijkv] + v3->wf[f][ijkv]);
+        v0->wf[f][ijkv] = v1->wf[f][ijkv] + a * (v2->wf[f][ijkv] + v3->wf[f][ijkv]);
     }
 #ifdef PROFILE
     nvtxRangePop();
@@ -390,7 +399,7 @@ void NuOsc::step_rk4() {
 }
 
 #ifdef WENO7
-void NuOsc::get_flux(Flux *out_flux, const std::vector<real> in_field, const int stride, const int xdelta = 0, const int ydelta = 0, const int zdelta = 0)
+void NuOsc::get_flux(Flux * RESTRICT out_flux, const real *in_field, const int stride, const int xdelta = 0, const int ydelta = 0, const int zdelta = 0)
 {
 #ifdef PROFILE
     nvtxRangePush("Flux");
@@ -409,8 +418,6 @@ void NuOsc::get_flux(Flux *out_flux, const std::vector<real> in_field, const int
      *   Modifies:
      *       - out_flux->l2h & out_flux->h2l.
      */
-tracePush("getFlux");
-
     const real EPS = 1E-6;
 
     const real gamma0_l2h = 4. / 35.;
@@ -433,10 +440,11 @@ tracePush("getFlux");
      */
 
     #pragma acc parallel loop independent collapse(4)
-    #pragma omp parallel for _SIMD_ collapse(4)
+    #pragma omp parallel for collapse(3)
     for (int xid = -xdelta; xid < nx[0] + xdelta; xid++)
     for (int yid = -ydelta; yid < nx[1] + ydelta; yid++)
-    for (int zid = -zdelta; zid < nx[2] + zdelta; zid++)
+    for (int zid = -zdelta; zid < nx[2] + zdelta; zid++) {
+    #pragma omp _SIMD_
     for (int bin = 0; bin < nv; bin++)    {
                     auto ijkv = idx(xid, yid, zid, bin);
                     const real *u = &in_field[ijkv];
@@ -475,7 +483,8 @@ tracePush("getFlux");
                     real u3 = (1. / 4.) * u[i0] + (13. / 12.) * u[i_1] - (5. / 12.) * u[i_2] + (1. / 12.) * u[i_3]; // r = 3
                     out_flux->h2l[ijkv] = (w0 * u0 + w1 * u1 + w2 * u2 + w3 * u3)/(w0 + w1 + w2 + w3);
                     }
-    }
+    } // end of bin
+    } // end of xyz
 #ifdef PROFILE
     nvtxRangePop();
 #endif

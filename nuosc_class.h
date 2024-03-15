@@ -40,12 +40,33 @@ enum ff {
 struct FieldVar {
 
 #if 1
-    std::array<std::vector<real>, 2*NFLAVOR*NFLAVOR> wf;
+    std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
-            wf[f] = std::vector<real>(size,0);
+            wf[f] = new real[size]();
+            //wf[f].reserve(size);
+            //wf[f] = std::vector<real>(size,0);
+    }
+    ~FieldVar() {
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
     }
 #else
+
+    real **wf;
+    FieldVar(int size) {
+
+        wf = new real *[2*NFLAVOR*NFLAVOR];
+        for (int i = 0; i < 2*NFLAVOR*NFLAVOR; i++)
+        {
+            wf[i] = new real[size]();
+        }
+    }
+    ~FieldVar() {
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
+        delete[] wf;
+    }
+    //
+
     std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size]();
@@ -58,11 +79,15 @@ struct FieldVar {
 };
 #ifdef WENO7
 struct Flux {
-    std::vector<real> l2h; // Flux: from low to high.
-    std::vector<real> h2l; // Flux: from high to low.
+    real* l2h; // Flux: from low to high.
+    real* h2l; // Flux: from high to low.
     Flux(int size)  {
-        l2h.reserve(size);
-        h2l.reserve(size);
+        l2h = new real[size]();
+        h2l = new real[size]();
+    }
+    ~Flux()  {
+        delete[] l2h;
+        delete[] h2l;
     }
 };
 #endif
@@ -139,7 +164,7 @@ class NuOsc {
 //--------------
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
-        FieldVar *v_stat0;   // NOT used.
+        //FieldVar *v_stat0;   // NOT used.
 #ifdef WENO7
         Flux *flux;
 #endif
@@ -185,7 +210,7 @@ class NuOsc {
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
             //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
-            delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; delete v_stat0;
+            delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; //delete v_stat0;
             #ifdef WENO7
             delete flux;
             #endif
@@ -238,7 +263,8 @@ class NuOsc {
         void sync_launch();
         void waitall();
 #ifdef WENO7
-        void get_flux(Flux *, const std::vector<real>, const int, const int, const int, const int);
+        //void get_flux(Flux *, const std::vector<real>, const int, const int, const int, const int);
+        void get_flux(Flux *, const real *, const int, const int, const int, const int);
 #endif
 
         void vectorize(FieldVar* v0, const FieldVar * v1, const real a, const FieldVar * v2);

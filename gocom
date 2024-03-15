@@ -49,7 +49,7 @@ elif [[ $host == "lgn"* ]]; then
   export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -xCASCADELAKE"
 
-elif [[ $host == "node1" ]]; then
+elif [[ $host == "node"[12] ]]; then
 
   echo "==== on N1 A100"
   module purge

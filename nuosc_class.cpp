@@ -134,9 +134,9 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
 #ifdef WENO7
-            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*6.5 + 2));
+            printf("   Local size per field var = %.2f GB. Mem per rank is estimated %.2f GB (%d vars)\n", mem_per_var, mem_per_var*(nvar*4.2 + 14), nvar);
 #else
-            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*nvar*6.5);
+            printf("   Local size per field var = %.2f GB. Mem per rank is estimated %.2f GB (%d vars)\n", mem_per_var, mem_per_var*(nvar*4.2 + 12), nvar);
 #endif
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
@@ -190,15 +190,13 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         dN  = new real[size];
         dPb = new real[size];
         dNb = new real[size];
-//#pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
 
         // field variables~~
         v_stat = new FieldVar(size);
         v_rhs  = new FieldVar(size);
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
-        v_stat0 = new FieldVar(size);
-        //#pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+        //v_stat0 = new FieldVar(size);
         #ifdef WENO7
         flux = new Flux(size);
         #endif

@@ -1,6 +1,6 @@
 #include "nuosc_class.h"
 
-void NuOsc::eval_conserved(const FieldVar* __restrict v0) {
+void NuOsc::eval_conserved(const FieldVar* RESTRICT v0) {
 #ifdef PROFILE
     nvtxRangePush("Eval_conserved");
 #endif
@@ -141,7 +141,7 @@ void NuOsc::analysis() {
 }
 
 
-void NuOsc::renormalize(FieldVar* __restrict v0) {
+void NuOsc::renormalize(FieldVar* RESTRICT v0) {
 
     PARFORALL(i,j,k,v)   {
         int ijkv = idx(i,j,k,v);

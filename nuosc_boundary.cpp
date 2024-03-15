@@ -1,11 +1,11 @@
 #include "nuosc_class.h"
 
-void NuOsc::updateInjetOpenBoundary(FieldVar * __restrict in) { 
+void NuOsc::updateInjetOpenBoundary(FieldVar * RESTRICT in) { 
     cout << "Not implemented." << endl;
     assert(0);
 }
 
-void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
+void NuOsc::updatePeriodicBoundary(FieldVar * RESTRICT in) {
 #ifdef PROFILE
     nvtxRangePush("PeriodicBoundary");
 #endif
@@ -82,7 +82,7 @@ void NuOsc::updatePeriodicBoundary(FieldVar * __restrict in) {
  #define NPBY nx[0]*gx[1]*nx[2]*nv*nvar
  #define NPBZ nx[0]*nx[1]*gx[2]*nv*nvar
 #endif
-void NuOsc::pack_buffer(const FieldVar* in) {
+void NuOsc::pack_buffer(const FieldVar* RESTRICT in) {
 #ifdef PROFILE
     nvtxRangePush("Packing");
 #endif
@@ -176,7 +176,7 @@ void NuOsc::pack_buffer(const FieldVar* in) {
 #endif
 }
 
-void NuOsc::unpack_buffer(FieldVar* out) {
+void NuOsc::unpack_buffer(FieldVar* RESTRICT out) {
 #ifdef PROFILE
     nvtxRangePush("Unpacking");
 #endif
