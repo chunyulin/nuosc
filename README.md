@@ -4,12 +4,15 @@
 
 1. Compile ". ./gocom"
 2. See bench/ for batch submission, result collection, and compare plot.
+3. Weak scaling upto 512 node x 112 core tested via OmeAPI 2024, with almost perfect weak scaling for 8-rank per node.
 
-Note: 
-- Weak scaling upto 512 rank x 112 core ~ 70%. MPI one-sided copy has better scaling but slower for fewer ranks.
-- Max size within a node is roughly 140x140x140x18x18 for 2-flavor case.
-- FD-code essentailly memory bound that 112-core has little marginal speedup over 56-core in a node. FV version should be more compute intensive and utiliztion.
-- On T4, mpich and intel mpi has the same performance. OpenMPI seems has trouble to initize large rank.
+|   Normalized time per step-grid (ns)   |   8-rank  |
+| --- | --- | --- |
+|   FD, 2-flavor (8 vars)   |   10   |
+|   FD, 3-flavor (18 vars)   |   22   |
+|   FV, 2-flavor (8 vars)   |   25   |
+|   FV, 3-flavor (18 vars)   |   55-75   |
+
 
 TODO:
 - Check results for SYNC_NCCL and SYNC_MPI_ONESIDE_COPY, which are incorrects on A100 test node.

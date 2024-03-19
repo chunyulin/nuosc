@@ -77,8 +77,8 @@ int main(int argc, char *argv[]) {
     // Thread support: SINGLE < FUNNELED < SERIALIZED < MULTIPLE.
     //MPI_Init(&argc, &argv);
     //MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
-    //MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    //MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
     if (!myrank) printf("[%.4f] Initialize main class.\n", utils::msecs_since());
 
-    long lpts = state.get_lpts();
+    auto lpts = state.get_lpts();
     state.set_mu(mu);
     state.set_pmo(pmo);
     state.set_renorm(renorm);

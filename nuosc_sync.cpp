@@ -9,8 +9,8 @@ void NuOsc::waitall() {
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
     #if defined(SYNC_NCCL)
-    for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
-    //cudaDeviceSynchronize();
+    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
+    cudaDeviceSynchronize();
     #elif defined(SYNC_MPI_ONESIDE_COPY)
     for (int d=0;d<DIM;++d)    MPI_Win_fence(0, w_pb[d]);
     #elif defined(SYNC_MPI_SENDRECV)

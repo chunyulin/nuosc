@@ -5,13 +5,15 @@ if [[ $host == "ilgn01" ]]; then
 
   echo "=== on T4 ==="
   ml purge
+  #ml sys/intelmpi/2021.9
   ml sys/intelmpi
 
   export CXX=mpiicpx
   export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
   export OPT="-parallel-source-info=2  -g -qopt-zmm-usage=high -xsapphirerapids -O3 -qopenmp -Wno-unknown-pragmas"
-  export OPT="-qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
-  export LIBS="-qopenmp -O3 -xsapphirerapids"
+  export OPT="-O3 -fp-model=precise -qopenmp -xHost -qopt-zmm-usage=high -Wno-unknown-pragmas"
+  export LIBS="-qopenmp -O3 -fp-model=precise -xHost"
+   # -L/pkg/x86/apps/oneapi/itac/2021.9.0/slib -lVT"
 
 elif [[ $host == "quantum."* ]]; then
 
@@ -49,15 +51,15 @@ elif [[ $host == "lgn"* ]]; then
   export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -xCASCADELAKE"
 
-elif [[ $host == "node"[12] ]]; then
+elif [[ $host == "node1" ]]; then
 
   echo "==== on N1 A100"
   module purge
   module load nvhpc-hpcx
 
   export CXX=mpic++
-  export OPT="-O4 -Kieee -acc=gpu -Minfo=acc -gpu=managed,cc80"
-  export OPT="-O4 -Kieee -mp -Minfo=mp"
+  export OPT="-mp -O4 -Minfo=mp"
+  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed,cc80"
   export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else

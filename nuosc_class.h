@@ -15,11 +15,12 @@ int gen_v1d_cellcenter(const int nv_, Vec vw, Vec vz);
 
 #define COLLAPSE_LOOP 4
 #define PARFORALL(i,j,k,v) \
-    _Pragma("acc parallel loop collapse(4)") \
-    _Pragma("omp parallel for collapse(4)") \
+    _Pragma("acc parallel loop independent collapse(4)") \
+    _Pragma("omp parallel for collapse(3)") \
     for (int i=0;i<nx[0]; ++i) \
     for (int j=0;j<nx[1]; ++j) \
     for (int k=0;k<nx[2]; ++k) \
+    _Pragma("omp _SIMD_") \
     for (int v=0;v<nv; ++v)
 
 #define FORALL(i,j,k,v) \
@@ -40,36 +41,22 @@ enum ff {
 struct FieldVar {
 
 #if 1
-    std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
-    FieldVar(int size) {
-        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
-            wf[f] = new real[size]();
-            //wf[f].reserve(size);
-            //wf[f] = std::vector<real>(size,0);
-    }
-    ~FieldVar() {
-        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
-    }
-#else
-
     real **wf;
     FieldVar(int size) {
-
         wf = new real *[2*NFLAVOR*NFLAVOR];
-        for (int i = 0; i < 2*NFLAVOR*NFLAVOR; i++)
-        {
-            wf[i] = new real[size]();
-        }
+        for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)
+            wf[f] = new real[size]();
     }
     ~FieldVar() {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];
         delete[] wf;
     }
-    //
-
+#else
     std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size]();
+            //wf[f].reserve(size);
+            //wf[f] = std::vector<real>(size,0);
     }
     ~FieldVar() {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  delete[] wf[f];

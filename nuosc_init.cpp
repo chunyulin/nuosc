@@ -94,8 +94,12 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
         //else if (ipt==3) { spatialeps = 0;  }       // constant
         else             { assert(0); }                         // Not implemented
 
-        #pragma omp parallel for reduction(+:n00,n01) collapse(COLLAPSE_LOOP)
-        FORALL(i,j,k,v) {
+        #pragma omp parallel for reduction(+:n00,n01) collapse(3)
+        for (int i=0;i<nx[0]; ++i)
+        for (int j=0;j<nx[1]; ++j)
+        for (int k=0;k<nx[2]; ++k)
+        #pragma omp _SIMD_
+        for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
 
             // ELN profile
