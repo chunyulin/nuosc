@@ -9,22 +9,25 @@ nvtxRangePush("calRHS");
 #ifdef COSENU_MPI
     pack_buffer(in);
     sync_launch();
-#if 1
-    calRHS_wo_bdry(out, in);
-    waitall();
-    unpack_buffer(in);
-#else
+    #ifdef NOT_OVERLAP
     waitall();
     unpack_buffer(in);
     calRHS_wo_bdry(out, in);
-#endif
+    #else
+    calRHS_wo_bdry(out, in);
+    waitall();
+    unpack_buffer(in);
+    #endif
+
     #ifndef ADVEC_OFF
     calRHS_with_bdry(out, in);
     #endif
 #else
     updatePeriodicBoundary(in);
     calRHS_wo_bdry(out, in);
+    #ifndef ADVEC_OFF
     calRHS_with_bdry(out, in);
+    #endif
 #endif
 #ifdef PROFILE
 nvtxRangePop();
@@ -73,26 +76,27 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
             real factor_y = -vy[v]/(12*dx);
             real factor_x = -vx[v]/(12*dx);
             #define ADV_FD(x) ( \
-              factor_z*(  (x[-2*nv] - x[2*nv]) - 8.0*( x[-nv] -x[nv] ) ) + \
-              factor_y*(  (x[-2*nzv]     - x[2*nzv])     - 8.0*( x[-nzv]     -x[nzv]     ) ) + \
-              factor_x*(  (x[-2*nyzv]    - x[2*nyzv])    - 8.0*( x[-nyzv]    -x[nyzv]    ) ) )
+              factor_z*(  (x[-2*nv]  -x[2*nv])   - 8.0*( x[-nv]  -x[nv]   ) ) + \
+              factor_y*(  (x[-2*nzv] -x[2*nzv])  - 8.0*( x[-nzv] -x[nzv]  ) ) + \
+              factor_x*(  (x[-2*nyzv]-x[2*nyzv]) - 8.0*( x[-nyzv]-x[nyzv] ) ) )
 
             // prepare KO operator
             #ifndef KO_ORD_3
             // Kreiss-Oliger dissipation (5-th order)
             real ko_eps = -ko/dx/64.0;
             #define KO_FD(x) ko_eps*( \
-               ( x[-3*nv] + x[3*nv] - 6*(x[-2*nv] +x[2*nv])  + 15*(x[-nv] + x[nv]) - 20*x[0] ) + \
-               ( x[-3*nzv]   + x[3*nzv]   - 6*(x[-2*nzv]     +x[2*nzv])      + 15*(x[-nzv]     + x[nzv])     - 20*x[0] ) + \
-               ( x[-3*nyzv]  + x[3*nyzv]  - 6*(x[-2*nyzv]    +x[2*nyzv])     + 15*(x[-nyzv]    + x[nyzv])    - 20*x[0] ) )
+               ( x[-3*nv]  +x[3*nv]   - 6.*(x[-2*nv]  +x[2*nv])   + 15.*(x[-nv]  + x[nv])  - 20.*x[0] ) + \
+               ( x[-3*nzv] +x[3*nzv]  - 6.*(x[-2*nzv] +x[2*nzv])  + 15.*(x[-nzv] + x[nzv]) - 20.*x[0] ) + \
+               ( x[-3*nyzv]+x[3*nyzv] - 6.*(x[-2*nyzv]+x[2*nyzv]) + 15.*(x[-nyzv]+ x[nyzv])- 20.*x[0] ) )
             #else
             // Kreiss-Oliger dissipation (3-nd order)
             real ko_eps = -ko/dx/16.0;
             #define KO_FD(x) ko_eps*( \
-               ( x[-2*nv] + x[2*nv] - 4*(x[-nv] + x[nv]) + 6*x[0] ) + \
-               ( x[-2*nzv]  + x[2*nzv]     - 4*(x[-nzv]     + x[nzv])     + 6*x[0] ) + \
-               ( x[-2*nyzv] + x[2*nyzv]    - 4*(x[-nyzv]    + x[nyzv])    + 6*x[0] ) )
+               ( x[-2*nv]  +x[2*nv]   - 4.*(x[-nv]  +x[nv])   + 6.*x[0] ) + \
+               ( x[-2*nzv] +x[2*nzv]  - 4.*(x[-nzv] +x[nzv])  + 6.*x[0] ) + \
+               ( x[-2*nyzv]+x[2*nyzv] - 4.*(x[-nyzv]+x[nyzv]) + 6.*x[0] ) )
             #endif
+
             out->wf[f][ijkv] += ADV_FD(ff) + KO_FD(ff);
         } // end for xyzv.
 #endif // end of WENO7
@@ -107,7 +111,6 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
 #ifdef PROFILE
     nvtxRangePush("calRHS_wo_bdry");
 #endif
-    //#pragma ivdeps
     #pragma acc parallel loop independent collapse(3)
     #pragma omp parallel for collapse(3)
     for (int i=0;i<nx[0]; ++i)
@@ -116,19 +119,8 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
         //
         // common integral factors over vz'
         //
-        real emRm[] = {0,0,0,0};
-        real emIp[] = {0,0,0,0};
-        real eemm[] = {0,0,0,0};
-        #if NFLAVOR == 3
-        
-        real mtRm[] = {0,0,0,0};
-        real mtIp[] = {0,0,0,0};
-        real teRm[] = {0,0,0,0};
-        real teIp[] = {0,0,0,0};
-        real mmtt[] = {0,0,0,0};
-        #endif
 
-#define IDEN(x) real x##0 = x[0]; real x##1 = x[1]; real x##2 = x[2]; real x##3 = x[3];
+#define IDEN(x) real x##0 = 0.0, x##1 = 0.0, x##2 = 0.0, x##3 = 0.0;
         IDEN(emRm);  IDEN(emIp);
         IDEN(eemm);
         #if NFLAVOR == 3
@@ -148,66 +140,57 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
         #pragma omp _SIMD_
         for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
-            const real v4[] = {1,vx[k],vy[k],vz[k]};
+            //const real v4[] = {1,vx[v],vy[v],vz[v]};
             {
-                emRm0   += v4[0]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
-                emIp0   += v4[0]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
-                eemm0   += v4[0]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                emRm0   += vw[v]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp0   += vw[v]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm0   += vw[v]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
                 #if NFLAVOR == 3
-                mtRm0   += v4[0]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
-                mtIp0   += v4[0]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
-                teRm0   += v4[0]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
-                teIp0   += v4[0]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
-                mmtt0   += v4[0]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                mtRm0   += vw[v]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp0   += vw[v]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm0   += vw[v]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp0   += vw[v]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt0   += vw[v]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
                 #endif
             }
             {
-                emRm1   += v4[1]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
-                emIp1   += v4[1]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
-                eemm1   += v4[1]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                emRm1   += vx[v]* vw[v]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp1   += vx[v]* vw[v]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm1   += vx[v]* vw[v]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
                 #if NFLAVOR == 3
-                mtRm1   += v4[1]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
-                mtIp1   += v4[1]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
-                teRm1   += v4[1]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
-                teIp1   += v4[1]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
-                mmtt1   += v4[1]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                mtRm1   += vx[v]* vw[v]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp1   += vx[v]* vw[v]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm1   += vx[v]* vw[v]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp1   += vx[v]* vw[v]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt1   += vx[v]* vw[v]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
                 #endif
             }
             {
-                emRm2   += v4[2]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
-                emIp2   += v4[2]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
-                eemm2   += v4[2]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                emRm2   += vy[v]* vw[v]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp2   += vy[v]* vw[v]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm2   += vy[v]* vw[v]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
                 #if NFLAVOR == 3
-                mtRm2   += v4[2]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
-                mtIp2   += v4[2]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
-                teRm2   += v4[2]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
-                teIp2   += v4[2]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
-                mmtt2   += v4[2]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                mtRm2   += vy[v]* vw[v]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp2   += vy[v]* vw[v]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm2   += vy[v]* vw[v]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp2   += vy[v]* vw[v]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt2   += vy[v]* vw[v]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
                 #endif
             }
             {
-                emRm3   += v4[3]* vw[k]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
-                emIp3   += v4[3]* vw[k]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
-                eemm3   += v4[3]* vw[k]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
+                emRm3   += vz[v]* vw[v]*(in->wf[ff::bemr][ijkv] - in->wf[ff::emr][ijkv] );
+                emIp3   += vz[v]* vw[v]*(in->wf[ff::bemi][ijkv] + in->wf[ff::emi][ijkv] );
+                eemm3   += vz[v]* vw[v]*(in->wf[ff::bee][ijkv]-in->wf[ff::bmm][ijkv]-in->wf[ff::ee][ijkv]+in->wf[ff::mm][ijkv] );
                 #if NFLAVOR == 3
-                mtRm3   += v4[3]* vw[k]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
-                mtIp3   += v4[3]* vw[k]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
-                teRm3   += v4[3]* vw[k]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
-                teIp3   += v4[3]* vw[k]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
-                mmtt3   += v4[3]* vw[k]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
+                mtRm3   += vz[v]* vw[v]*(in->wf[ff::bmtr][ijkv] - in->wf[ff::mtr][ijkv] );
+                mtIp3   += vz[v]* vw[v]*(in->wf[ff::bmti][ijkv] + in->wf[ff::mti][ijkv] );
+                teRm3   += vz[v]* vw[v]*(in->wf[ff::bter][ijkv] - in->wf[ff::ter][ijkv] );
+                teIp3   += vz[v]* vw[v]*(in->wf[ff::btei][ijkv] + in->wf[ff::tei][ijkv] );
+                mmtt3   += vz[v]* vw[v]*(in->wf[ff::bmm][ijkv]-in->wf[ff::btt][ijkv]-in->wf[ff::mm][ijkv]+in->wf[ff::tt][ijkv] );
                 #endif
             }
             // integral over vx and vy is zero for axi-symm case.  ( VY TO BE CHECKED...)
         }
-#define IDEN(x)  x[0]=x##0; x[1]=x##1; x[2]=x##2; x[3]=x##3;
-        IDEN(emRm);  IDEN(emIp);
-        IDEN(eemm);
-        #if NFLAVOR == 3
-        IDEN(mtRm);  IDEN(mtIp);
-        IDEN(teRm);  IDEN(teIp);
-        IDEN(mmtt);
-        #endif
-#undef IDEN
 
         //
         // Interaction and vacuum parts.
@@ -238,19 +221,32 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
             const real btei = in->wf[ff::btei][ijkv];
             #endif
 
-#define INP(x) (x[0]-x[1]*vx[v]-x[2]*vy[v]-x[3]*vz[v])
+//#define INP(x) ( x##0 - x##1 * vx[v] - x##2 * vy[v] - x##3 * vz[v])
+#define INP(x) ( x##0 - x##3 * vz[v])
 #if NFLAVOR == 2
         auto iemRm = INP(emRm);
         auto iemIp = INP(emIp);
         auto ieemm = INP(eemm);
-        real Iee   = 2*mu*( emi*iemRm + emr*iemIp  );
+
+        real Iee   = 2*mu*( emi*iemRm + emr*iemIp );
         real Imm   = -Iee;
-        real Iemr  =  -mu*( (ee-mm)*iemIp + ieemm*emi );
-        real Iemi  =   mu*( (mm-ee)*iemRm + ieemm*emr );
-        real Ibee  = 2*mu*( bemi*iemRm + bemr*iemIp );
+        real Iemr  =   mu*( (mm-ee)*iemIp - emi*ieemm);
+        real Iemi  =   mu*( (mm-ee)*iemRm + emr*ieemm);
+        real Ibee  = 2*mu*(-bemi*iemRm + bemr*iemIp);
         real Ibmm  = -Ibee;
-        real Ibemr =  -mu*( (bee-bmm)*iemIp + INP(eemm)*bemi );
-        real Ibemi =   mu*( (bmm-bee)*iemRm + INP(eemm)*bemr );
+        real Ibemr =   mu*((bmm-bee)*iemIp + bemi*ieemm );
+        real Ibemi =   mu*((bee-bmm)*iemRm - bemr*ieemm );
+
+        // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
+        out->wf[ff::ee]  [ijkv] =  Iee   - pmo* 2*st*emi ;
+        out->wf[ff::mm]  [ijkv] = -Iee   + pmo* 2*st*emi ;
+        out->wf[ff::emr] [ijkv] =  Iemr  - pmo* 2*ct*emi ;
+        out->wf[ff::emi] [ijkv] =  Iemi  + pmo*(2*ct*emr  + st*( ee - mm ) );
+        out->wf[ff::bee] [ijkv] =  Ibee  - pmo* 2*st*bemi;
+        out->wf[ff::bmm] [ijkv] = -Ibee  + pmo* 2*st*bemi;
+        out->wf[ff::bemr][ijkv] =  Ibemr - pmo* 2*ct*bemi;
+        out->wf[ff::bemi][ijkv] =  Ibemi + pmo*(2*ct*bemr + st*( bee - bmm ) );
+
 #elif NFLAVOR == 3
         auto iemRm = INP(emRm);
         auto iemIp = INP(emIp);
@@ -263,28 +259,25 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
         auto iteRm = INP(teRm);
         auto iteIp = INP(teIp);
 
-        real Iee  = 2*mu*( emi*iemRm + emr*iemIp - tei*iteRm - ter*iteIp );
-        real Imm  = 2*mu*(-emi*iemRm - emr*iemIp + mti*imtRm + mtr*imtIp );
-        real Itt  = 2*mu*(-mti*imtRm - mtr*imtIp + tei*iteRm + ter*iteIp );
-        real Iemr =  -mu*((ee-mm)*iemIp + ieemm*emi - imtIp*ter + imtRm*tei - mti*iteRm + mtr*iteIp );
-        real Iemi =   mu*((mm-ee)*iemRm + ieemm*emr - imtIp*tei - imtRm*ter + mti*iteIp + mtr*iteRm );
-        real Imtr =  -mu*((mm-tt)*imtIp + iemIp*ter - iemRm*tei + emi*iteRm - emr*iteIp + mti*immtt );
-        real Imti =   mu*((tt-mm)*imtRm + iemIp*tei + iemRm*ter - emi*iteIp - emr*iteRm + mtr*immtt );
-        real Iter =  -mu*((tt-ee)*iteIp - iemIp*mtr + iemRm*mti - emi*imtRm + emr*imtIp + tei*ittee );
-        real Itei =   mu*((ee-tt)*iteRm - iemIp*mti - iemRm*mtr + emi*imtIp + emr*imtRm + ter*ittee );
+        real Iee  = 2*mu*( emi*iemRm + emr*iemIp - iteIp*ter - iteRm*tei);
+        real Imm  = 2*mu*(-emi*iemRm - emr*iemIp + imtIp*mtr + imtRm*mti);
+        real Itt  = 2*mu*(-imtIp*mtr - imtRm*mti + iteIp*ter + iteRm*tei);
+        real Iemr =  -mu*( (ee-mm)*iemIp + emi*ieemm - imtIp*ter + imtRm*tei + iteIp*mtr - iteRm*mti);
+        real Iemi =   mu*( (mm-ee)*iemRm + emr*ieemm - imtIp*tei - imtRm*ter + iteIp*mti + iteRm*mtr);
+        real Imtr =  -mu*( (mm-tt)*imtIp + emi*iteRm - emr*iteIp + iemIp*ter - iemRm*tei + immtt*mti);
+        real Imti =   mu*(-(mm-tt)*imtRm - emi*iteIp - emr*iteRm + iemIp*tei + iemRm*ter + immtt*mtr);
+        real Iter =  -mu*( (tt-ee)*iteIp - emi*imtRm + emr*imtIp - iemIp*mtr + iemRm*mti + ittee*tei);
+        real Itei =   mu*(-(tt-ee)*iteRm + emi*imtIp + emr*imtRm - iemIp*mti - iemRm*mtr + ittee*ter);
+        real Ibee  = 2*mu*(-bemi*iemRm + bemr*iemIp + btei*iteRm - bter*iteIp);
+        real Ibmm  = 2*mu*( bemi*iemRm - bemr*iemIp - bmti*imtRm + bmtr*imtIp);
+        real Ibtt  = 2*mu*( bmti*imtRm - bmtr*imtIp - btei*iteRm + bter*iteIp);
+        real Ibemr =  -mu*((bee-bmm)*iemIp - bemi*ieemm + bmti*iteRm + bmtr*iteIp - btei*imtRm - bter*imtIp);
+        real Ibemi =   mu*((bee-bmm)*iemRm - bemr*ieemm + bmti*iteIp - bmtr*iteRm - btei*imtIp + bter*imtRm);
+        real Ibmtr =  -mu*((bmm-btt)*imtIp - bemi*iteRm - bemr*iteIp - bmti*immtt + btei*iemRm + bter*iemIp);
+        real Ibmti =   mu*((bmm-btt)*imtRm - bemi*iteIp + bemr*iteRm - bmtr*immtt + btei*iemIp - bter*iemRm);
+        real Ibter =  -mu*((btt-bee)*iteIp + bemi*imtRm + bemr*imtIp - bmti*iemRm - bmtr*iemIp - btei*ittee);
+        real Ibtei =   mu*((btt-bee)*iteRm + bemi*imtIp - bemr*imtRm - bmti*iemIp + bmtr*iemRm - bter*ittee);
 
-        real Ibee  = 2*mu*( bemi*iemRm + bemr*iemIp - btei*iteRm - bter*iteIp );
-        real Ibmm  = 2*mu*(-bemi*iemRm - bemr*iemIp + bmti*imtRm + bmtr*imtIp );
-        real Ibtt  = 2*mu*(-bmti*imtRm - bmtr*imtIp + btei*iteRm + bter*iteIp );
-        real Ibemr =  -mu*((bee-bmm)*iemIp + ieemm*bemi - imtIp*bter + imtRm*btei - bmti*iteRm + bmtr*iteIp );
-        real Ibemi =   mu*((bmm-bee)*iemRm + ieemm*bemr - imtIp*btei - imtRm*bter + bmti*iteIp + bmtr*iteRm );
-        real Ibmtr =  -mu*((bmm-btt)*imtIp + iemIp*bter - iemRm*btei + bemi*iteRm - bemr*iteIp + bmti*immtt );
-        real Ibmti =   mu*((btt-bmm)*imtRm + iemIp*btei + iemRm*bter - bemi*iteIp - bemr*iteRm + bmtr*immtt );
-        real Ibter =  -mu*((btt-bee)*iteIp - iemIp*bmtr + iemRm*bmti - bemi*imtRm + bemr*imtIp + btei*ittee );
-        real Ibtei =   mu*((bee-btt)*iteRm - iemIp*bmti - iemRm*bmtr + bemi*imtIp + bemr*imtRm + bter*ittee );
-#endif  // N_FLAVOR_3
-#undef INP
-        #if NFLAVOR == 3
         out->wf[ff::ee  ][ijkv] = Iee   - pmo * 2*(emi*hemr + emr*hemi - htei*ter + hter*tei);
         out->wf[ff::mm  ][ijkv] = Imm   + pmo * 2*(emi*hemr - emr*hemi + hmti*mtr - hmtr*mti);
         out->wf[ff::emr ][ijkv] = Iemr  + pmo*( (mm-ee)*hemi + emi*(hee - hmm) + hmti*ter + hmtr*tei - htei*mtr - hter*mti );
@@ -303,17 +296,9 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
         out->wf[ff::bmti][ijkv] = Ibmti + pmo* ( (bmm-btt)*hmtr + bemr*hter - bemi*htei - hemr*bter + hemi*btei - bmtr*(hmm - htt) );
         out->wf[ff::bter][ijkv] = Ibter + pmo* ( (bee-btt)*htei - bemr*hmti - bemi*hmtr + hemi*bmtr + hemr*bmti - btei*(hee - htt) );
         out->wf[ff::btei][ijkv] = Ibtei + pmo* ( (btt-bee)*hter - bemr*hmtr + bemi*hmti - hemi*bmti + hemr*bmtr + bter*(hee - htt) );
-        #elif NFLAVOR == 2
-        // All RHS with terms for -i [H0, rho], advector, v-integral, etc...
-        out->wf[ff::ee]  [ijkv] =  Iee   - pmo* 2*st*emi ;
-        out->wf[ff::mm]  [ijkv] = -Iee   + pmo* 2*st*emi ;
-        out->wf[ff::emr] [ijkv] =  Iemr  - pmo* 2*ct*emi ;
-        out->wf[ff::emi] [ijkv] =  Iemi  + pmo*(2*ct*emr  + st*( ee - mm ) );
-        out->wf[ff::bee] [ijkv] =  Ibee  - pmo* 2*st*bemi;
-        out->wf[ff::bmm] [ijkv] = -Ibee  + pmo* 2*st*bemi;
-        out->wf[ff::bemr][ijkv] =  Ibemr - pmo* 2*ct*bemi;
-        out->wf[ff::bemi][ijkv] =  Ibemi + pmo*(2*ct*bemr + st*( bee - bmm ) );
-        #endif
+
+#endif  // N_FLAVOR_3
+#undef INP
         }
     }
 #ifdef PROFILE

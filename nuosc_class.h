@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "logger.h"
 
 //#define IM_V2D_POLAR_GL_Z
 //#define IM_V2D_POLAR_RSUM   // uniform vz-/phi- as default
@@ -129,6 +130,7 @@ class NuOsc {
 
         ulong lpts;
 
+        int ssize = 1;
         int srank = 0;
         int rx[DIM] = {0};       // Index of my processor
         int nb[DIM][2] = {0};    // Cartensian neighbor ranks
@@ -177,8 +179,9 @@ class NuOsc {
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
+        WriteLocal analocal;
 #ifdef PROFILE
-        std::ofstream profile;
+        WriteLocal profile;
 #endif
         std::ofstream anafile;
         std::list<SnapShot> snapshots;

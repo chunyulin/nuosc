@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     // === initial value
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
     real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6};
-    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.53};
+    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.5};
     #if 0
     // case=25
     real lnue [] = {1.7225780329928866, std::numeric_limits<real>::max(), 0.6,   0.6005827898015417};
@@ -259,9 +259,12 @@ int main(int argc, char *argv[]) {
             stepms_max = stepms_min = stepms;
             #endif
             if (myrank==0) {
+               stepms_min /= state.ssize;
+               stepms_max /= state.ssize;
                printf("%d Walltime: (Min) %.3f s/T, %.2f ns/step-grid.    (Max) %.3f s/T, %.2f ns/step-grid.\n", t,
                stepms_min/state.phy_time/1000,  stepms_min/(t-cooltime+1)/lpts*1e6,
                stepms_max/state.phy_time/1000,  stepms_max/(t-cooltime+1)/lpts*1e6 );
+               fflush(stdout);
             }
         }
 
@@ -282,11 +285,16 @@ int main(int argc, char *argv[]) {
     MPI_Reduce(&tmem, &tmem_min, 1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
     #endif
     if (myrank==0) {
+       #ifdef _OPENMP
+       int tids = omp_get_max_threads();
+       #else
+       int tids = 1;
+       #endif
        double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
        double s_per_phytime   = stepms_max/state.phy_time/1000;
        printf("Completed.\n\n");
        printf("Memory usage (GB) per rank: %.2f ~ %.2f\n", tmem_min, tmem_max );
-       printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", omp_get_max_threads(), px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
+       printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", tids, px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);
     }
     #ifdef PROFILE
     state.profile << "Memory GB " << tmem << endl;

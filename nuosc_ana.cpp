@@ -52,8 +52,8 @@ void NuOsc::analysis() {
     #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma acc parallel loop     reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #else
-    #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma acc parallel loop     reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #endif
     FORALL(i,j,k,v)  {
         int ijkv = idx(i,j,k,v);
@@ -94,6 +94,11 @@ void NuOsc::analysis() {
     rv[12] = t_tt, rv[13] = t_ttb;
 #endif
 
+    analocal << phy_time << std::setprecision(13) << " " << rv[9] << " " 
+            << rv[0] << " " << rv[1] << " " 
+            << rv[2] << " " << rv[3] << " " 
+            << rv[10] << " " << rv[11] <<  endl;
+
 #ifdef COSENU_MPI
     if (!myrank) {
        MPI_Reduce(MPI_IN_PLACE, &rv[0], 9, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
@@ -120,7 +125,6 @@ void NuOsc::analysis() {
 #ifdef ADV_TEST
         printf(" I1= %5.4e I2= %5.4e\n", rv[0]/rv[4], rv[1]/rv[4]);
 #else
-        //printf(" |dP|max= %5.4e surb= %5.4e %5.4e conP= %5.4e %5.4e |M0|= %5.4e lN= %g\n",maxdP,surv,survb,avgP,avgPb,aM0, aM03);
         printf(" |dP|max= %5.4e ee= %5.4e %5.4e mm= %5.4e %5.4e  conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g\n",rv[9],rv[0],rv[1],rv[10],rv[11], rv[2],rv[3],aM0, ELNe, Lex);
 #endif
         anafile << phy_time << std::setprecision(13) << " " << rv[9] << " " 
@@ -130,7 +134,7 @@ void NuOsc::analysis() {
 #if NFLAVOR == 3
             << rv[12] << " " << rv[13]
 #endif
-            << endl;
+            << endl << std::flush;
 
         assert(rv[9] <10 && "MaxdP blowup!\n");
 

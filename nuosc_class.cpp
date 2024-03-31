@@ -28,6 +28,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     // Get shared commnicator, which is used to determine the ranks within a node (shared memory)
     MPI_Comm scomm;
     MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &scomm);
+    MPI_Comm_size(scomm, &ssize);
     MPI_Comm_rank(scomm, &srank);
     if (!myrank) printf("[%.4f] Cartesian MPI commincator done.\n", utils::msecs_since());
 
@@ -121,22 +122,27 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
       #endif
     }
 
-    #ifdef DEBUG
+    #ifdef VERBOSE
     print_info();
     #endif
 
-    omp_set_max_active_levels(1);  // May casue too large thread overhead, mainly for calRHS.
+    //omp_set_max_active_levels(1);  // I always use only 1-level to avoid large thread overhead.
 
     if (myrank==0) {
-            printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank.\n", ranks, px[0], px[1], px[2], omp_get_max_threads() );
+            #ifdef _OPENMP
+            int tids = omp_get_max_threads();
+            #else
+            int tids = 1;
+            #endif
+            printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank. Ranks per node: %d \n", ranks, px[0], px[1], px[2], tids, ssize);
             printf("   Domain:  v: nv = %5d  ( w/ nphi = %5d ) on S2.\n", get_nv(), get_nphi() );
             printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
 #ifdef WENO7
-            printf("   Local size per field var = %.2f GB. Mem per rank is estimated %.2f GB (%d vars)\n", mem_per_var, mem_per_var*(nvar*4.2 + 14), nvar);
+            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*4.2 + 14));
 #else
-            printf("   Local size per field var = %.2f GB. Mem per rank is estimated %.2f GB (%d vars)\n", mem_per_var, mem_per_var*(nvar*4.2 + 12), nvar);
+            printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*4.2 + 12));
 #endif
             printf("   dt = %g     CFL = %g\n", dt, CFL);
 #ifdef BC_PERI
@@ -201,17 +207,10 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         flux = new Flux(size);
         #endif
 
+        analocal.init("analysis", myrank);
 #ifdef PROFILE
-        {  // TODO: move profile log to random folder at local scratch and copy back after.
-        char hname[20];
-        gethostname(hname,sizeof(hname));
-
         utils::reset_timer();
-        std::string fname = "profile." + std::to_string(myrank);
-        profile.open(fname.c_str(), std::ofstream::out | std::ofstream::trunc);
-        if(!profile) cout << "*** Open profile fails: " << "./analysis.dat" << endl;
-        profile << "## Timing for rank " << myrank << " @ " << hname << endl;
-        }
+        profile.init("profile", myrank);
 #endif
         if (myrank==0) {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
