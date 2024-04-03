@@ -40,7 +40,7 @@ enum ff {
 };
 
 struct FieldVar {
-#if 1
+#if 0
     real **wf;
     FieldVar(int size) {
         wf = new real *[2*NFLAVOR*NFLAVOR];
@@ -55,7 +55,7 @@ struct FieldVar {
     std::array<real*, 2*NFLAVOR*NFLAVOR> wf;
     FieldVar(int size) {
         for (int f=0;f<2*NFLAVOR*NFLAVOR; ++f)  wf[f] = new real[size]();
-            //wf[f].reserve(size);
+            //wf[f].reserve(size); // using vector is slow!
             //wf[f] = std::vector<real>(size,0);
     }
     ~FieldVar() {
@@ -179,16 +179,14 @@ class NuOsc {
         real mu  = 1.0;      // can be set by set_mu()
         bool renorm = false;  // can be set by set_renorm()
 
-        WriteLocal analocal;
+        //WriteLocal analocal;
 #ifdef PROFILE
         WriteLocal profile;
 #endif
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
-        #ifdef PROFILING_BREAKDOWNS
-        float t_step=0, t_sync=0, t_packing=0;
-        #endif
+        bool stop_flag = 0;
 
         NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);

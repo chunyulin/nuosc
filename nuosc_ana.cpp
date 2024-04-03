@@ -94,10 +94,10 @@ void NuOsc::analysis() {
     rv[12] = t_tt, rv[13] = t_ttb;
 #endif
 
-    analocal << phy_time << std::setprecision(13) << " " << rv[9] << " " 
-            << rv[0] << " " << rv[1] << " " 
-            << rv[2] << " " << rv[3] << " " 
-            << rv[10] << " " << rv[11] <<  endl;
+    //analocal << phy_time << std::setprecision(13) << " " << rv[9] << " " 
+    //        << rv[0] << " " << rv[1] << " " 
+    //        << rv[2] << " " << rv[3] << " " 
+    //        << rv[10] << " " << rv[11] <<  endl;
 
 #ifdef COSENU_MPI
     if (!myrank) {

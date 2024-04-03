@@ -70,17 +70,7 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
         PARFORALL(i,j,k,v) {
             auto ijkv = idx(i,j,k,v);
             const real *ff   = &(in->wf[f][ijkv]);
-            // prepare advection FD operator
-            //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
     #ifdef SCHEME_FD8
-            real factor_z = -vz[v]/(60*dx);
-            real factor_y = -vy[v]/(60*dx);
-            real factor_x = -vx[v]/(60*dx);
-            #define ADV_FD(x) ( \
-              factor_z*(-(x[-3*nv]  -x[3*nv])   + 9.0*(x[-2*nv]  -x[2*nv])   - 45.0*(x[-nv]  -x[nv])   ) + \
-              factor_y*(-(x[-3*nzv] -x[3*nzv])  + 9.0*(x[-2*nzv] -x[2*nzv])  - 45.0*(x[-nzv] -x[nzv])  ) + \
-              factor_x*(-(x[-3*nyzv]-x[3*nyzv]) + 9.0*(x[-2*nyzv]-x[2*nyzv]) - 45.0*(x[-nyzv]-x[nyzv]) ) )
-    #elif FD6
             real factor_z = -vz[v]/(280*dx);
             real factor_y = -vy[v]/(280*dx);
             real factor_x = -vx[v]/(280*dx);
@@ -88,7 +78,16 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
               factor_z*( (x[-4*nv]  -x[4*nv])   - (224./21.0)*(x[-3*nv]  -x[3*nv])   + 56.0*(x[-2*nv]  -x[2*nv])   - 224.0*(x[-nv]  -x[nv])   ) + \
               factor_y*( (x[-4*nzv] -x[4*nzv])  - (224./21.0)*(x[-3*nzv] -x[3*nzv])  + 56.0*(x[-2*nzv] -x[2*nzv])  - 224.0*(x[-nzv] -x[nzv])  ) + \
               factor_x*( (x[-4*nyzv]-x[4*nyzv]) - (224./21.0)*(x[-3*nyzv]-x[3*nyzv]) + 56.0*(x[-2*nyzv]-x[2*nyzv]) - 224.0*(x[-nyzv]-x[nyzv]) ) )
+    #elif SCHEME_FD6
+            real factor_z = -vz[v]/(60*dx);
+            real factor_y = -vy[v]/(60*dx);
+            real factor_x = -vx[v]/(60*dx);
+            #define ADV_FD(x) ( \
+              factor_z*(-(x[-3*nv]  -x[3*nv])   + 9.0*(x[-2*nv]  -x[2*nv])   - 45.0*(x[-nv]  -x[nv])   ) + \
+              factor_y*(-(x[-3*nzv] -x[3*nzv])  + 9.0*(x[-2*nzv] -x[2*nzv])  - 45.0*(x[-nzv] -x[nzv])  ) + \
+              factor_x*(-(x[-3*nyzv]-x[3*nyzv]) + 9.0*(x[-2*nyzv]-x[2*nyzv]) - 45.0*(x[-nyzv]-x[nyzv]) ) )
     #else
+            //   4-th order FD
             real factor_z = -vz[v]/(12*dx);
             real factor_y = -vy[v]/(12*dx);
             real factor_x = -vx[v]/(12*dx);
@@ -110,19 +109,19 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
             #else
             // Kreiss-Oliger dissipation (3-nd order --> 4rd derivatives)
         #ifdef SCHEME_FD8
-            // O(x^4) with 3 buffer zone
-            real ko_eps = -ko/dx/16.0/6.0;
-            #define KO_FD(x) ko_eps*( \
-             ( -(x[-3*nv]  +x[3*nv])  + 12.0*(x[-2*nv]  +x[2*nv])  -39.0*(x[-nv]  +x[nv])  +56.0*x[0] ) + \
-             ( -(x[-3*nzv] +x[3*nzv]) + 12.0*(x[-2*nzv] +x[2*nzv]) -39.0*(x[-nzv] +x[nzv]) +56.0*x[0] ) + \
-             ( -(x[-3*nyzv]+x[3*nyzv])+ 12.0*(x[-2*nyzv]+x[2*nyzv])-39.0*(x[-nyzv]+x[nyzv])+56.0*x[0] ) )
-        #elif FD6
             // O(x^6) with 4 buffer zone
             real ko_eps = -ko/dx/16.0/240.0;
             #define KO_FD(x) ko_eps*( \
              ( 7.0*(x[-4*nv]  +x[4*nv])  -96.0*(x[-3*nv]  +x[3*nv])  + 676.0*(x[-2*nv]  +x[2*nv])  -1952.0*(x[-nv]  +x[nv])  +2730.0*x[0] ) + \
              ( 7.0*(x[-4*nzv] +x[4*nzv]) -96.0*(x[-3*nzv] +x[3*nzv]) + 676.0*(x[-2*nzv] +x[2*nzv]) -1952.0*(x[-nzv] +x[nzv]) +2730.0*x[0] ) + \
              ( 7.0*(x[-4*nyzv]+x[4*nyzv])-96.0*(x[-3*nyzv]+x[3*nyzv])+ 676.0*(x[-2*nyzv]+x[2*nyzv])-1952.0*(x[-nyzv]+x[nyzv])+2730.0*x[0] ) )
+        #elif SCHEME_FD6
+            // O(x^4) with 3 buffer zone
+            real ko_eps = -ko/dx/16.0/6.0;
+            #define KO_FD(x) ko_eps*( \
+             ( -(x[-3*nv]  +x[3*nv])  + 12.0*(x[-2*nv]  +x[2*nv])  -39.0*(x[-nv]  +x[nv])  +56.0*x[0] ) + \
+             ( -(x[-3*nzv] +x[3*nzv]) + 12.0*(x[-2*nzv] +x[2*nzv]) -39.0*(x[-nzv] +x[nzv]) +56.0*x[0] ) + \
+             ( -(x[-3*nyzv]+x[3*nyzv])+ 12.0*(x[-2*nyzv]+x[2*nyzv])-39.0*(x[-nyzv]+x[nyzv])+56.0*x[0] ) )
         #else
             real ko_eps = -ko/dx/16.0;
             #define KO_FD(x) ko_eps*( \
@@ -377,10 +376,6 @@ void NuOsc::step_rk4() {
 #ifdef PROFILE
     nvtxRangePush("Step");
 #endif
-    #ifdef PROFILING_BREAKDOWNS
-    auto t0 = std::chrono::high_resolution_clock::now();
-    #endif
-
     //Step-1
     calRHS(v_rhs, v_stat);
     vectorize(v_pre, v_stat, 0.5*dt, v_rhs);
@@ -396,9 +391,6 @@ void NuOsc::step_rk4() {
     calRHS(v_cor, v_pre);
     vectorize(v_stat, v_stat, 1.0/6.0*dt, v_cor, v_rhs);
 
-    #ifdef PROFILING_BREAKDOWNS
-    t_step += std::chrono::duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now() -t0 ).count();
-    #endif
     if(renorm) renormalize(v_stat);
     phy_time += dt;
     iter++;

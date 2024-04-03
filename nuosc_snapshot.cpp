@@ -1,4 +1,6 @@
 #include "nuosc_class.h"
+#include "utils.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -52,9 +54,14 @@ void NuOsc::checkSnapShot() {
     nvtxRangePush(__FUNCTION__);
 #endif
 
+    const ulong wtime_limit_ms = WALLTIME_LIMIT_HOUR*3600000;
+
     for (auto const& ss : snapshots) {
 
-        if ( 0 != iter % ss.every ) break;
+        if (utils::msecs_since() > wtime_limit_ms) {
+            if (!myrank) printf("Will stop after checkpoint due to walltime limits.\n");
+            stop_flag = 1;
+        } else if (0 != iter%ss.every) continue;
 
         std::vector<int> vc = ss.v_slices;
         int sv = vc.size();

@@ -50,20 +50,6 @@ int main(int argc, char *argv[]) {
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
     real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6};
     real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.5};
-    #if 0
-    // case=25
-    real lnue [] = {1.7225780329928866, std::numeric_limits<real>::max(), 0.6,   0.6005827898015417};
-    real lnueb[] = {1.55              , std::numeric_limits<real>::max(), 0.5,   0.47891794098715224};
-    // case=50
-    real lnue [] = {1.1399810727728898, std::numeric_limits<real>::max(), 0.6,   0.48486963891423884};  // the last (normalization) factor is not needed.
-    real lnueb[] = {1.0               , std::numeric_limits<real>::max(), 0.5,   0.3705140263099512};
-    // case=75
-    real lnue [] = {0.8614776421914219, std::numeric_limits<real>::max(), 0.6,   0.39970494858533934};
-    real lnueb[] = {0.7               , std::numeric_limits<real>::max(), 0.5,   0.3705140263099512};
-    // case=95
-    real lnue [] = {0.7638215519017106, std::numeric_limits<real>::max(), 0.6,   0.3667199753407259};
-    real lnueb[] = {0.5               , std::numeric_limits<real>::max(), 0.5,   0.2317214158353605};
-    #endif
 
     real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
     real eps0  = 0.1;
@@ -180,7 +166,7 @@ int main(int argc, char *argv[]) {
     int gx[] = {2,2,2};
     #endif
 #endif
-    
+
     // === create simuation
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
     if (!myrank) printf("[%.4f] Initialize main class.\n", utils::msecs_since());
@@ -207,17 +193,13 @@ int main(int argc, char *argv[]) {
     state.analysis();
     if (!myrank) printf("[%.4f] First analysis done.\n", utils::msecs_since());
 
-    // ======  Setup 1D output  ========================
+/*
     if (DUMP_EVERY <= END_STEP) {
 #ifdef ADV_TEST
         std::list<std::vector<real>> vlist( { state.v_stat->wf[ff::ee] } );
         state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
         //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
 #else
-        std::list<int> vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);
-        std::vector<int> vslice;
-        for (int v=0;v<state.nv;++v) vslice.push_back( v );
-        state.addSnapShotAtV("ckp", vlist, DUMP_EVERY, vslice );
         //state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx[0]/2,nx[0]-1}, vslice );
         //std::list<real*> plist( { state.P3 } );
         //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
@@ -225,13 +207,16 @@ int main(int argc, char *argv[]) {
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
 #endif
-        if (!is_restart) state.checkSnapShot();
+        //if (!is_restart) state.checkSnapShot();
         //state.checkSkimShots();
-        //state.snapshot();
-        //state.write_fz();
+    }
+*/
+    { // prepare checkpoint
+    std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);
+    std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);
+    state.addSnapShotAtV("ckp", vlist, DUMP_EVERY, vslice );
     }
 
-    if (!myrank) printf("[%.4f] Pre-loop checkpoint done.\n", utils::msecs_since());
     if (!myrank) std::cout << std::flush;
 
     const int cooltime = 3;
@@ -250,7 +235,7 @@ int main(int argc, char *argv[]) {
 
         state.checkSnapShot();
 
-        if ( t==10 || t==100 || t==1000 || t==END_STEP) {
+        if ( t==10 || t==100 || t==1000 || t==END_STEP || state.stop_flag) {
             #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
             MPI_Reduce(&stepms, &stepms_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
@@ -269,12 +254,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        #ifdef PROFILING_BREAKDOWNS
-        printf("Step: %04d - %7f s (S: %5.2f P: %5.2f )%%\n", t, state.t_step/1000, state.t_sync/state.t_step*100,  state.t_packing/state.t_step*100);
-        state.t_step = 0;
-        state.t_sync = 0;
-        state.t_packing = 0;
-        #endif
+        if (state.stop_flag) break;
 
     }  // end of main loop
 

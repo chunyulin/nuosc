@@ -139,7 +139,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
             printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
             printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
-#ifdef WENO7
+#ifdef SCHEME_WENO7
             printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*4.2 + 14));
 #else
             printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*4.2 + 12));
@@ -169,13 +169,15 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("   Advection ON. (Center-FD)\n");
             //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
             //printf("   Use lopsided FD for advaction\n");
-    #ifdef WENO7
-            printf("   WENO7 scheme.\n");
+    #if defined(SCHEME_WENO7)
+            printf("   RHS scheme: WENO7.\n");
+    #elif defined(SCHEME_FD8)
+            printf("   RHS scheme: FD8 with 3-th order dissipation, KO eps = %g\n", ko);
     #else
             #ifndef KO_ORD_3
-            printf("   FD scheme with 5-th order KO dissipation, KO eps = %g\n", ko);
+            printf("   RHS scheme: FD4 with 5-th order dissipation, KO eps = %g\n", ko);
             #else
-            printf("   FD scheme with 3-th order KO dissipation, KO eps = %g\n", ko);
+            printf("   RHS scheme: FD4 with 3-th order dissipation, KO eps = %g\n", ko);
             #endif
     #endif
 #else
@@ -203,17 +205,17 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
         //v_stat0 = new FieldVar(size);
-        #ifdef WENO7
+        #ifdef SCHEME_WENO7
         flux = new Flux(size);
         #endif
 
-        analocal.init("analysis", myrank);
+        //analocal.init("analysis", myrank);
 #ifdef PROFILE
         utils::reset_timer();
         profile.init("profile", myrank);
 #endif
         if (myrank==0) {
-            anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
+            anafile.open("analysis.dat", std::ofstream::out | std::ofstream::app);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time, 1:maxrelP, 2:surv, survb, 4:avgP, avgPb, 6:aM0, 7:Lex, 8:ELNe, 9:mm, mmb, (11: tt,ttb) ]" << endl;
         }

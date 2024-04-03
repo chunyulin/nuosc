@@ -1,5 +1,4 @@
 #pragma once
-
 //==== Start of global flags
 #define NFLAVOR 2
 #define DIM 3
@@ -8,11 +7,10 @@
 #endif
 
 #define COSENU_MPI
-#define SCHEME_FD8
+//#define SCHEME_FD8
 //#define SCHEME_WENO7
-#define PROFILE 50
-#define VERBOSE
-//#define GDR_OFF
+//#define PROFILE 20
+//#define VERBOSE
 //#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
@@ -22,7 +20,9 @@
 //#define ADV_TEST
 //#define IM_V2D_ICOSAHEDRA
 //#define NOT_OVERLAP
+//#define GDR_OFF
 
+#define WALLTIME_LIMIT_HOUR 3.9
 //==== End of global flags
 
 #include <chrono>
@@ -55,10 +55,9 @@ using std::min;
 using std::cos;
 using std::sin;
 
+const string CKPT="./ckpt";
 typedef double real;
 typedef std::vector<double> Vec;
-
-const string CKPT="./ckpt";
 
 #define _SIMD_ simd
 #if defined(INTEL_COMPILER)
@@ -71,7 +70,6 @@ const string CKPT="./ckpt";
 #include <papi.h>
 #endif
 
-
 #ifdef NVTX
 #include <nvToolsExt.h>
 #endif
@@ -80,12 +78,9 @@ const string CKPT="./ckpt";
 #endif
 #include <omp.h>
 
-// We adopot domain decomposition over spacial coordinates (x,z), not over v to avoid data exchange for v-integral.
-// Halo size is 16* nv* (nx*gz + nz*gx).
 #ifdef COSENU_MPI
 #include <mpi.h>
 #endif
-
 
 #ifdef SYNC_NCCL
 #include "nccl.h"
@@ -97,4 +92,3 @@ const string CKPT="./ckpt";
     }                           \
     } while(0)
 #endif
-

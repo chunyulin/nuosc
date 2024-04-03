@@ -5,13 +5,12 @@ if [[ $host == "ilgn01" ]]; then
 
   echo "=== on T4 ==="
   ml purge
-  #ml sys/intelmpi/2021.9
   ml sys/intelmpi
 
   export CXX=mpiicpx
   export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
   export OPT="-parallel-source-info=2  -g -qopt-zmm-usage=high -xsapphirerapids -O3 -qopenmp -Wno-unknown-pragmas"
-  export OPT="-O3 -fp-model=precise -qopenmp -xHost -qopt-zmm-usage=high -Wno-unknown-pragmas"
+  export OPT="-g -O3 -fp-model=precise -qopenmp -xHost -qopt-zmm-usage=high -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -fp-model=precise -xHost"
    # -L/pkg/x86/apps/oneapi/itac/2021.9.0/slib -lVT"
 
