@@ -17,6 +17,65 @@ double g(double v, double sigma, double v0 = 1.0){
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
+void NuOsc::restoreInitValue(int restart_from, real alpha, real lnue[], real lnueb[]) {
+  #ifdef PROFILE
+  nvtxRangePush(__FUNCTION__);
+  #endif
+
+  std::vector<real> carr(nx[0]*nx[1]*nx[2]*nv);
+
+  for (int f=0;f<nvar; ++f) {
+    // dummy init for OpenMP affinity
+    PARFORALL(i,j,k,v) {
+      auto ijkv = idx(i,j,k,v);
+      v_stat->wf[f][ijkv] = 0.0;
+    }
+
+   string filename;
+   filename = "ckp" + std::to_string(f) + "_" + std::to_string(restart_from) + "." + std::to_string(myrank);
+   std::ifstream infile(filename, std::ios::in | std::ios::binary);
+   if (!infile.is_open()) assert(0 && "Open checkpoint file fail !");
+
+   infile.read((char *) &iter,     sizeof(uint) );
+   infile.read((char *) &phy_time, sizeof(real) );
+   if (iter!=restart_from) assert(0 && "CheckRestart init data fail!");
+
+   if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f\n", filename.c_str(), iter, phy_time );
+
+   infile.read(reinterpret_cast<char*>(&carr[0]), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
+
+   PARFORALL(i,j,k,v) {
+     v_stat->wf[f][ idx(i,j,k,v) ] = carr[ v + nv*( k + nx[2]*( j + nx[1]*i)) ];
+   }
+ }
+ 
+  // Recalculate angular distribution ( TODO: consider to separate out )
+  Vec ng(nv), ngb(nv);
+  real ing0=0, ing1=0;
+  #pragma omp parallel for simd reduction(+:ing0, ing1)
+  for (int v=0;v<nv;++v) {
+    ng [v] = g(vx[v], vy[v], vz[v], lnue );
+    ngb[v] = g(vx[v], vy[v], vz[v], lnueb);
+    ing0 += vw[v]*ng [v];
+    ing1 += vw[v]*ngb[v];
+  }
+
+  ing0 = 1.0/ing0;    // for normalize G0, which means we don't need provide N actually.
+  ing1 = 1.0/ing1;
+
+  PARFORALL(i,j,k,v) {
+    auto ijkv = idx(i,j,k,v);
+
+    // ELN profile
+    G0 [ijkv] =         ng [v] * ing0;
+    G0b[ijkv] = alpha * ngb[v] * ing1;
+  }
+
+ #ifdef PROFILE
+ nvtxRangePop();
+ #endif
+}
+
 void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]) {
 #ifdef PROFILE
     nvtxRangePush(__FUNCTION__);

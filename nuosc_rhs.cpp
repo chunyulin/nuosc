@@ -44,7 +44,7 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
 
     for (int f=0;f<nvar; ++f) {
 
-#ifdef WENO7
+#ifdef SCHEME_WENO7
         // adv-x
         get_flux(flux, in->wf[f], nyzv, 1, 0, 0);
         PARFORALL(i,j,k,v) {
@@ -72,6 +72,23 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
             const real *ff   = &(in->wf[f][ijkv]);
             // prepare advection FD operator
             //   4-th order FD for 1st-derivation ~~ ( (a[-2]-a[2])/12 - 2/3*( a[-1]-a[1]) ) / dx
+    #ifdef SCHEME_FD8
+            real factor_z = -vz[v]/(60*dx);
+            real factor_y = -vy[v]/(60*dx);
+            real factor_x = -vx[v]/(60*dx);
+            #define ADV_FD(x) ( \
+              factor_z*(-(x[-3*nv]  -x[3*nv])   + 9.0*(x[-2*nv]  -x[2*nv])   - 45.0*(x[-nv]  -x[nv])   ) + \
+              factor_y*(-(x[-3*nzv] -x[3*nzv])  + 9.0*(x[-2*nzv] -x[2*nzv])  - 45.0*(x[-nzv] -x[nzv])  ) + \
+              factor_x*(-(x[-3*nyzv]-x[3*nyzv]) + 9.0*(x[-2*nyzv]-x[2*nyzv]) - 45.0*(x[-nyzv]-x[nyzv]) ) )
+    #elif FD6
+            real factor_z = -vz[v]/(280*dx);
+            real factor_y = -vy[v]/(280*dx);
+            real factor_x = -vx[v]/(280*dx);
+            #define ADV_FD(x) ( \
+              factor_z*( (x[-4*nv]  -x[4*nv])   - (224./21.0)*(x[-3*nv]  -x[3*nv])   + 56.0*(x[-2*nv]  -x[2*nv])   - 224.0*(x[-nv]  -x[nv])   ) + \
+              factor_y*( (x[-4*nzv] -x[4*nzv])  - (224./21.0)*(x[-3*nzv] -x[3*nzv])  + 56.0*(x[-2*nzv] -x[2*nzv])  - 224.0*(x[-nzv] -x[nzv])  ) + \
+              factor_x*( (x[-4*nyzv]-x[4*nyzv]) - (224./21.0)*(x[-3*nyzv]-x[3*nyzv]) + 56.0*(x[-2*nyzv]-x[2*nyzv]) - 224.0*(x[-nyzv]-x[nyzv]) ) )
+    #else
             real factor_z = -vz[v]/(12*dx);
             real factor_y = -vy[v]/(12*dx);
             real factor_x = -vx[v]/(12*dx);
@@ -79,6 +96,8 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
               factor_z*(  (x[-2*nv]  -x[2*nv])   - 8.0*( x[-nv]  -x[nv]   ) ) + \
               factor_y*(  (x[-2*nzv] -x[2*nzv])  - 8.0*( x[-nzv] -x[nzv]  ) ) + \
               factor_x*(  (x[-2*nyzv]-x[2*nyzv]) - 8.0*( x[-nyzv]-x[nyzv] ) ) )
+    #endif
+
 
             // prepare KO operator
             #ifndef KO_ORD_3
@@ -89,13 +108,29 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
                ( x[-3*nzv] +x[3*nzv]  - 6.*(x[-2*nzv] +x[2*nzv])  + 15.*(x[-nzv] + x[nzv]) - 20.*x[0] ) + \
                ( x[-3*nyzv]+x[3*nyzv] - 6.*(x[-2*nyzv]+x[2*nyzv]) + 15.*(x[-nyzv]+ x[nyzv])- 20.*x[0] ) )
             #else
-            // Kreiss-Oliger dissipation (3-nd order)
+            // Kreiss-Oliger dissipation (3-nd order --> 4rd derivatives)
+        #ifdef SCHEME_FD8
+            // O(x^4) with 3 buffer zone
+            real ko_eps = -ko/dx/16.0/6.0;
+            #define KO_FD(x) ko_eps*( \
+             ( -(x[-3*nv]  +x[3*nv])  + 12.0*(x[-2*nv]  +x[2*nv])  -39.0*(x[-nv]  +x[nv])  +56.0*x[0] ) + \
+             ( -(x[-3*nzv] +x[3*nzv]) + 12.0*(x[-2*nzv] +x[2*nzv]) -39.0*(x[-nzv] +x[nzv]) +56.0*x[0] ) + \
+             ( -(x[-3*nyzv]+x[3*nyzv])+ 12.0*(x[-2*nyzv]+x[2*nyzv])-39.0*(x[-nyzv]+x[nyzv])+56.0*x[0] ) )
+        #elif FD6
+            // O(x^6) with 4 buffer zone
+            real ko_eps = -ko/dx/16.0/240.0;
+            #define KO_FD(x) ko_eps*( \
+             ( 7.0*(x[-4*nv]  +x[4*nv])  -96.0*(x[-3*nv]  +x[3*nv])  + 676.0*(x[-2*nv]  +x[2*nv])  -1952.0*(x[-nv]  +x[nv])  +2730.0*x[0] ) + \
+             ( 7.0*(x[-4*nzv] +x[4*nzv]) -96.0*(x[-3*nzv] +x[3*nzv]) + 676.0*(x[-2*nzv] +x[2*nzv]) -1952.0*(x[-nzv] +x[nzv]) +2730.0*x[0] ) + \
+             ( 7.0*(x[-4*nyzv]+x[4*nyzv])-96.0*(x[-3*nyzv]+x[3*nyzv])+ 676.0*(x[-2*nyzv]+x[2*nyzv])-1952.0*(x[-nyzv]+x[nyzv])+2730.0*x[0] ) )
+        #else
             real ko_eps = -ko/dx/16.0;
             #define KO_FD(x) ko_eps*( \
                ( x[-2*nv]  +x[2*nv]   - 4.*(x[-nv]  +x[nv])   + 6.*x[0] ) + \
                ( x[-2*nzv] +x[2*nzv]  - 4.*(x[-nzv] +x[nzv])  + 6.*x[0] ) + \
                ( x[-2*nyzv]+x[2*nyzv] - 4.*(x[-nyzv]+x[nyzv]) + 6.*x[0] ) )
             #endif
+        #endif
 
             out->wf[f][ijkv] += ADV_FD(ff) + KO_FD(ff);
         } // end for xyzv.
@@ -221,8 +256,8 @@ void NuOsc::calRHS_wo_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT in
             const real btei = in->wf[ff::btei][ijkv];
             #endif
 
-//#define INP(x) ( x##0 - x##1 * vx[v] - x##2 * vy[v] - x##3 * vz[v])
-#define INP(x) ( x##0 - x##3 * vz[v])
+#define INP(x) ( x##0 - x##1 * vx[v] - x##2 * vy[v] - x##3 * vz[v])
+//#define INP(x) ( x##0 - x##3 * vz[v])
 #if NFLAVOR == 2
         auto iemRm = INP(emRm);
         auto iemIp = INP(emIp);
@@ -366,12 +401,13 @@ void NuOsc::step_rk4() {
     #endif
     if(renorm) renormalize(v_stat);
     phy_time += dt;
+    iter++;
 #ifdef PROFILE
     nvtxRangePop();
 #endif
 }
 
-#ifdef WENO7
+#ifdef SCHEME_WENO7
 void NuOsc::get_flux(Flux * RESTRICT out_flux, const real *in_field, const int stride, const int xdelta = 0, const int ydelta = 0, const int zdelta = 0)
 {
 #ifdef PROFILE

@@ -40,7 +40,6 @@ enum ff {
 };
 
 struct FieldVar {
-
 #if 1
     real **wf;
     FieldVar(int size) {
@@ -65,7 +64,7 @@ struct FieldVar {
 
 #endif
 };
-#ifdef WENO7
+#ifdef SCHEME_WENO7
 struct Flux {
     real* l2h; // Flux: from low to high.
     real* h2l; // Flux: from high to low.
@@ -80,29 +79,29 @@ struct Flux {
 };
 #endif
 
-typedef struct SnapShot_struct {
-    std::list<std::vector<real>> var_list;
-    string fntpl;
+struct SnapShot {
+    string tag;
+    std::list<int> var_list;
     int every;
     std::vector<int> x_slices;   // coordinate for the reduced dimension
     std::vector<int> v_slices;
 
     // init with specified v-coordinate
-    SnapShot_struct(std::list<std::vector<real>> var_list_, string fntpl_, int every_,  std::vector<int> v_slices_) {
+    SnapShot(string tag_, std::list<int> var_list_, int every_,  std::vector<int> v_slices_) {
+        tag = tag_;
         var_list = var_list_;
-        fntpl = fntpl_;
         every = every_;
         v_slices = v_slices_;
     }
     // init with specified y and v-coordinate
-    SnapShot_struct(std::list<std::vector<real>> var_list_, string fntpl_, int every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
+    SnapShot(string tag_, std::list<int> var_list_, int every_, std::vector<int> x_slices_, std::vector<int> v_slices_) {
+        tag = tag_;
         var_list = var_list_;
-        fntpl = fntpl_;
         every = every_;
         x_slices = x_slices_;
         v_slices = v_slices_;
     }
-} SnapShot;
+};
 
 inline void swap(FieldVar **a, FieldVar **b) { FieldVar *tmp = *a; *a = *b; *b = tmp; }
 inline real random_amp(real a) { return a * rand() / RAND_MAX; }
@@ -115,6 +114,7 @@ class NuOsc {
         const int nvar = 2*NFLAVOR*NFLAVOR;
         int ranks = 1, myrank = 0;
 
+        int iter = 0;
         real phy_time;
         real dt, dx;       // dx, dy, dz
         real ds_L;         // = dx*dy*dz/(z1-z0)/(y1-y0)/(x1-x0)
@@ -154,7 +154,7 @@ class NuOsc {
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
         //FieldVar *v_stat0;   // NOT used.
-#ifdef WENO7
+#ifdef SCHEME_WENO7
         Flux *flux;
 #endif
         real *P1,  *P2,  *P3,  *dN,  *dP;
@@ -201,7 +201,7 @@ class NuOsc {
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
             //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; //delete v_stat0;
-            #ifdef WENO7
+            #ifdef SCHEME_WENO7
             delete flux;
             #endif
             anafile.close();
@@ -238,6 +238,7 @@ class NuOsc {
 
 
         void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]);
+        void restoreInitValue(int restart_from, real alpha, real lnue[], real lnueb[]);
         void fillInitGaussian(real eps0, real sigma);
         void fillInitSquare(real eps0, real sigma);
         void fillInitTriangle(real eps0, real sigma);
@@ -252,7 +253,7 @@ class NuOsc {
         void unpack_buffer(FieldVar* v0);
         void sync_launch();
         void waitall();
-#ifdef WENO7
+#ifdef SCHEME_WENO7
         //void get_flux(Flux *, const std::vector<real>, const int, const int, const int, const int);
         void get_flux(Flux *, const real *, const int, const int, const int, const int);
 #endif
@@ -269,8 +270,8 @@ class NuOsc {
         void nvtxRangePop();
 #endif
         // 1D output:
-        void addSnapShotAtV(std::list<std::vector<real>> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
-        void checkSnapShot(const int t=0) const;
+        void addSnapShotAtV(string tag, std::list<int> var, int dumpstep, std::vector<int>  vidx);
+        void checkSnapShot();
         // 2D output:
         void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
 
@@ -285,7 +286,7 @@ class NuOsc {
 
             printf("[ Rank %2d ( %d %d %d ) on %s ]  nber:( %d %d )( %d %d )( %d %d )  N:[ %d %d %d %d ](nphi:%d)   bbox:( %g %g )( %g %g )( %g %g ) ]\n",
                    myrank, rx[0],rx[1],rx[2], tag, nb[0][0],nb[0][1],nb[1][0],nb[1][1],nb[2][0],nb[2][1], 
-                   nx[0],nx[1],nx[2], nv,nphi, bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1],bbox[2][0],bbox[2][1]);
+                   nx[0]+2*gx[0],nx[1]+2*gx[1],nx[2]+2*gx[2], nv,nphi, bbox[0][0],bbox[0][1],bbox[1][0],bbox[1][1],bbox[2][0],bbox[2][1]);
         }
 
 #if DIM == 2

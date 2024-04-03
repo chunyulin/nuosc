@@ -1,15 +1,17 @@
 #pragma once
 
 //==== Start of global flags
-#define NFLAVOR 3
+#define NFLAVOR 2
 #define DIM 3
 #if DIM != 3
 #error Only DIM=3 is supported
 #endif
 
 #define COSENU_MPI
-#define WENO7
-#define PROFILE
+#define SCHEME_FD8
+//#define SCHEME_WENO7
+#define PROFILE 50
+#define VERBOSE
 //#define GDR_OFF
 //#define SYNC_NCCL
 //#define SYNC_COPY
@@ -19,6 +21,7 @@
 #define KO_ORD_3
 //#define ADV_TEST
 //#define IM_V2D_ICOSAHEDRA
+//#define NOT_OVERLAP
 
 //==== End of global flags
 

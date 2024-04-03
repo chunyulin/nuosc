@@ -17,6 +17,10 @@ void handle_gpu_errors(char *err_msg) {
 int main(int argc, char *argv[]) {
 
     // Timing utilities
+    bool is_restart = 0;
+    int restart_from = 0;
+
+    // Timing utilities
     float stepms;
     float stepms_max, stepms_min;
     #ifdef COSENU_MPI
@@ -74,11 +78,8 @@ int main(int argc, char *argv[]) {
     #ifdef COSENU_MPI
     // THINK: consider to initialze MPI inside main class, may need passing argc argv into.
     int provided;
-    // Thread support: SINGLE < FUNNELED < SERIALIZED < MULTIPLE.
-    //MPI_Init(&argc, &argv);
-    //MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
+    // Thread support:  MPI_THREAD_SINGLE < MPI_THREAD_FUNNELED <  MPI_THREAD_SERIALIZED < MPI_THREAD_MULTIPLE
     MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-    //MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
@@ -145,11 +146,11 @@ int main(int argc, char *argv[]) {
             alpha = atof(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--ipt") == 0 )  {
             ipt = atoi(argv[t+1]);    t+=1;
-
         } else if (strcmp(argv[t], "--np") == 0 )  {
-            for (int d=0; d<DIM; ++d) {
-                px[d] = atoi(argv[t+1]);    t+=1;
-            }
+            for (int d=0; d<DIM; ++d) { px[d] = atoi(argv[t+1]); t+=1; }
+        } else if (strcmp(argv[t], "--cpt") == 0 )  {
+            is_restart = 1;
+            restart_from = atoi(argv[t+1]);  t+=1;
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
@@ -160,7 +161,7 @@ int main(int argc, char *argv[]) {
     //acc_set_error_routine(&handle_gpu_errors);  // undefined 
 #endif
 
-#if defined(WENO7)
+#if defined(SCHEME_WENO7) || defined(SCHEME_FD8)
     #if   DIM == 2
     int gx[] = {4,4};
     #elif DIM == 3
@@ -197,34 +198,34 @@ int main(int argc, char *argv[]) {
     else if (ipt==20) state.fillInitSquare( eps0, sigma);
     else if (ipt==30) state.fillInitTriangle( eps0, sigma);
 #else
-    state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb);
+    if (is_restart)   state.restoreInitValue(restart_from, alpha, lnue, lnueb);
+    else              state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb);
 #endif
     if (!myrank) printf("[%.4f] Initialize data done.\n", utils::msecs_since());
 
-    // === analysis for t=0
+    // === init analysis
     state.analysis();
     if (!myrank) printf("[%.4f] First analysis done.\n", utils::msecs_since());
 
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
-        //std::list<real*> vlist( { state.P3 } );
-        //std::vector<int> vslice;
-        //for (int v=0;v<nv_in;++v) {
-        //    vslice.push_back( int((nv_in-1)/2)*nv_in + v );
-        //}
-        //state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslize );
+#ifdef ADV_TEST
+        std::list<std::vector<real>> vlist( { state.v_stat->wf[ff::ee] } );
+        state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
+        //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
+#else
+        std::list<int> vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);
+        std::vector<int> vslice;
+        for (int v=0;v<state.nv;++v) vslice.push_back( v );
+        state.addSnapShotAtV("ckp", vlist, DUMP_EVERY, vslice );
         //state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx[0]/2,nx[0]-1}, vslice );
         //std::list<real*> plist( { state.P3 } );
         //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
         //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
-#ifdef ADV_TEST
-        std::list<std::vector<real>> vlist( { state.v_stat->wf[ff::ee] } );
-        state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY,  std::vector<int>{0,state.get_nv()/2, state.get_nv()-1} );
-        //state.addSnapShotAtV(vlist, "ee%06d.bin", DUMP_EVERY, gen_skimmed_vslice_index(nv_in, nv_in)  );
 #endif
-        state.checkSnapShot(0);
+        if (!is_restart) state.checkSnapShot();
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();
@@ -247,7 +248,7 @@ int main(int argc, char *argv[]) {
             state.analysis();
         }
 
-        state.checkSnapShot(t);
+        state.checkSnapShot();
 
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
             #ifdef COSENU_MPI
