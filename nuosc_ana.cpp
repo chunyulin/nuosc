@@ -71,8 +71,8 @@ void NuOsc::analysis() {
         avgPb += vw[v] * G0b[ijv] * std::abs( 1.0 - std::sqrt(P1b[ijv]*P1b[ijv]+P2b[ijv]*P2b[ijv]+P3b[ijv]*P3b[ijv]) );
 
         // M0
-        //aM01  += vw[v]* ( v_stat->ex_re[ijv] - v_stat->bex_re[ijv]);                                 // = P1[ijv]*G0[ijv] - P1b[ijv]*G0b[ijv];
-        //aM02  += vw[v]* (-v_stat->ex_im[ijv] - v_stat->bex_im[ijv]);                                 // = P2[ijv]*G0[ijv] - P2b[ijv]*G0b[ijv];
+        aM01  += vw[v]* ( v_stat->ex_re[ijv] - v_stat->bex_re[ijv]);                                 // = P1[ijv]*G0[ijv] - P1b[ijv]*G0b[ijv];
+        aM02  += vw[v]* (-v_stat->ex_im[ijv] - v_stat->bex_im[ijv]);                                 // = P2[ijv]*G0[ijv] - P2b[ijv]*G0b[ijv];
         aM03  += vw[v]* 0.5*(v_stat->ee[ijv] - v_stat->xx[ijv] - v_stat->bee[ijv] + v_stat->bxx[ijv]); // = P3[ijv]*G0[ijv] - P3b[ijv]*G0b[ijv], which is also the net e-x lepton number;
         
         // M1

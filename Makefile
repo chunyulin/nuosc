@@ -1,7 +1,8 @@
 include Makefile.inc
 
 TARGET= nuosc
-OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o  nuosc_snapshot.o jacobi_poly.o
+OBJS  = nuosc.o nuosc_ana.o nuosc_class.o nuosc_init.o  nuosc_snapshot.o
+## jacobi_poly.o
 
 #MAP="/opt/arm/forge/21.1.2/bin/map --profile"
 #ANA="/opt/arm/forge/21.1.2/bin/perf-report"

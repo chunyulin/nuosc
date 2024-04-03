@@ -1,6 +1,8 @@
 #pragma once
 
-#define COSENU2D
+//#define COSENU2D
+//#define WENO7
+//#define FD8
 
 //#define IM_V2D_POLAR_GL_Z
 
@@ -32,7 +34,7 @@
 #include <algorithm>
 #include <list>
 
-#include "jacobi_poly.h"
+//#include "jacobi_poly.h"
 
 
 #define BC_PERI
@@ -51,32 +53,38 @@ using std::min;
 using std::cos;
 using std::sin;
 
+#define _SIMD_ simd
+#if defined(INTEL_COMPILER)
+  #define RESTRICT restrict
+#else
+  #define RESTRICT __restrict
+#endif
 
 #ifdef COSENU2D
     #define COLLAPSE_LOOP 3
-    #define PARFORALL(i,j,v) \
-    _Pragma("omp parallel for collapse(3)") \
+    #define PARFORALL(i,j,v)                 \
+    _Pragma("omp parallel for collapse(3)")  \
     _Pragma("acc parallel loop collapse(3)") \
     for (int i=0;i<nx; ++i) \
     for (int j=0;j<nz; ++j) \
     for (int v=0;v<nv; ++v)
 
-    #define FORALL(i,j,v) \
+    #define FORALL(i,j,v)   \
     for (int i=0;i<nx; ++i) \
     for (int j=0;j<nz; ++j) \
     for (int v=0;v<nv; ++v)
-
 #else
     #define COLLAPSE_LOOP 2
-    #define PARFORALL(i,j,v) \
-    for (int i=0;i<1; ++i) \
-    _Pragma("omp parallel for collapse(2)") \
+    #define PARFORALL(i,j,v)                 \
+    _Pragma("omp parallel for collapse(2)")  \
     _Pragma("acc parallel loop collapse(2)") \
+    for (int i=0;i<1; ++i)  \
     for (int j=0;j<nz; ++j) \
+    _Pragma("omp simd")     \
     for (int v=0;v<nv; ++v)
 
-    #define FORALL(i,j,v) \
-    for (int i=0;i<1;  ++i) \
+    #define FORALL(i,j,v)   \
+    for (int i=0;i<1; ++i)  \
     for (int j=0;j<nz; ++j) \
     for (int v=0;v<nv; ++v)
 
@@ -105,10 +113,8 @@ typedef struct Vars {
         bxx    = new real[size]();
         bex_re = new real[size]();
         bex_im = new real[size]();
-        #pragma acc enter data create(this,ee[0:size],xx[0:size],ex_re[0:size],ex_im[0:size],bee[0:size],bxx[0:size],bex_re[0:size],bex_im[0:size])
     }
     ~Vars() {
-        #pragma acc exit data delete(ee, xx, ex_re, ex_im, bee, bxx, bex_re, bex_im, this)
         delete[] ee;
         delete[] xx;
         delete[] ex_re;
@@ -119,6 +125,21 @@ typedef struct Vars {
         delete[] bex_im;
     }
 } FieldVar;
+
+#ifdef WENO7
+struct Flux {
+    real* l2h; // Flux: from low to high.
+    real* h2l; // Flux: from high to low.
+    Flux(int size)  {
+        l2h = new real[size]();
+        h2l = new real[size]();
+    }
+    ~Flux()  {
+        delete[] l2h;
+        delete[] h2l;
+    }
+};
+#endif
 
 typedef struct stat {
     real min;
@@ -183,6 +204,9 @@ class NuOsc {
 
         FieldVar *v_stat, *v_rhs, *v_pre, *v_cor;  // field variables
         FieldVar *v_stat0;   // NOT used.
+#ifdef WENO7
+        Flux *flux;
+#endif
 
         real *P1,  *P2,  *P3,  *dN,  *dP;
         real *P1b, *P2b, *P3b, *dNb, *dPb;
@@ -232,7 +256,11 @@ class NuOsc {
             Z      = new real[nz];
             dz = (z1-z0)/nz;       // cell-center
             for (int i=0;i<nz;  i++)	Z[i]  =  z0 + (i+0.5)*dz;
-#ifndef KO_ORD_3
+
+#if defined(FD8) || defined(WENO7)
+            gz  = 4;
+            gx  = 4;
+#elif defined(KO_ORD_3)
             gz  = 3;
             gx  = 3;
 #else
@@ -304,16 +332,16 @@ class NuOsc {
 #endif
 
 
-#ifndef KO_ORD_3
-            printf("   Use 5-th order KO dissipation, KO eps = %g\n", ko);
-#else
-            printf("   Use 3-th order KO dissipation, KO eps = %g\n", ko);
-#endif
-
 #ifndef ADVEC_OFF
-            printf("   Advection ON. (Center-FD)\n");
-            //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
-            //printf("   Use lopsided FD for advaction\n");
+    #ifdef WENO7
+            printf("   WENO7 scheme.\n");
+    #else
+            #ifndef KO_ORD_3
+            printf("   FD scheme with 5-th order KO dissipation, KO eps = %g\n", ko);
+            #else
+            printf("   FD scheme with 3-th order KO dissipation, KO eps = %g\n", ko);
+            #endif
+    #endif
 #else
             printf("   Advection OFF.\n");
 #endif
@@ -337,7 +365,6 @@ class NuOsc {
             dN  = new real[size];
             dPb = new real[size];
             dNb = new real[size];
-            #pragma acc enter data create(G0[0:size],G0b[0:size],P1[0:size],P2[0:size],P3[0:size],P1b[0:size],P2b[0:size],P3b[0:size],dP[0:size],dN[0:size],dPb[0:size],dNb[0:size])
 
             // field variables~~
             v_stat = new FieldVar(size);
@@ -345,7 +372,9 @@ class NuOsc {
             v_pre  = new FieldVar(size);
             v_cor  = new FieldVar(size);
             v_stat0 = new FieldVar(size);
-            #pragma acc enter data create(v_stat[0:1], v_stat0[0:1], v_rhs[0:1], v_pre[0:1], v_cor[0:1]) attach(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            #ifdef WENO7
+            flux = new Flux(size);
+            #endif
 
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
@@ -358,13 +387,14 @@ class NuOsc {
 #ifdef COSENU2D
             delete[] X;delete[] vx;delete[] vy;
 #endif
-            #pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
             delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-            #pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
             delete v_stat, v_rhs, v_pre, v_cor, v_stat0;
+            #ifdef WENO7
+            delete flux;
+            #endif
 
             anafile.close();
 
@@ -397,6 +427,9 @@ class NuOsc {
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
+#ifdef WENO7
+        void get_flux(Flux *, const real *, const int);
+#endif
 
         // 1D output:
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);

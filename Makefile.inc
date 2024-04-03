@@ -7,8 +7,8 @@ CXX ?= armclang++
 #CXX=nvc++
 
 #INCLUDE=-I${ARMPL_INCLUDES}
-INCLUDE=-I/pkg/gsl-2.7.1/include
-LIBS=-L/pkg/gsl-2.7.1/lib -lgsl -lgslcblas
+#INCLUDE=-I/pkg/gsl-2.7.1/include
+#LIBS=-L/pkg/gsl-2.7.1/lib -lgsl -lgslcblas
 #DEBUG=-DPAPI
 #OPT=-Ofast -std=c++11 -fopenmp ${COSENU_OPT}
 OPT ?= -Ofast -std=c++11 -fopenmp -armpl

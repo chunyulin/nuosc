@@ -8,7 +8,7 @@ int main(int argc, char *argv[]) {
     real dx  =  0.1;
     real x0  = -0.05;     real x1  =  -x0;
     real z0  = - 10;      real z1  =  -z0;
-    int nv_in = 33, nphi = 32;
+    int nv_in = 128, nphi = 32;
     real cfl = 0.4;      real ko = 0.0;
 
     real mu  = 1.0;
@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
 
     // === initial value
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
-    real lnue  = 0.6,   lnueb  = 0.53;  // width of nu/nubar in z
+    real lnue  = 0.6,   lnueb  = 0.5;  // width of nu/nubar in z
     real lnuex  = std::numeric_limits<real>::max();
     real lnuebx = std::numeric_limits<real>::max();
     real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
@@ -166,7 +166,8 @@ int main(int argc, char *argv[]) {
         if ( t==10 || t==100 || t==1000 || t==END_STEP) {
             auto t2 = std::chrono::high_resolution_clock::now();
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count();
-    	    printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1e6);
+            printf("%d Walltime:  %.3f secs/T, %.2f ns per step-grid.\n", t, stepms/state.phy_time/1000, stepms/(t-cooltime+1)/size*1e6);
+            fflush(stdout);
         }
     }
 

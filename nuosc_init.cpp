@@ -14,6 +14,37 @@ double g(double v, double sigma, double v0 = 1.0){
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
+int gen_v2d_rsum_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
+    vx = new real[nv*nphi];
+    vy = new real[nv*nphi];
+    vz = new real[nv*nphi];
+    vw = new real[nv*nphi];
+    real dp = 2*M_PI/nphi;
+    real dv = 2.0/(nv);
+    for (int j=0;j<nphi; ++j)
+    for (int i=0;i<nv;   ++i)   {
+        real tmp = (i+0.5)*dv - 1;
+        vz[j*nv+i] = sqrt(1-tmp*tmp);
+        vx[j*nv+i] = cos(j*dp)*vz[j*nv+i];
+        vy[j*nv+i] = sin(j*dp)*vz[j*nv+i];
+        vz[j*nv+i] = tmp;
+        vw[j*nv+i] = dv*dp;
+    }
+    return nv*nphi;
+}
+#if 0
+int gen_v1d_GL(const int nv, real *& vw, real *& vz) {
+    Vec r(nv,0);
+    Vec w(nv,0);
+    JacobiGL(nv-1,0,0,r,w);
+    vz = new real[nv];
+    vw = new real[nv];
+    for (int j=0;j<nv; ++j) {
+        vz[j] = r[j];
+        vw[j] = w[j];
+    }
+    return nv;
+}
 int gen_v2d_GL_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
     Vec r(nv);
     Vec w(nv);
@@ -34,38 +65,7 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *
     return nv*nphi;
 }
 
-int gen_v2d_rsum_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
-    vx = new real[nv*nphi];
-    vy = new real[nv*nphi];
-    vz = new real[nv*nphi];
-    vw = new real[nv*nphi];
-    real dp = 2*M_PI/nphi;
-    real dv = 2.0/(nv);
-    for (int j=0;j<nphi; ++j)
-    for (int i=0;i<nv;   ++i)   {
-        real tmp = (i+0.5)*dv - 1;
-        vz[j*nv+i] = sqrt(1-tmp*tmp);
-        vx[j*nv+i] = cos(j*dp)*vz[j*nv+i];
-        vy[j*nv+i] = sin(j*dp)*vz[j*nv+i];
-        vz[j*nv+i] = tmp;
-        vw[j*nv+i] = dv*dp;
-    }
-    return nv*nphi;
-}
-
-int gen_v1d_GL(const int nv, real *& vw, real *& vz) {
-    Vec r(nv,0);
-    Vec w(nv,0);
-    JacobiGL(nv-1,0,0,r,w);
-    vz = new real[nv];
-    vw = new real[nv];
-    for (int j=0;j<nv; ++j) {
-        vz[j] = r[j];
-        vw[j] = w[j];
-    }
-    return nv;
-}
-
+#endif
 // v quaduture in [-1:1], vertex-center with simple trapezoidal rules.
 int gen_v1d_trapezoidal(const int nv, real *& vw, real *& vz) {
     assert(nv%2==1);
@@ -180,10 +180,12 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	ingb = 1.0/ingb;
 	#endif
 
-	#pragma omp parallel for reduction(+:ne0,nb0) collapse(COLLAPSE_LOOP)
-        FORALL(i,j,v) {
+        #pragma omp parallel for simd reduction(+:ne0,nb0)
+        for (int j=0;j<nz; ++j)
+        #pragma omp simd
+        for (int v=0;v<nv; ++v) {
 
-            uint ijv = idx(i,j,v);
+            uint ijv = idx(0,j,v);
 
             // ELN profile
             #ifdef COSENU2D
