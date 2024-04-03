@@ -25,7 +25,6 @@
 
 //==== End of global flags
 
-
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -58,6 +57,8 @@ using std::sin;
 
 typedef double real;
 typedef std::vector<double> Vec;
+
+const string CKPT="./ckpt";
 
 #define _SIMD_ simd
 #if defined(INTEL_COMPILER)
@@ -96,3 +97,4 @@ typedef std::vector<double> Vec;
     }                           \
     } while(0)
 #endif
+

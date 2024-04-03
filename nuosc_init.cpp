@@ -18,9 +18,9 @@ double g(double v, double sigma, double v0 = 1.0){
 }
 
 void NuOsc::restoreInitValue(int restart_from, real alpha, real lnue[], real lnueb[]) {
-  #ifdef PROFILE
-  nvtxRangePush(__FUNCTION__);
-  #endif
+#ifdef PROFILE
+nvtxRangePush(__FUNCTION__);
+#endif
 
   std::vector<real> carr(nx[0]*nx[1]*nx[2]*nv);
 
@@ -31,24 +31,24 @@ void NuOsc::restoreInitValue(int restart_from, real alpha, real lnue[], real lnu
       v_stat->wf[f][ijkv] = 0.0;
     }
 
-   string filename;
-   filename = "ckp" + std::to_string(f) + "_" + std::to_string(restart_from) + "." + std::to_string(myrank);
-   std::ifstream infile(filename, std::ios::in | std::ios::binary);
-   if (!infile.is_open()) assert(0 && "Open checkpoint file fail !");
+    string filename;
+    filename = CKPT + "/ckp" + std::to_string(f) + "_" + std::to_string(restart_from) + "." + std::to_string(myrank);
+    std::ifstream infile(filename, std::ios::in | std::ios::binary);
+    if (!infile.is_open()) assert(0 && "Open checkpoint file fail !");
 
-   infile.read((char *) &iter,     sizeof(uint) );
-   infile.read((char *) &phy_time, sizeof(real) );
-   if (iter!=restart_from) assert(0 && "CheckRestart init data fail!");
+    infile.read((char *) &iter,     sizeof(uint) );
+    infile.read((char *) &phy_time, sizeof(real) );
+    if (iter!=restart_from) assert(0 && "CheckRestart init data fail!");
 
-   if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f\n", filename.c_str(), iter, phy_time );
+    if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f\n", filename.c_str(), iter, phy_time );
 
-   infile.read(reinterpret_cast<char*>(&carr[0]), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
+    infile.read(reinterpret_cast<char*>(&carr[0]), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
 
-   PARFORALL(i,j,k,v) {
-     v_stat->wf[f][ idx(i,j,k,v) ] = carr[ v + nv*( k + nx[2]*( j + nx[1]*i)) ];
-   }
- }
- 
+    PARFORALL(i,j,k,v) {
+      v_stat->wf[f][ idx(i,j,k,v) ] = carr[ v + nv*( k + nx[2]*( j + nx[1]*i)) ];
+    }
+  }
+
   // Recalculate angular distribution ( TODO: consider to separate out )
   Vec ng(nv), ngb(nv);
   real ing0=0, ing1=0;
@@ -63,17 +63,39 @@ void NuOsc::restoreInitValue(int restart_from, real alpha, real lnue[], real lnu
   ing0 = 1.0/ing0;    // for normalize G0, which means we don't need provide N actually.
   ing1 = 1.0/ing1;
 
-  PARFORALL(i,j,k,v) {
+  real n00=0, n01=0;
+  #pragma omp parallel for reduction(+:n00,n01) collapse(3)
+  for (int i=0;i<nx[0]; ++i)
+  for (int j=0;j<nx[1]; ++j)
+  for (int k=0;k<nx[2]; ++k)
+  #pragma omp _SIMD_
+  for (int v=0;v<nv; ++v) {
     auto ijkv = idx(i,j,k,v);
 
     // ELN profile
     G0 [ijkv] =         ng [v] * ing0;
     G0b[ijkv] = alpha * ngb[v] * ing1;
+    // initial nv_e
+    n00 += vw[v]*v_stat->wf[ff::ee ][ijkv];
+    n01 += vw[v]*v_stat->wf[ff::bee][ijkv];
   }
 
- #ifdef PROFILE
- nvtxRangePop();
- #endif
+  real n0[] = {n00, n01};
+  #ifdef COSENU_MPI
+  MPI_Reduce(n0, n_nue0, 2, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
+  #else
+  n_nue0[0] = n00;
+  n_nue0[1] = n01;
+  #endif
+
+  n_nue0[0] *= ds_L;   // initial n_nue
+  n_nue0[1] *= ds_L;   // initial n_nueb
+
+  if (myrank==0) printf("      init number density of nu_e / bnu_e : %g %g\n", n_nue0[0], n_nue0[1]);
+
+#ifdef PROFILE
+nvtxRangePop();
+#endif
 }
 
 void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]) {

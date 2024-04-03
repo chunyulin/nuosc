@@ -1,4 +1,7 @@
 #include "nuosc_class.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 // Get coarse-grained v-index: just evenly spread nv_target pts over nv_in point..
 std::vector<int> gen_skimmed_vslice_index(uint sv, uint nv) {
@@ -15,6 +18,8 @@ void NuOsc::addSnapShotAtV(string tag, std::list<int> var, int dumpstep, std::ve
     nvtxRangePush(__FUNCTION__);
 #endif
 
+    mkdir(CKPT.c_str(), 0700);
+
     SnapShot ss(tag, var, dumpstep, vidx);
     snapshots.push_back(ss);
     int sv  = vidx.size();
@@ -24,7 +29,7 @@ void NuOsc::addSnapShotAtV(string tag, std::list<int> var, int dumpstep, std::ve
     std::ofstream outfile;
     char filename[32];
 
-    string tmp = tag + ".meta." + std::to_string(myrank);
+    string tmp = CKPT + "/" + tag + ".meta." + std::to_string(myrank);
     sprintf(filename, tmp.c_str(), 0);
     outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
@@ -58,7 +63,7 @@ void NuOsc::checkSnapShot() {
         for (auto const& var : ss.var_list) {
 
             string filename;
-            filename = ss.tag + std::to_string(var) + "_" + std::to_string(iter) + "." + std::to_string(myrank);
+            filename = CKPT + "/" + ss.tag + std::to_string(var) + "_" + std::to_string(iter) + "." + std::to_string(myrank);
             std::ofstream outfile;
             outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
             if(!outfile) cout << "*** Open fails: " <<  filename << endl;

@@ -23,7 +23,9 @@ elif [[ $host == "quantum."* ]]; then
 
   export CXX=mpic++
   export OPT="-O3 -acc=gpu -Minfo=accel -gpu=managed,cc70"
-  export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
+  export OPT="-O4 -mp -Minfo=mp"
+  export LIBS=${OPT}
+  ##"-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 elif [[ $host == *"twcc.ai" ]]; then
 
