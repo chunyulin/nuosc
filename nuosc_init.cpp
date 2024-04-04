@@ -32,9 +32,12 @@ nvtxRangePush(__FUNCTION__);
     }
 
     string filename;
-    filename = CKPT + "/ckp" + std::to_string(f) + "_" + std::to_string(restart_from) + "." + std::to_string(myrank);
+    filename = CKPT+"/it"+std::to_string(restart_from) + "/ckpt" + std::to_string(f) + "." + std::to_string(myrank);
     std::ifstream infile(filename, std::ios::in | std::ios::binary);
-    if (!infile.is_open()) assert(0 && "Open checkpoint file fail !");
+    if (!infile.is_open()) {
+      if (!myrank) cout << "Open file fail! " << filename << endl;
+      assert(0);
+    }
 
     infile.read((char *) &iter,     sizeof(uint) );
     infile.read((char *) &phy_time, sizeof(real) );

@@ -148,7 +148,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 #ifdef BC_PERI
             printf("   Use Periodic boundary\n");
 #else
-            printf("   Use open boundary\n");
+            #error "   Not implemented."
 #endif
 
 #if defined(IM_V2D_POLAR_GL_Z)
@@ -159,14 +159,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             printf("   Use uniform z- and polar phi- grid.\n");
 #endif
 
-#ifdef VACUUM_OFF
-            printf("   Vacuum term OFF.\n");
-#else
-            printf("   Vacuum term ON:  pmo= %g  theta= %g.\n", pmo, theta);
-#endif
-
 #ifndef ADVEC_OFF
-            printf("   Advection ON. (Center-FD)\n");
             //printf("   Use upwinded for advaction. (EXP. Always blowup!!\n");
             //printf("   Use lopsided FD for advaction\n");
     #if defined(SCHEME_WENO7)

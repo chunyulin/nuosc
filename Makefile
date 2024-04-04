@@ -15,14 +15,13 @@ ${TARGET}: ${OBJS}
 	$(CXX) $(LIBS) $^ -o $@
 
 test3d:
-	export CUDA_VISIBLE_DEVICES=0
-	#./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 4 3 3 --dx 0.1 --nv 16 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 2 --END_STEP 6
-	mpirun -np 1 --bind-to none ./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 4 3 3 --dx 0.1 --nv 16 --nphi 8 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 2 --END_STEP 6
-
-	#mpirun -np 2 -hostfile ~/hosts ./nuosc --np 2 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax 2 2 2  --dx 0.1 --nv 4 --nphi 10 --cfl 0.5 --alpha 0.9 --eps0 1e-1 --sigma .5 --ANA_EVERY 1 --END_STEP 6
+	#export CUDA_VISIBLE_DEVICES=0
+	export OMP_NUM_THREADS=8; \
+	mpirun -np 1 --bind-to none ./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .2 .2 10 --dx 0.1 --nv 8 --nphi 2 --cfl 0.5 \
+            --alpha 0.9 --eps0 1e-6 --sigma 5 --ANA_EVERY_T 1 --DUMP_EVERY_T 2 --END_STEP_T 2
 
 test3d_square:
-	./nuosc --ipt 20 --nv 4 --dx 0.1 --xmax 0.5 0.5 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --END_STEP 10 --ANA_EVERY 1
+	./nuosc --ipt 10 --nv 4 --dx 0.1 --xmax 0.5 0.5 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --END_STEP 10 --ANA_EVERY 1
 
 test3d_gaussian:
 	#rm -f *.png *.bin  ~/public_html/tmp/tmp/ee*.png -f

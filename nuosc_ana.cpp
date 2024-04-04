@@ -121,11 +121,12 @@ void NuOsc::analysis() {
         //real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
         real Lex = rv[8] * ds_L;
 
-        printf("T= %15f ", phy_time);
+        printf("T= %12f ", phy_time);
 #ifdef ADV_TEST
         printf(" I1= %5.4e I2= %5.4e\n", rv[0]/rv[4], rv[1]/rv[4]);
 #else
-        printf(" |dP|max= %5.4e ee= %5.4e %5.4e mm= %5.4e %5.4e  conP= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g\n",rv[9],rv[0],rv[1],rv[10],rv[11], rv[2],rv[3],aM0, ELNe, Lex);
+        printf(" |dP|m= %5.4e avP= %5.4e ee= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  mm= %5.4e %5.4e\n",rv[9],rv[2], rv[0],rv[1], aM0, ELNe, Lex, rv[10],rv[11]);
+        std::cout << std::flush;
 #endif
         anafile << phy_time << std::setprecision(13) << " " << rv[9] << " " 
             << rv[0] << " " << rv[1] << " " 

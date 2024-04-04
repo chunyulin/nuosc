@@ -22,7 +22,7 @@
 //#define NOT_OVERLAP
 //#define GDR_OFF
 
-#define WALLTIME_LIMIT_HOUR 3.9
+#define WALLTIME_LIMIT_HOUR 3.85
 //==== End of global flags
 
 #include <chrono>

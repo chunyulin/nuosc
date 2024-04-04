@@ -13,16 +13,19 @@ import subprocess
 cwd =  os.getcwd().split('/')[-1]
 print(cwd)
 
-p = subprocess.check_output(['ls -d alpha*'],shell=True)
+p = subprocess.check_output(['ls -d r*'],shell=True)
 runs = p.split()
 
 data=dict()
 for run in runs:
     data[run]=np.loadtxt("./{}/analysis.dat".format(run.decode()), skiprows=1)
 
-da  = [1,2,3,4,5,6,7]
-la  = ['max(|P|-1)','|M0|','Pee','Peeb','avgP','avgPb','ee-xx']
-log = [1,           1,      0,   0,     0,     0,       0     ]
+
+### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]
+
+da  = [1,2,3,4,5,6,7,8]
+la  = ['max(|P|-1)','Pee','Peeb','avgP','avgPb','|M0|','ee-xx','ELN']
+log = [1,           0,     0,     1,     1,      0,       1,       1  ]
 
 def compare(col, tag, log = 0):
     plt.figure()
@@ -53,4 +56,4 @@ for i in range(len(da)):
         if (islog): axt.set_yscale("log")
         axt.legend()
 
-plt.savefig("repoty_{}.png".format(cwd))
+plt.savefig("rpt_{}.png".format(cwd))

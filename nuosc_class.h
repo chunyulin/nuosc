@@ -40,7 +40,7 @@ enum ff {
 };
 
 struct FieldVar {
-#if 0
+#if 1
     real **wf;
     FieldVar(int size) {
         wf = new real *[2*NFLAVOR*NFLAVOR];

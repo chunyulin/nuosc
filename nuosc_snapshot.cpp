@@ -66,11 +66,14 @@ void NuOsc::checkSnapShot() {
         std::vector<int> vc = ss.v_slices;
         int sv = vc.size();
 
+        string fo = CKPT+"/it"+std::to_string(iter);
+        mkdir(fo.c_str(), 0700);
+
         std::vector<real> carr(nx[0]*nx[1]*nx[2]*sv);
         for (auto const& var : ss.var_list) {
 
             string filename;
-            filename = CKPT + "/" + ss.tag + std::to_string(var) + "_" + std::to_string(iter) + "." + std::to_string(myrank);
+            filename = fo + "/" + ss.tag + std::to_string(var) + "." + std::to_string(myrank);
             std::ofstream outfile;
             outfile.open( filename, std::ofstream::out | std::ofstream::trunc);
             if(!outfile) cout << "*** Open fails: " <<  filename << endl;

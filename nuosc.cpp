@@ -134,9 +134,13 @@ int main(int argc, char *argv[]) {
             ipt = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--np") == 0 )  {
             for (int d=0; d<DIM; ++d) { px[d] = atoi(argv[t+1]); t+=1; }
-        } else if (strcmp(argv[t], "--cpt") == 0 )  {
-            is_restart = 1;
+        } else if (strcmp(argv[t], "--ckpt") == 0 )  {
             restart_from = atoi(argv[t+1]);  t+=1;
+            // nagtive restart_from will start a new run for initiate a continuous submission for limit queue time
+            if (restart_from > 0) {
+              is_restart = 1;
+              cout << "Will be restart from " << restart_from << endl;
+            }
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
@@ -214,7 +218,7 @@ int main(int argc, char *argv[]) {
     { // prepare checkpoint
     std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);
     std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);
-    state.addSnapShotAtV("ckp", vlist, DUMP_EVERY, vslice );
+    state.addSnapShotAtV("ckpt", vlist, DUMP_EVERY, vslice );
     }
 
     if (!myrank) std::cout << std::flush;
@@ -245,11 +249,9 @@ int main(int argc, char *argv[]) {
             stepms_max = stepms_min = stepms;
             #endif
             if (myrank==0) {
-               stepms_min /= state.ssize;
-               stepms_max /= state.ssize;
                printf("%d Walltime: (Min) %.3f s/T, %.2f ns/step-grid.    (Max) %.3f s/T, %.2f ns/step-grid.\n", t,
-               stepms_min/state.phy_time/1000,  stepms_min/(t-cooltime+1)/lpts*1e6,
-               stepms_max/state.phy_time/1000,  stepms_max/(t-cooltime+1)/lpts*1e6 );
+               stepms_min/((t-cooltime+1)*state.dt)/1000,  stepms_min/state.ssize/(t-cooltime+1)/lpts*1e6,
+               stepms_max/((t-cooltime+1)*state.dt)/1000,  stepms_max/state.ssize/(t-cooltime+1)/lpts*1e6 );
                fflush(stdout);
             }
         }
@@ -271,7 +273,7 @@ int main(int argc, char *argv[]) {
        #else
        int tids = 1;
        #endif
-       double ns_per_stepgrid = stepms_max/(END_STEP-cooltime+1)/lpts*1e6;
+       double ns_per_stepgrid = stepms_max/state.ssize/(END_STEP-cooltime+1)/lpts*1e6;
        double s_per_phytime   = stepms_max/state.phy_time/1000;
        printf("Completed.\n\n");
        printf("Memory usage (GB) per rank: %.2f ~ %.2f\n", tmem_min, tmem_max );
@@ -279,7 +281,7 @@ int main(int argc, char *argv[]) {
     }
     #ifdef PROFILE
     state.profile << "Memory GB " << tmem << endl;
-    state.profile << "ms_per_step_grid: " << stepms/(END_STEP-cooltime+1)/lpts*1e6 << " " << stepms/state.phy_time/1000 << endl;
+    state.profile << "ms_per_step_grid: " << stepms/state.ssize/(END_STEP-cooltime+1)/lpts*1e6 << " " << stepms/state.phy_time/1000 << endl;
     #endif
 
     #ifdef SYNC_NCCL

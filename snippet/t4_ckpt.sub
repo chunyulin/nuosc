@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH -A GOV113006 -p alphatest
+#SBATCH -J n3d_f8  ### -t 4:00:0
+#SBATCH --nodes=2 --ntasks-per-node=8 --cpus-per-task=14
+#SBATCH --mem-bind=no
+##export OMP_PROC_BIND=true
+##export OMP_PLACES=cores
+##export OMP_DYNAMIC=false
+VARS="SLURM_JOB_ID SLURM_NTASKS SLURM_NNODES SLURM_NTASKS_PER_NODE SLURM_CPUS_PER_TASK SLURM_TASK_PID SLURM_NODELIST SLURM_SUBMIT_DIR  SLURM_MEM_BIND SLURM_MPI_TYPE OMP_PROC_BIND OMP_PLACES OMP_DYNAMIC"
+for v in ${VARS}; do echo " $v = ${!v}"; done
+
+ml purge
+ml sys/intelmpi
+
+## identical to 1D code for finite pmo and advection
+
+mpirun -print-rank-map \
+./nuosc --np 1 1 16 --xmax .2 .2 600 --dx 0.05 --nv 64 --nphi 4 --cfl 0.5 --pmo 0. --mu 1 --ko 1e-6 \
+        --ipt 0 --alpha 0.9 --lnue 0.6 --lnueb 0.5 --eps0 1e-6 --sigma 5 \
+        --ANA_EVERY_T 2 --DUMP_EVERY_T 2000 --END_STEP_T 2000 \
+        --ckpt $(cat RESTART_FROM)
+
+LAST=$(ls ckpt/it* -d1t | head -1)
+echo ${LAST:7} > RESTART_FROM
+sbatch nuosc_ckpt.sub
+
+
+echo "---- Walltime: ${SECONDS} sec."
