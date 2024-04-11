@@ -54,12 +54,12 @@ void NuOsc::checkSnapShot() {
     nvtxRangePush(__FUNCTION__);
 #endif
 
-    const ulong wtime_limit_ms = WALLTIME_LIMIT_HOUR*3600000;
+    const ulong wtime_limit_ms = wtime_limit_hour * 3600000;
 
     for (auto const& ss : snapshots) {
 
-        if (utils::msecs_since() > wtime_limit_ms) {
-            if (!myrank) printf("Will stop after checkpoint due to walltime limits.\n");
+        if (wtime_limit_ms > 0 && utils::msecs_since() + stepms_max > wtime_limit_ms) {
+            if (!myrank) printf("Checkpoint and simulation stop due to walltime limits.\n");
             stop_flag = 1;
         } else if (0 != iter%ss.every) continue;
 

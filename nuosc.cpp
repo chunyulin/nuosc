@@ -17,12 +17,8 @@ void handle_gpu_errors(char *err_msg) {
 int main(int argc, char *argv[]) {
 
     // Timing utilities
-    bool is_restart = 0;
-    int restart_from = 0;
-
-    // Timing utilities
     float stepms;
-    float stepms_max, stepms_min;
+    float stepms_min;
     #ifdef COSENU_MPI
     float t1;
     #else
@@ -61,6 +57,11 @@ int main(int argc, char *argv[]) {
 
     int ranks = 1, myrank = 0;
 
+    // Checkpoint
+    bool is_restart = 0;
+    int restart_from = 0;
+    float wtime_limit_hour = -1;
+
     #ifdef COSENU_MPI
     // THINK: consider to initialze MPI inside main class, may need passing argc argv into.
     int provided;
@@ -72,7 +73,7 @@ int main(int argc, char *argv[]) {
     if (!myrank) printf("[%.4f] MPI_Init_thread mode: %d\n", utils::msecs_since(), provided);
     #endif
 
-    // Parse input argument --------------------------------------------
+    // Parse input argument. ( TODO : pass argc to main class to parse ) ---------------
     for (int t = 1; argv[t] != 0; t++) {
         if (strcmp(argv[t], "--dx") == 0 )  {
             dx = atof(argv[t+1]);     t+=1;
@@ -139,8 +140,10 @@ int main(int argc, char *argv[]) {
             // nagtive restart_from will start a new run for initiate a continuous submission for limit queue time
             if (restart_from > 0) {
               is_restart = 1;
-              cout << "Will be restart from " << restart_from << endl;
+              if (!myrank) cout << "Will be restart from " << restart_from << endl;
             }
+        } else if (strcmp(argv[t], "--wtime") == 0 )  {
+            wtime_limit_hour = atoi(argv[t+1]);  t+=1;
         } else {
             printf("Unreconganized parameters %s!\n", argv[t]);
             exit(0);
@@ -179,6 +182,7 @@ int main(int argc, char *argv[]) {
     state.set_mu(mu);
     state.set_pmo(pmo);
     state.set_renorm(renorm);
+    state.wtime_limit_hour = wtime_limit_hour;
 
     uint nx[DIM];
     for (int d=0; d<DIM; ++d) nx[d] = (bbox[d][1]-bbox[d][0])/dx;
@@ -242,16 +246,16 @@ int main(int argc, char *argv[]) {
         if ( t==10 || t==100 || t==1000 || t==END_STEP || state.stop_flag) {
             #ifdef COSENU_MPI
             stepms = (MPI_Wtime() - t1)*1e3;
-            MPI_Reduce(&stepms, &stepms_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
-            MPI_Reduce(&stepms, &stepms_min, 1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
+            MPI_Reduce(&stepms, &state.stepms_max, 1, MPI_FLOAT, MPI_MAX, 0, state.CartCOMM);
+            MPI_Reduce(&stepms, &stepms_min,       1, MPI_FLOAT, MPI_MIN, 0, state.CartCOMM);
             #else
             stepms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-t1).count();
-            stepms_max = stepms_min = stepms;
+            state.stepms_max = stepms_min = stepms;
             #endif
             if (myrank==0) {
                printf("%d Walltime: (Min) %.3f s/T, %.2f ns/step-grid.    (Max) %.3f s/T, %.2f ns/step-grid.\n", t,
                stepms_min/((t-cooltime+1)*state.dt)/1000,  stepms_min/state.ssize/(t-cooltime+1)/lpts*1e6,
-               stepms_max/((t-cooltime+1)*state.dt)/1000,  stepms_max/state.ssize/(t-cooltime+1)/lpts*1e6 );
+               state.stepms_max/((t-cooltime+1)*state.dt)/1000,  state.stepms_max/state.ssize/(t-cooltime+1)/lpts*1e6 );
                fflush(stdout);
             }
         }
@@ -273,8 +277,8 @@ int main(int argc, char *argv[]) {
        #else
        int tids = 1;
        #endif
-       double ns_per_stepgrid = stepms_max/state.ssize/(END_STEP-cooltime+1)/lpts*1e6;
-       double s_per_phytime   = stepms_max/state.phy_time/1000;
+       double ns_per_stepgrid = state.stepms_max/state.ssize/(END_STEP-cooltime+1)/lpts*1e6;
+       double s_per_phytime   = state.stepms_max/state.phy_time/1000;
        printf("Completed.\n\n");
        printf("Memory usage (GB) per rank: %.2f ~ %.2f\n", tmem_min, tmem_max );
        printf("[Summ] %d %d %d %d %d %d %d %d %f %f\n", tids, px[0],px[1],px[2], nx[0],nx[1],nx[2], state.get_nv(), ns_per_stepgrid, s_per_phytime);

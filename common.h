@@ -7,7 +7,7 @@
 #endif
 
 #define COSENU_MPI
-//#define SCHEME_FD8
+#define SCHEME_FD8
 //#define SCHEME_WENO7
 //#define PROFILE 20
 //#define VERBOSE
@@ -18,11 +18,10 @@
 #define BC_PERI
 #define KO_ORD_3
 //#define ADV_TEST
-//#define IM_V2D_ICOSAHEDRA
+#define IM_V2D_ICOSAHEDRA
 //#define NOT_OVERLAP
 //#define GDR_OFF
 
-#define WALLTIME_LIMIT_HOUR 3.85
 //==== End of global flags
 
 #include <chrono>

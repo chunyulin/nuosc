@@ -187,6 +187,8 @@ class NuOsc {
         std::list<SnapShot> snapshots;
 
         bool stop_flag = 0;
+        float wtime_limit_hour = -1;  // default no wtime limit
+        float stepms_max = 0;
 
         NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);
