@@ -59,9 +59,10 @@ elif [[ $host == "node1" ]]; then
   module load nvhpc-hpcx
 
   export CXX=mpic++
-  export OPT="-mp -O4 -Minfo=mp"
-  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed,cc80"
-  export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
+  export OPT="-mp -O1 -Minfo=mp"
+  export LIBS=$OPT
+  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cc80 --ieee754"
+  export LIBS="-lz -Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
   echo "==== on ARM"

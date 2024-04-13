@@ -14,6 +14,8 @@ int gen_v1d_trapezoidal(const int nv_, Vec vw, Vec vz);
 int gen_v1d_simpson(const int nv_, Vec vw, Vec vz);
 int gen_v1d_cellcenter(const int nv_, Vec vw, Vec vz);
 
+inline real NF(real s, real v0=1.0) { return s*sqrt(0.5*M_PI)*( std::erf((1.0+v0)/s/sqrt(2.0)) + std::erf((1.0-v0)/s/sqrt(2.0))); }
+
 #define COLLAPSE_LOOP 4
 #define PARFORALL(i,j,k,v) \
     _Pragma("acc parallel loop independent collapse(4)") \
@@ -264,16 +266,17 @@ class NuOsc {
         void eval_conserved(const FieldVar* v0);
         void renormalize(FieldVar* v0);
 
-        void fft();
+        void fft_TBA();
 #ifdef PROFILE   /* Remove this for Nsight */
         void nvtxRangePush(const std::string);
         void nvtxRangePop();
 #endif
-        // 1D output:
         void addSnapShotAtV(string tag, std::list<int> var, int dumpstep, std::vector<int>  vidx);
-        void checkSnapShot();
+        void checkSnapShot(bool init=0);
         // 2D output:
         void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
+
+        void Dump2Text(char *);
 
 //--------------
         inline void print_info() {

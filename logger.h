@@ -28,3 +28,21 @@ inline WriteLocal& operator<<(WriteLocal& log, T op) {
     return log;
 }
 
+class WriteText : public std::ofstream {
+  public:
+    template<typename T> friend WriteText& operator<<(WriteText&, T);
+    WriteText() { };
+    void init(const std::string& fname) {
+        this->open(fname.c_str(), std::ofstream::out | std::ofstream::trunc);
+    }
+
+};
+
+template<typename T>
+inline WriteText& operator<<(WriteText& log, T op) {
+    auto& base_log = static_cast<std::ofstream&>(log);
+    base_log << op;
+    base_log.flush();
+    return log;
+}
+

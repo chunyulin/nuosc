@@ -8,7 +8,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     CFL = CFL_;
     dt = dx*CFL;
 
-
     #ifdef COSENU_MPI
     MPI_Comm_size(MPI_COMM_WORLD, &ranks);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -197,7 +196,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         v_rhs  = new FieldVar(size);
         v_pre  = new FieldVar(size);
         v_cor  = new FieldVar(size);
-        //v_stat0 = new FieldVar(size);
         #ifdef SCHEME_WENO7
         flux = new Flux(size);
         #endif
@@ -212,6 +210,8 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time, 1:maxrelP, 2:surv, survb, 4:avgP, avgPb, 6:aM0, 7:Lex, 8:ELNe, 9:mm, mmb, (11: tt,ttb) ]" << endl;
         }
+        constexpr auto max_precision{std::numeric_limits<real>::digits10 + 1}; 
+        anafile.precision(max_precision);
 
         {   // Hvac
 #if NFLAVOR == 3

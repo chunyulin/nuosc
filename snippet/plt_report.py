@@ -4,28 +4,38 @@ import matplotlib
 matplotlib.use('Agg')
 matplotlib.rcParams.update({'font.size': 10})
 
+import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sys
 import subprocess
 
-cwd =  os.getcwd().split('/')[-1]
-print(cwd)
+#cwd =  os.getcwd().split('/')[-1]
+#print(cwd)
+#p = subprocess.check_output(['ls -d r*'],shell=True)
+#runs = p.split()
 
-p = subprocess.check_output(['ls -d r*'],shell=True)
-runs = p.split()
+if 1 == len(sys.argv):
+  #lines = glob.glob("*.dat")
+  print("Usage: <exec> [folder1] [...]")
+  sys.exit(0)
+else:
+  runs = sys.argv[1:]
+
+print("Processing ", runs)
+
 
 data=dict()
 for run in runs:
-    data[run]=np.loadtxt("./{}/analysis.dat".format(run.decode()), skiprows=1)
+    data[run]=np.loadtxt(f"{run}/analysis.dat", skiprows=1)
 
 
 ### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]
 
 da  = [1,2,3,4,5,6,7,8]
 la  = ['max(|P|-1)','Pee','Peeb','avgP','avgPb','|M0|','ee-xx','ELN']
-log = [1,           0,     0,     1,     1,      0,       1,       1  ]
+log = [1,           0,     0,     1,     1,      0,       0,       0  ]
 
 def compare(col, tag, log = 0):
     plt.figure()
@@ -42,7 +52,6 @@ def compare(col, tag, log = 0):
 
 NR,NC = 2,4
 fig, ax = plt.subplots(nrows=NR, ncols=NC, figsize=(NC*5,NR*4), squeeze=False )
-fig.suptitle("{}".format(cwd))
 
 for i in range(len(da)):
     dcol = da[i]
@@ -56,4 +65,4 @@ for i in range(len(da)):
         if (islog): axt.set_yscale("log")
         axt.legend()
 
-plt.savefig("rpt_{}.png".format(cwd))
+plt.savefig("report.png")

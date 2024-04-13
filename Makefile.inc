@@ -8,7 +8,7 @@ GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
 #INCLUDE=-I${ARMPL_INCLUDES}
 INCLUDE= #-I${MPI_ROOT}/include
 
-LIBS?=-fopenmp -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
+LIBS?=-lz -fopenmp -Wl,-rpath -Wl,${MPI_ROOT}/lib -L${MPI_ROOT}/lib -lmpi \
 
 #     -lnvToolsExt
 #-Wl,-rpath -Wl,${GSL_ROOT}/lib -L${GSL_ROOT}/lib -lgsl -lgslcblas \

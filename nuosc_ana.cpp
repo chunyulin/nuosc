@@ -63,6 +63,8 @@ void NuOsc::analysis() {
 #else
         t_survb += vw[v]* v_stat->wf[ff::bee][ijkv];
 #endif
+        t_mm  += vw[v]* v_stat->wf[ff::mm] [ijkv];
+        t_mmb += vw[v]* v_stat->wf[ff::bmm][ijkv];
         //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
         t_maxdP = std::max( t_maxdP, std::max(dP[ijkv], dPb[ijkv]));
         //maxdN = std::max( std::max(maxdN,dN[ijkv]), dNb[ijkv]);
@@ -125,7 +127,7 @@ void NuOsc::analysis() {
 #ifdef ADV_TEST
         printf(" I1= %5.4e I2= %5.4e\n", rv[0]/rv[4], rv[1]/rv[4]);
 #else
-        printf(" |dP|m= %5.4e avP= %5.4e ee= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  mm= %5.4e %5.4e\n",rv[9],rv[2], rv[0],rv[1], aM0, ELNe, Lex, rv[10],rv[11]);
+        printf(" |dP|m= %5.4e avP= %5.4e mm= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  ee= %5.4e %5.4e\n",rv[9],rv[2], rv[10],rv[11], aM0, ELNe, Lex, rv[0],rv[1]);
         std::cout << std::flush;
 #endif
         anafile << phy_time << std::setprecision(13) << " " << rv[9] << " " 

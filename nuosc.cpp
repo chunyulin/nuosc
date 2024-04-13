@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
 
     // === initial value
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
-    real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6};
-    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.5};
+    real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6, NF(0.6) };
+    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.5, NF(0.5) };
 
     real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
     real eps0  = 0.1;
@@ -135,10 +135,10 @@ int main(int argc, char *argv[]) {
             ipt = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--np") == 0 )  {
             for (int d=0; d<DIM; ++d) { px[d] = atoi(argv[t+1]); t+=1; }
-        } else if (strcmp(argv[t], "--ckpt") == 0 )  {
+        } else if (strcmp(argv[t], "--restart") == 0 )  {
             restart_from = atoi(argv[t+1]);  t+=1;
             // nagtive restart_from will start a new run for initiate a continuous submission for limit queue time
-            if (restart_from > 0) {
+            if (restart_from > -1) {
               is_restart = 1;
               if (!myrank) cout << "Will be restart from " << restart_from << endl;
             }
@@ -176,7 +176,6 @@ int main(int argc, char *argv[]) {
 
     // === create simuation
     NuOsc state(px, nv_in, nphi, gx, bbox, dx, cfl, ko);
-    if (!myrank) printf("[%.4f] Initialize main class.\n", utils::msecs_since());
 
     auto lpts = state.get_lpts();
     state.set_mu(mu);
@@ -195,13 +194,11 @@ int main(int argc, char *argv[]) {
     if (is_restart)   state.restoreInitValue(restart_from, alpha, lnue, lnueb);
     else              state.fillInitValue(ipt, alpha, eps0, sigma, lnue, lnueb);
 #endif
-    if (!myrank) printf("[%.4f] Initialize data done.\n", utils::msecs_since());
 
     // === init analysis
     state.analysis();
     if (!myrank) printf("[%.4f] First analysis done.\n", utils::msecs_since());
 
-/*
     if (DUMP_EVERY <= END_STEP) {
 #ifdef ADV_TEST
         std::list<std::vector<real>> vlist( { state.v_stat->wf[ff::ee] } );
@@ -215,14 +212,14 @@ int main(int argc, char *argv[]) {
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
 #endif
-        //if (!is_restart) state.checkSnapShot();
         //state.checkSkimShots();
     }
-*/
+
     { // prepare checkpoint
-    std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);
-    std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);
+    std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);    // all field
+    std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);   // all v
     state.addSnapShotAtV("ckpt", vlist, DUMP_EVERY, vslice );
+    if (!is_restart) state.checkSnapShot(true);
     }
 
     if (!myrank) std::cout << std::flush;

@@ -1,4 +1,5 @@
 #include "nuosc_class.h"
+#include <zlib.h>
 
 // for init data
 inline real eps_c(real eps0, real z,   real z0,   real sigma)    { return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
@@ -6,14 +7,14 @@ inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) { return eps0*r
 inline real eps_p(real eps0, real z,   real z0,   real sigma)    { return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
 double g(double vx, double vy, double vz, double s[], double v0 = 1.0) {
-    return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) );
+    // STRANGE: slightly bit different at 14 digits unless analytic normalization calculated here instead of by passing from s[3];
+    return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) ) / s[3];
 }
 double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
     return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
 }
 double g(double v, double sigma, double v0 = 1.0){
     double N = sigma*std::sqrt(0.5*M_PI)*(std::erf((1.0+v0)/sigma/std::sqrt(2.0))+std::erf((1.0-v0)/sigma/std::sqrt(2.0)));
-    //cout << "== Checking A : " << 1/N << endl;
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
@@ -22,50 +23,47 @@ void NuOsc::restoreInitValue(int restart_from, real alpha, real lnue[], real lnu
 nvtxRangePush(__FUNCTION__);
 #endif
 
-  std::vector<real> carr(nx[0]*nx[1]*nx[2]*nv);
-
   for (int f=0;f<nvar; ++f) {
     // dummy init for OpenMP affinity
-    PARFORALL(i,j,k,v) {
-      auto ijkv = idx(i,j,k,v);
-      v_stat->wf[f][ijkv] = 0.0;
-    }
+    PARFORALL(i,j,k,v) v_stat->wf[f][idx(i,j,k,v)] = 0.0;
 
-    string filename;
-    filename = CKPT+"/it"+std::to_string(restart_from) + "/ckpt" + std::to_string(f) + "." + std::to_string(myrank);
-    std::ifstream infile(filename, std::ios::in | std::ios::binary);
+    string fname = CKPT+"/it"+std::to_string(restart_from) + "/ckpt" + std::to_string(f) + "." + std::to_string(myrank);
+    #ifdef NOCOMPRESS
+    std::ifstream infile(fname, std::ios::in | std::ios::binary);
     if (!infile.is_open()) {
-      if (!myrank) cout << "Open file fail! " << filename << endl;
+      if (!myrank) cout << "Open file fail! " << fname << endl;
       assert(0);
     }
-
     infile.read((char *) &iter,     sizeof(uint) );
     infile.read((char *) &phy_time, sizeof(real) );
+    #else
+    gzFile fp = gzopen(fname.c_str(),"rb");
+    if (fp == NULL) {
+      if (!myrank) cout << "Open file fail! " << fname << endl;
+      assert(0);
+    }
+    gzread(fp, (char*) &iter,     sizeof(uint));
+    gzread(fp, (char*) &phy_time, sizeof(real));
+    #endif
+
     if (iter!=restart_from) assert(0 && "CheckRestart init data fail!");
+    if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f [%d %d %d %d]\n", fname.c_str(), iter, phy_time,nx[0],nx[1],nx[2],nv );
 
-    if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f\n", filename.c_str(), iter, phy_time );
-
-    infile.read(reinterpret_cast<char*>(&carr[0]), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
+    std::vector<real> carr(nx[0]*nx[1]*nx[2]*nv);
+    #ifdef NOCOMPRESS
+    infile.read(reinterpret_cast<char*>(carr.data()), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
+    infile.close();
+    #else
+    gzread(fp, (char*) carr.data(), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
+    gzclose(fp);
+    #endif
 
     PARFORALL(i,j,k,v) {
-      v_stat->wf[f][ idx(i,j,k,v) ] = carr[ v + nv*( k + nx[2]*( j + nx[1]*i)) ];
+      v_stat->wf[f][ idx(i,j,k,v) ] = carr[ v + nv*( k + nx[2]*( j + i*nx[1])) ];
     }
   }
 
-  // Recalculate angular distribution ( TODO: consider to separate out )
-  Vec ng(nv), ngb(nv);
-  real ing0=0, ing1=0;
-  #pragma omp parallel for simd reduction(+:ing0, ing1)
-  for (int v=0;v<nv;++v) {
-    ng [v] = g(vx[v], vy[v], vz[v], lnue );
-    ngb[v] = g(vx[v], vy[v], vz[v], lnueb);
-    ing0 += vw[v]*ng [v];
-    ing1 += vw[v]*ngb[v];
-  }
-
-  ing0 = 1.0/ing0;    // for normalize G0, which means we don't need provide N actually.
-  ing1 = 1.0/ing1;
-
+  // Recalculate angular distribution ( TODO: consider to read from checkpoint or separate it out )
   real n00=0, n01=0;
   #pragma omp parallel for reduction(+:n00,n01) collapse(3)
   for (int i=0;i<nx[0]; ++i)
@@ -74,10 +72,9 @@ nvtxRangePush(__FUNCTION__);
   #pragma omp _SIMD_
   for (int v=0;v<nv; ++v) {
     auto ijkv = idx(i,j,k,v);
-
     // ELN profile
-    G0 [ijkv] =         ng [v] * ing0;
-    G0b[ijkv] = alpha * ngb[v] * ing1;
+    G0 [ijkv] =         g(vx[v], vy[v], vz[v], lnue );
+    G0b[ijkv] = alpha * g(vx[v], vy[v], vz[v], lnueb );
     // initial nv_e
     n00 += vw[v]*v_stat->wf[ff::ee ][ijkv];
     n01 += vw[v]*v_stat->wf[ff::bee][ijkv];
@@ -156,20 +153,13 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
 
 	if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
 
-        // calulate normalization factor numerically...
 	Vec ng(nv), ngb(nv);
 	
-        real ing0=0, ing1=0;
-        #pragma omp parallel for simd reduction(+:ing0, ing1)
+        #pragma omp parallel for simd
 	for (int v=0;v<nv;++v) {
 	    ng [v] = g(vx[v], vy[v], vz[v], lnue );
 	    ngb[v] = g(vx[v], vy[v], vz[v], lnueb );
-            ing0 += vw[v]*ng [v];
-            ing1 += vw[v]*ngb[v];
 	}
-
-	ing0 = 1.0/ing0;    // for normalize G0, which means we don't need provide N actually.
-	ing1 = 1.0/ing1;
 
         real (*spatialeps)(real,real,real,real);
         if      (ipt==0) { spatialeps = &eps_c; }      // center Z perturbation
@@ -187,8 +177,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
             auto ijkv = idx(i,j,k,v);
 
             // ELN profile
-            G0 [ijkv] =         ng [v] * ing0;
-            G0b[ijkv] = alpha * ngb[v] * ing1;
+            G0 [ijkv] =         ng [v];
+            G0b[ijkv] = alpha * ngb[v];
 
             real tmpr = spatialeps(eps0, X[DIM-1][k], 0., sigma);
             real p3o = sqrt(1.0-tmpr*tmpr);
@@ -225,12 +215,38 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
         n_nue0[0] = n00;
         n_nue0[1] = n01;
 #endif
+
+#if 0
+    // dumpG
+    std::ofstream o;
+    char fn[32];
+    sprintf(fn, "G0_%f.dat", alpha);
+    o.open(fn, std::ofstream::out | std::ofstream::trunc);
+
+    o << "## nv" << endl;
+    for (int v=0;v<nv;++v) o << vw[v] << " ";
+    o << endl;
+
+    o << "## ng/ngb" << endl;
+    for (int v=0;v<nv;++v) o << ng [v] << " " << ngb[v] << " ";
+    o << endl;
+
+    o << "## G0/G0b" << endl;
+    for (int v=0;v<nv;v++) {
+      auto ijv = idx(1,1,1,v);
+      o << vz[v] << " " << std::setprecision(15) <<  G0[ijv] << " " << G0b[ijv] << endl;
+    }
+    o.close();
+#endif
+
     } //  end select case (ipt)
 
     n_nue0[0] *= ds_L;   // initial n_nue
     n_nue0[1] *= ds_L;   // initial n_nueb
 
     if (myrank==0) printf("      init number density of nu_e: %g %g\n", n_nue0[0], n_nue0[1]);
+
+    //Dump2Text("dump.dat");
 
 #ifdef PROFILE
     nvtxRangePop();
