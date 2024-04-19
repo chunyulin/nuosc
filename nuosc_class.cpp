@@ -89,7 +89,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 #else
     int i = 0;
     #pragma omp parallel for
-    #pragma acc parallel loop independent num_gangs(8192)
+    #pragma acc parallel loop independent
 #endif
     for (int j=0;j<nz; ++j) {
 
@@ -182,7 +182,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
     std::vector<real*> offs = {out->ee, out->xx, out->ex_re, out->ex_im,
                            out->bee, out->bxx, out->bex_re, out->bex_im };
 #ifdef WENO7
-    for(int f; f<iffs.size(); ++f) {
+    for(int f=0; f<iffs.size(); ++f) {
         get_flux(flux, iffs[f], nv);
         PARFORALL(i,j,v) {
             auto ijkv = idx(0,j,v);
@@ -191,7 +191,7 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
         }
     }
 #else
-    for(int f; f<iffs.size(); ++f) {
+    for(int f=0; f<iffs.size(); ++f) {
         PARFORALL(i,j,v) {
 
             // prepare KO operator
@@ -246,10 +246,8 @@ void NuOsc::calRHS(FieldVar * __restrict out, const FieldVar * __restrict in) {
 
 #endif    // end if ADVEC_OFF
 
-
             auto ijkv = idx(0,j,v);
             real *iff = &(iffs[f][ijkv]);
-            int s = sgn(vz[v]);
             offs[f][ijkv] += ADV_FD(iff) + KO_FD(iff) ;
         }
     }

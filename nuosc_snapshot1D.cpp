@@ -85,3 +85,50 @@ void NuOsc::checkSnapShot(const int t) const {
 #endif
 }
 
+
+void NuOsc::Dump2Text(char * fname) {
+
+    std::ofstream outfile;
+    outfile.open( fname, std::ofstream::out | std::ofstream::trunc);
+    if(!outfile) cout << "*** Open fails: " <<  fname << endl;
+
+
+    for (int k=0;k<nz; ++k)
+        outfile << Z[k] << " ";
+        outfile << endl;
+
+      for (int v=0;v<nv; ++v)
+        outfile << vz[v] << " ";
+        outfile << endl;
+
+    outfile.precision( std::numeric_limits<real>::digits10 + 1 );
+
+    std::vector<real*> ff = {v_stat->ee,
+            v_stat->xx,
+            v_stat->ex_re,
+            v_stat->ex_im,
+            v_stat->bee,
+            v_stat->bxx,
+            v_stat->bex_re,
+            v_stat->bex_im };
+
+
+    for (int f=0; f<8;++f) {
+    outfile << "# " <<f << endl;
+    outfile << "# " <<f << endl;
+    outfile << "# " <<f << endl;
+    outfile << "# " <<f << endl;
+    for (int i=0;i<1; ++i)
+    for (int j=0;j<nz; ++j) {
+    for (int v=0;v<nv; ++v) {
+        outfile << ff[f][idx(i,j,v)] << " ";
+    }
+        outfile << endl;
+  }
+        outfile << endl;
+    }
+
+    outfile.close();
+
+}
+

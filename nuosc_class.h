@@ -2,7 +2,7 @@
 
 //#define COSENU2D
 //#define WENO7
-//#define FD8
+#define FD8
 
 //#define IM_V2D_POLAR_GL_Z
 
@@ -74,10 +74,10 @@ using std::sin;
     for (int j=0;j<nz; ++j) \
     for (int v=0;v<nv; ++v)
 #else
-    #define COLLAPSE_LOOP 2
+    #define COLLAPSE_LOOP 3
     #define PARFORALL(i,j,v)                 \
     _Pragma("omp parallel for collapse(2)")  \
-    _Pragma("acc parallel loop collapse(2)") \
+    _Pragma("acc parallel loop collapse(3)") \
     for (int i=0;i<1; ++i)  \
     for (int j=0;j<nz; ++j) \
     _Pragma("omp simd")     \
@@ -379,6 +379,8 @@ class NuOsc {
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::trunc);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]" << endl;
+            constexpr auto max_precision{std::numeric_limits<real>::digits10 + 1};
+            anafile.precision(max_precision);
 
         }
 
@@ -435,8 +437,9 @@ class NuOsc {
         void addSnapShotAtV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int>  vidx);
         void checkSnapShot(const int t=0) const;
         // 2D output:
-        void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
+        //void addSnapShotAtXV(std::list<real*> var, char *fntpl, int dumpstep, std::vector<int> xidx, std::vector<int> vidx);
 
+        void Dump2Text(char *);
 
         // deprecated
         void output_detail(const char* fn);

@@ -50,16 +50,17 @@ elif [[ $host == "lgn"* ]]; then
   export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -xCASCADELAKE"
 
-elif [[ $host == "node1" ]]; then
+elif [[ $host == "node"[12] ]]; then
 
   echo "==== on N1 A100"
   module purge
-  module load nvhpc-hpcx
+  module load nvhpc
 
   export CXX=mpic++
   export OPT="-mp -O4 -Minfo=mp"
-  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed,cc80"
-  export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
+  export OPT="-O3 -acc=gpu -Minfo=acc -gpu=managed --diag_suppress declared_but_not_referenced,set_but_not_used"
+  export LIBS=$OPT
+  #export LIBS="-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
   echo "==== on ARM"

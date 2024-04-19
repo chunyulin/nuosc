@@ -127,14 +127,11 @@ int main(int argc, char *argv[]) {
         std::list<real*> vlist( { state.P3 } );
         std::vector<int> vslice;
         for (int v=0;v<nv_in;++v) {
-            vslice.push_back( int((nv_in-1)/2)*nv_in + v );
+            //vslice.push_back( int((nv_in-1)/2)*nv_in + v );
+            vslice.push_back( v );
         }
-        //state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslize );
-        state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
-        //std::list<real*> plist( { state.P3 } );
-        //state.addSkimShot(plist, "P3_%06d.bin", DUMP_EVERY, nz, 11 );
-        //std::list<real*> rlist( {state.v_stat->ee, state.v_stat->xx} );
-        //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
+        state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslice );
+        //state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
 
 #ifdef ADV_TEST
         std::list<real*> vlist( { state.v_stat->ee } );
@@ -145,7 +142,7 @@ int main(int argc, char *argv[]) {
         //state.checkSkimShots();
         //state.snapshot();
         //state.write_fz();
-    }    
+    }
 
     std::cout << std::flush;
     real stepms;

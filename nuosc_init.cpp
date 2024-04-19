@@ -5,14 +5,17 @@ inline real eps_c(real z, real z0, real eps0, real sigma){return eps0*std::exp(-
 inline real eps_r(real eps0) {return eps0*rand()/RAND_MAX;}
 inline real eps_p(real z, real z0, real eps0, real sigma){return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
-double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
+double g(double vx, double vz, double sx, double sz, double vx0, double vz0) {
     return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
 }
 double g(double v, double sigma, double v0 = 1.0){
     double N = sigma*std::sqrt(0.5*M_PI)*(std::erf((1.0+v0)/sigma/std::sqrt(2.0))+std::erf((1.0-v0)/sigma/std::sqrt(2.0)));
-    //cout << "== Checking A : " << 1/N << endl;
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
+double g(double v, double sigma, double N, double v0){
+    return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
+}
+inline double NF(double s, double v0=1.0) { return s*sqrt(0.5*M_PI)*(erf((1.0+v0)/s/std::sqrt(2.0))+std::erf((1.0-v0)/s/std::sqrt(2.0))); }
 
 int gen_v2d_rsum_zphi(const int nv, const int nphi, real *& vw, real *& vx, real *& vy, real *& vz) {
     vx = new real[nv*nphi];
@@ -103,7 +106,7 @@ int gen_v1d_cellcenter(const int nv, real *& vw, real *& vz) {
     vz = new real[nv];
     vw = new real[nv];
     for (int j=0;j<nv; ++j) {
-        vz[j] = (j+0.5)*dv - 1;
+        vz[j] = (j+0.5)*dv - 1.0;
         vw[j] = dv;
     }
     return nv;
@@ -142,7 +145,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
     	    real tmp2=std::sqrt(1.0-tmpr*tmpr-tmpi*tmpi);
     	    for (int v=0;v<nv; ++v){
 		auto jv = idx(0,j,v);
-		
+
 		// ELN profile
 		G0 [jv] =         g(vz[v], lnue );
 		G0b[jv] = alpha * g(vz[v], lnueb);
@@ -171,7 +174,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
         real ing = 0, ingb = 0;
 	#pragma omp parallel for reduction(+:ing, ingb)
 	for (int v=0;v<nv;++v) {
-	    ng [v] = g(vx[v], vz[v], lnue_x,  lnue );   // large vx sigma to reduce to 1D case (axi-symmetric case)
+	    ng [v] = g(vx[v], vz[v], lnue_x,  lnue  );   // large vx sigma to reduce to 1D case (axi-symmetric case)
 	    ngb[v] = g(vx[v], vz[v], lnueb_x, lnueb );
             ing  += vw[v]*ng [v];
             ingb += vw[v]*ngb[v];
@@ -192,8 +195,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
             G0 [ijv] =         ng [v] * ing;
             G0b[ijv] = alpha * ngb[v] * ingb;
             #else
-            G0 [ijv] =         g(vz[v], lnue , 1.0);
-            G0b[ijv] = alpha * g(vz[v], lnueb, 1.0);
+            G0 [ijv] =         g(vz[v], lnue);
+            G0b[ijv] = alpha * g(vz[v], lnueb);
             #endif
 
             real tmpr;
@@ -217,12 +220,6 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
             ne0 += vw[v]*v_stat->ee [ijv];
             nb0 += vw[v]*v_stat->bee[ijv];
         }
-    } //  end select case (ipt)
-
-    n_nue0  = ne0*dx*dz/((z1-z0)*(x1-x0));   // initial n_nue
-    n_nueb0 = nb0*dx*dz/((z1-z0)*(x1-x0));   // initial n_nueb
-
-    printf("      init number density of nu_e: %g %g\n", n_nue0, n_nueb0);
 
 #if 0
     // dumpG
@@ -230,12 +227,32 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
     char fn[32];
     sprintf(fn, "G0_%f.dat", alpha);
     o.open(fn, std::ofstream::out | std::ofstream::trunc);
+
+    o << "## nv" << endl;
+    for (int v=0;v<nv;++v) o << vw[v] << " ";
+    o << endl;
+
+    o << "## ng/ngb" << endl;
+    for (int v=0;v<nv;++v) o << g(vz[v], lnue , 1.0) << " " << g(vz[v], lnueb , 1.0) << " ";
+    o << endl;
+
+    o << "## G0/G0b" << endl;
     for (int v=0;v<nv;v++) {
-	    auto ijv = idx(1,1,v);
-	    o << vz[v] << " " << G0[ijv] - G0b[ijv] << endl;
+        auto ijv = idx(1,1,v);
+        o << vz[v] << " " <<  std::setprecision(15) << G0[ijv] << " " << G0b[ijv] << endl;
     }
     o.close();
 #endif
+
+    } //  end select case (ipt)
+
+    n_nue0  = ne0*dx*dz/((z1-z0)*(x1-x0));   // initial n_nue
+    n_nueb0 = nb0*dx*dz/((z1-z0)*(x1-x0));   // initial n_nueb
+
+    printf("      init number density of nu_e: %g %g\n", n_nue0, n_nueb0);
+
+    //Dump2Text("dump.dat");
+
 #if 0
     // dumpP1
     std::ofstream o;
