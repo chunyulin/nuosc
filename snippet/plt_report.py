@@ -63,6 +63,6 @@ for i in range(len(da)):
         axt.plot(data[t][:,0],data[t][:,dcol], label=t)
         axt.set_xlabel("Time --  {}".format(dlab))
         if (islog): axt.set_yscale("log")
-        axt.legend()
+ax[0,0].legend()
 
-plt.savefig("report.png")
+plt.savefig("report.png", dpi=600,  bbox_inches='tight')

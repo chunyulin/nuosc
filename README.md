@@ -1,5 +1,14 @@
 # NuOSC
 
+## Note:
+### 240420
+- Fix icosahedra integral weight by 2\pi -- reducible to 1d.
+- Use std::round instead of type-casting in determining nx[] to avoid unexpected result.
+- Fix unit test for sphere integral: test_v2dint.cpp
+- Reorganize file structure of unittest and script.
+- Switchable between real = double | float.
+
+
 ## Baseline test on T4:
 
 1. Compile ". ./gocom"

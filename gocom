@@ -1,8 +1,6 @@
 ml purge
-
 host=`hostname`
 if [[ $host == "ilgn01" ]]; then
-
   echo "=== on T4 ==="
   ml purge
   ml sys/intelmpi
@@ -15,7 +13,6 @@ if [[ $host == "ilgn01" ]]; then
    # -L/pkg/x86/apps/oneapi/itac/2021.9.0/slib -lVT"
 
 elif [[ $host == "quantum."* ]]; then
-
   echo "==== on Quantum"
   ml purge
   ml nvhpc-hpcx
@@ -27,7 +24,6 @@ elif [[ $host == "quantum."* ]]; then
   ##"-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 elif [[ $host == *"twcc.ai" ]]; then
-
   echo "==== on TWCC"
   #module load miniconda3
   #conda activate /opt/ohpc/pkg/kagra/ENV/py37
@@ -40,7 +36,6 @@ elif [[ $host == *"twcc.ai" ]]; then
 
 
 elif [[ $host == "lgn"* ]]; then
-
   echo "==== on Twnia-3"
   module purge
   #module load libs/GSL/2.6
@@ -52,8 +47,7 @@ elif [[ $host == "lgn"* ]]; then
   export OPT="-g -qopt-report=3 -qopenmp -O3 -xCASCADELAKE -qopt-zmm-usage=high -std=c++14 -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -xCASCADELAKE"
 
-elif [[ $host == "node1" ]]; then
-
+elif [[ $host == "node"[12] ]]; then
   echo "==== on N1 A100"
   module purge
   module load nvhpc-hpcx
@@ -61,7 +55,7 @@ elif [[ $host == "node1" ]]; then
   export CXX=mpic++
   export OPT="-mp -O1 -Minfo=mp"
   export LIBS=$OPT
-  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cc80 --ieee754"
+  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed"
   export LIBS="-lz -Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
@@ -73,8 +67,6 @@ else
 
   export CXX=armclang++
   export OPT="-Ofast -std=c++11 -fopenmp"
-  export OPT="-Ofast -std=c++11 -fopenmp -DIM_SIMPSON -fsave-optimization-record"
-  export OPT="-Ofast -std=c++11 -fopenmp -armpl -DIM_SIMPSON"
   ## -DADVEC_OFF"
 
 fi

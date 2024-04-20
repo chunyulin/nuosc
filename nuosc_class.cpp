@@ -51,8 +51,8 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
 
         bbox[d][0] = bbox_[d][0] + rx[d]    *(bbox_[d][1]-bbox_[d][0])/px[d];
         bbox[d][1] = bbox_[d][0] + (rx[d]+1)*(bbox_[d][1]-bbox_[d][0])/px[d];
-        if (1 == px[d] - rx[d]) bbox[d][1] = bbox_[d][1];     // the leftmost processor
-        nx[d] = int((bbox[d][1]-bbox[d][0])/dx);
+        if (1 == px[d] - rx[d]) bbox[d][1] = bbox_[d][1];   // the leftmost processor
+        nx[d] = std::round((bbox[d][1]-bbox[d][0])/dx);   // int-casting may give unexpected answer than std::round.
 
         X[d].reserve(nx[d]);
         for(int i=0;i<nx[d]; ++i) X[d][i] = bbox[d][0] + (i+0.5)*dx;
@@ -107,7 +107,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
         #ifdef COSENU_MPI
-        MPI_Type_contiguous(npb, MPI_DOUBLE, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
+        MPI_Type_contiguous(npb, MPI_REAL, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
         #ifdef SYNC_MPI_ONESIDE_COPY
         // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
         int ierr = 0;
@@ -134,10 +134,10 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             int tids = 1;
             #endif
             printf("\nNuOsc on %d (%dx%dx%d) MPI ranks: %d core per rank. Ranks per node: %d \n", ranks, px[0], px[1], px[2], tids, ssize);
-            printf("   Domain:  v: nv = %5d  ( w/ nphi = %5d ) on S2.\n", get_nv(), get_nphi() );
-            printf("            x:( %12f %12f )  dx = %g\n", bbox_[0][0], bbox_[0][1], dx);
-            printf("            y:( %12f %12f )  dy = %g\n", bbox_[1][0], bbox_[1][1], dx);
-            printf("            z:( %12f %12f )  dz = %g\n", bbox_[2][0], bbox_[2][1], dx);
+            printf("   Domain:  v: nbin = %5d  ( nv=%d  nphi= %d ) on S2.\n", get_nv(), nv_, get_nphi() );
+            printf("            x:( %12f %12f )  dx = %g   nx = %d\n", bbox_[0][0], bbox_[0][1], dx, nx[0]*px[0]);
+            printf("            y:( %12f %12f )  dy = %g   nx = %d\n", bbox_[1][0], bbox_[1][1], dx, nx[1]*px[1]);
+            printf("            z:( %12f %12f )  dz = %g   nx = %d\n", bbox_[2][0], bbox_[2][1], dx, nx[2]*px[2]);
 #ifdef SCHEME_WENO7
             printf("   Local size per field var = %.2f GB. Mem per rank for %d vars ~ %.2f GB\n", mem_per_var, nvar, mem_per_var*(nvar*4.2 + 14));
 #else
@@ -187,9 +187,9 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         P2b = new real[size];
         P3b = new real[size];
         dP  = new real[size];
-        dN  = new real[size];
         dPb = new real[size];
-        dNb = new real[size];
+        //dN  = new real[size];
+        //dNb = new real[size];
 
         // field variables~~
         v_stat = new FieldVar(size);

@@ -16,10 +16,11 @@ void NuOsc::eval_conserved(const FieldVar* RESTRICT v0) {
         P2b[ijkv] =  2.0*v0->wf[ff::bemi][ijkv] * iGb;
         P3b[ijkv] = (v0->wf[ff::bee][ijkv] - v0->wf[ff::bmm][ijkv]) * iGb;
 
-        dN [ijkv] = (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm][ijkv]);
-        dN [ijkv] = (dN [ijkv] - G0[ijkv])/dN [ijkv];   // relative difference of (ee+xx)
-        dNb[ijkv] = (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]);
-        dNb[ijkv] = (dNb [ijkv] - G0b[ijkv])/dNb [ijkv] ;
+        //dN [ijkv] = (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm][ijkv]);
+        //dN [ijkv] = (dN [ijkv] - G0[ijkv])/dN [ijkv];   // relative difference of (ee+xx)
+        //dNb[ijkv] = (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]);
+        //dNb[ijkv] = (dNb [ijkv] - G0b[ijkv])/dNb [ijkv] ;
+        
         //dN [ijkv] = ( (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm]  [ijkv]) - G0[ijkv])  / (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm]  [ijkv]) ;   // relative difference of (ee+xx)
         //dNb[ijkv] = ( (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]) - G0b[ijkv]) / (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]) ;
 
@@ -103,11 +104,11 @@ void NuOsc::analysis() {
 
 #ifdef COSENU_MPI
     if (!myrank) {
-       MPI_Reduce(MPI_IN_PLACE, &rv[0], 9, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
-       MPI_Reduce(MPI_IN_PLACE, &rv[9], 1, MPI_DOUBLE, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[0], 9, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[9], 1, MPI_REAL, MPI_MAX, 0, CartCOMM);
     } else {
-       MPI_Reduce(&rv[0],       &rv[0], 9, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
-       MPI_Reduce(&rv[9],       &rv[9], 1, MPI_DOUBLE, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(&rv[0],       &rv[0], 9, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce(&rv[9],       &rv[9], 1, MPI_REAL, MPI_MAX, 0, CartCOMM);
     }
 #endif
 

@@ -6,15 +6,16 @@ inline real eps_c(real eps0, real z,   real z0,   real sigma)    { return eps0*s
 inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) { return eps0*rand()/RAND_MAX;}
 inline real eps_p(real eps0, real z,   real z0,   real sigma)    { return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
-double g(double vx, double vy, double vz, double s[], double v0 = 1.0) {
-    // STRANGE: slightly bit different at 14 digits unless analytic normalization calculated here instead of by passing from s[3];
+real g(real vx, real vy, real vz, real s[], real v0 = 1.0) {
+    #ifdef ELN_NUMERICAL_NORMALIZATION   // default disable
+    return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) );
+    #else
+    // STRANGE: bit different at 14 digits if the factor s[3] is calculated here instead of by passing.
     return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) ) / s[3];
+    #endif
 }
-double g(double vx, double vz, double sx, double sz, double vx0 = 1.0, double vz0 = 1.0) {
-    return std::exp( - (vx-vx0)*(vx-vx0)/(2.0*sx*sx) - (vz-vz0)*(vz-vz0)/(2.0*sz*sz) );
-}
-double g(double v, double sigma, double v0 = 1.0){
-    double N = sigma*std::sqrt(0.5*M_PI)*(std::erf((1.0+v0)/sigma/std::sqrt(2.0))+std::erf((1.0-v0)/sigma/std::sqrt(2.0)));
+real g(real v, real sigma, real v0 = 1.0){
+    real N = sigma*std::sqrt(0.5*M_PI)*(std::erf((1.0+v0)/sigma/std::sqrt(2.0))+std::erf((1.0-v0)/sigma/std::sqrt(2.0)));
     return std::exp( - (v-v0)*(v-v0)/(2.0*sigma*sigma) ) / N;
 }
 
@@ -28,7 +29,7 @@ nvtxRangePush(__FUNCTION__);
     PARFORALL(i,j,k,v) v_stat->wf[f][idx(i,j,k,v)] = 0.0;
 
     string fname = CKPT+"/it"+std::to_string(restart_from) + "/ckpt" + std::to_string(f) + "." + std::to_string(myrank);
-    #ifdef NOCOMPRESS
+    #ifdef NO_ZLIB
     std::ifstream infile(fname, std::ios::in | std::ios::binary);
     if (!infile.is_open()) {
       if (!myrank) cout << "Open file fail! " << fname << endl;
@@ -50,7 +51,7 @@ nvtxRangePush(__FUNCTION__);
     if (myrank==0) printf("   Restore from checkpoint %s at iter= %d, time= %f [%d %d %d %d]\n", fname.c_str(), iter, phy_time,nx[0],nx[1],nx[2],nv );
 
     std::vector<real> carr(nx[0]*nx[1]*nx[2]*nv);
-    #ifdef NOCOMPRESS
+    #ifdef NO_ZLIB
     infile.read(reinterpret_cast<char*>(carr.data()), nx[0]*nx[1]*nx[2]*nv*sizeof(real));
     infile.close();
     #else
@@ -82,7 +83,7 @@ nvtxRangePush(__FUNCTION__);
 
   real n0[] = {n00, n01};
   #ifdef COSENU_MPI
-  MPI_Reduce(n0, n_nue0, 2, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
+  MPI_Reduce(n0, n_nue0, 2, MPI_REAL, MPI_SUM, 0, CartCOMM);
   #else
   n_nue0[0] = n00;
   n_nue0[1] = n01;
@@ -104,67 +105,84 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
 #endif
 
     real n00=0, n01=0;
-
     if (ipt==4) {   // init data for the code comparison ptoject.
 
         int amax=nx[DIM-1]/2/10;
-
         if (myrank==0) printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue[2], lnueb[2], sigma, amax);
-
         Vec phi(nx[DIM-1]/10+1);
+
         const real pi2oL = 2.0*M_PI/(bbox[DIM-1][1]-bbox[DIM-1][0]);
-        for(int k=-amax;k<=amax;++k){
+        for(int k=-amax;k<=amax;++k) {
             phi[k+amax]=2.0*M_PI*rand()/RAND_MAX;
         }
 
-        #pragma omp parallel for reduction(+:n00,n01)
-        for (int k=0;k<nx[DIM-1]; ++k){
-            real tmpr=0.0;
-            real tmpi=0.0;
+        #pragma omp parallel for reduction(+:n00,n01) collapse(3)
+        for (int i=0;i<nx[0]; ++i)
+        for (int j=0;j<nx[1]; ++j)
+        for (int k=0;k<nx[2]; ++k){
+
+            real tmpr=0.0, tmpi=0.0;
             for(int q=-amax;q<amax;++q) {
                 if(q!=0){
                     tmpr += 1.e-7/abs(q)*cos(pi2oL*q*X[DIM-1][k] + phi[q+amax]);
                     tmpi += 1.e-7/abs(q)*sin(pi2oL*q*X[DIM-1][k] + phi[q+amax]);
                 }
             }
-            real tmp2=sqrt(1.0-tmpr*tmpr-tmpi*tmpi);
+
+            real p3o=sqrt(1.0-tmpr*tmpr-tmpi*tmpi);
             for (int v=0;v<nv; ++v){
-                auto kv = idx(0,0,k,v);
+                auto kv = idx(i,j,k,v);
 
                 // ELN profile
                 G0 [kv] =         g(vz[v], lnue [3]);
                 G0b[kv] = alpha * g(vz[v], lnueb[3]);
-
-                v_stat->wf[ff::ee]  [kv] =  0.5* G0 [kv]*(1.0+tmp2);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
-                v_stat->wf[ff::mm]  [kv] =  0.5* G0 [kv]*(1.0-tmp2);
+                v_stat->wf[ff::ee]  [kv] =  0.5* G0 [kv]*(1.0+p3o);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
+                v_stat->wf[ff::mm]  [kv] =  0.5* G0 [kv]*(1.0-p3o);
                 v_stat->wf[ff::emr] [kv] =  0.5* G0 [kv]*tmpr;//1e-6;
                 v_stat->wf[ff::emi] [kv] =  0.5* G0 [kv]*tmpi;//random_amp(0.001);
-                v_stat->wf[ff::bee] [kv] =  0.5* G0b[kv]*(1.0+tmp2);
-                v_stat->wf[ff::bmm] [kv] =  0.5* G0b[kv]*(1.0-tmp2);
+                v_stat->wf[ff::bee] [kv] =  0.5* G0b[kv]*(1.0+p3o);
+                v_stat->wf[ff::bmm] [kv] =  0.5* G0b[kv]*(1.0-p3o);
                 v_stat->wf[ff::bemr][kv] =  0.5* G0b[kv]*tmpr;//1e-6;
                 v_stat->wf[ff::bemi][kv] = -0.5* G0b[kv]*tmpi;//random_amp(0.001);
                 // initial nv_e
-                n00 += vw[v]*v_stat->wf[ff::ee][kv];
+                n00 += vw[v]*v_stat->wf[ff::ee] [kv];
                 n01 += vw[v]*v_stat->wf[ff::bee][kv];
             }
         }
 
-    } else {
+    } else if (ipt<4) {  // init data homogeneous in DIM=ipt.
 
-	if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
+        if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
 
-	Vec ng(nv), ngb(nv);
-	
+        Vec ng(nv), ngb(nv);
+
+#ifdef ELN_NUMERICAL_NORMALIZATION
+        real ing0=0, ing1=0;
+        #pragma omp parallel for simd reduction(+:ing0, ing1)
+        for (int v=0;v<nv;++v) {
+            ng [v] = g(vx[v], vy[v], vz[v], lnue );
+            ngb[v] = g(vx[v], vy[v], vz[v], lnueb );
+            ing0 += vw[v]*ng [v];
+            ing1 += vw[v]*ngb[v];
+        }
+        cout << "Normalization: "<< std::setprecision(16) << ing0 << " " << ing1 << endl;
         #pragma omp parallel for simd
-	for (int v=0;v<nv;++v) {
-	    ng [v] = g(vx[v], vy[v], vz[v], lnue );
-	    ngb[v] = g(vx[v], vy[v], vz[v], lnueb );
-	}
+        for (int v=0;v<nv;++v) {
+            ng [v] /= ing0;
+            ngb[v] /= ing1;
+        }
+#else
+        #pragma omp parallel for simd
+        for (int v=0;v<nv;++v) {
+            ng [v] = g(vx[v], vy[v], vz[v], lnue );
+            ngb[v] = g(vx[v], vy[v], vz[v], lnueb );
+        }
+#endif
 
         real (*spatialeps)(real,real,real,real);
-        if      (ipt==0) { spatialeps = &eps_c; }      // center Z perturbation
-        else if (ipt==1) { spatialeps = &eps_r; }      // random
-        else if (ipt==2) { spatialeps = &eps_p; }      // periodic Z perturbation
+        if      (ipt<4) { spatialeps = &eps_c; }      // center Z perturbation
+        else if (ipt==5) { spatialeps = &eps_r; }      // random
+        else if (ipt==6) { spatialeps = &eps_p; }      // periodic Z perturbation
         //else if (ipt==3) { spatialeps = 0;  }       // constant
         else             { assert(0); }                         // Not implemented
 
@@ -180,7 +198,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
             G0 [ijkv] =         ng [v];
             G0b[ijkv] = alpha * ngb[v];
 
-            real tmpr = spatialeps(eps0, X[DIM-1][k], 0., sigma);
+            real tmpr = spatialeps(eps0, X[ipt][k], 0., sigma);
             real p3o = sqrt(1.0-tmpr*tmpr);
             v_stat->wf[ff::ee]  [ijkv] = 0.5* G0[ijkv]*(1.0+p3o);
             v_stat->wf[ff::mm]  [ijkv] = 0.5* G0[ijkv]*(1.0-p3o);
@@ -208,9 +226,9 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
             n01 += vw[v]*v_stat->wf[ff::bee][ijkv];
         }
 
-        real n0[] = {n00, n01};
 #ifdef COSENU_MPI
-        MPI_Reduce(n0, n_nue0, 2, MPI_DOUBLE, MPI_SUM, 0, CartCOMM);
+        real n0[] = {n00, n01};
+        MPI_Reduce(n0, n_nue0, 2, MPI_REAL, MPI_SUM, 0, CartCOMM);
 #else
         n_nue0[0] = n00;
         n_nue0[1] = n01;

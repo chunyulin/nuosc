@@ -86,8 +86,7 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
               factor_z*(-(x[-3*nv]  -x[3*nv])   + 9.0*(x[-2*nv]  -x[2*nv])   - 45.0*(x[-nv]  -x[nv])   ) + \
               factor_y*(-(x[-3*nzv] -x[3*nzv])  + 9.0*(x[-2*nzv] -x[2*nzv])  - 45.0*(x[-nzv] -x[nzv])  ) + \
               factor_x*(-(x[-3*nyzv]-x[3*nyzv]) + 9.0*(x[-2*nyzv]-x[2*nyzv]) - 45.0*(x[-nyzv]-x[nyzv]) ) )
-    #else
-            //   4-th order FD
+    #else              //  4-th order FD
             real factor_z = -vz[v]/(12*dx);
             real factor_y = -vy[v]/(12*dx);
             real factor_x = -vx[v]/(12*dx);
@@ -98,38 +97,37 @@ void NuOsc::calRHS_with_bdry(FieldVar * RESTRICT out, const FieldVar * RESTRICT 
     #endif
 
 
-            // prepare KO operator
-            #ifndef KO_ORD_3
-            // Kreiss-Oliger dissipation (5-th order)
+            // Kreiss-Oliger dissipation: p-ord dissipation needs at least (p+1)/2 buffer zones.
+    #ifndef KO_ORD_3
             real ko_eps = -ko/dx/64.0;
             #define KO_FD(x) ko_eps*( \
                ( x[-3*nv]  +x[3*nv]   - 6.*(x[-2*nv]  +x[2*nv])   + 15.*(x[-nv]  + x[nv])  - 20.*x[0] ) + \
                ( x[-3*nzv] +x[3*nzv]  - 6.*(x[-2*nzv] +x[2*nzv])  + 15.*(x[-nzv] + x[nzv]) - 20.*x[0] ) + \
                ( x[-3*nyzv]+x[3*nyzv] - 6.*(x[-2*nyzv]+x[2*nyzv]) + 15.*(x[-nyzv]+ x[nyzv])- 20.*x[0] ) )
-            #else
-            // Kreiss-Oliger dissipation (3-nd order --> 4rd derivatives)
+    #else
         #ifdef SCHEME_FD8
-            // O(x^6) with 4 buffer zone
+            // 4 buffer zone gives p=3 order KO with O(x^6) accuracy
             real ko_eps = -ko/dx/16.0/240.0;
             #define KO_FD(x) ko_eps*( \
              ( 7.0*(x[-4*nv]  +x[4*nv])  -96.0*(x[-3*nv]  +x[3*nv])  + 676.0*(x[-2*nv]  +x[2*nv])  -1952.0*(x[-nv]  +x[nv])  +2730.0*x[0] ) + \
              ( 7.0*(x[-4*nzv] +x[4*nzv]) -96.0*(x[-3*nzv] +x[3*nzv]) + 676.0*(x[-2*nzv] +x[2*nzv]) -1952.0*(x[-nzv] +x[nzv]) +2730.0*x[0] ) + \
              ( 7.0*(x[-4*nyzv]+x[4*nyzv])-96.0*(x[-3*nyzv]+x[3*nyzv])+ 676.0*(x[-2*nyzv]+x[2*nyzv])-1952.0*(x[-nyzv]+x[nyzv])+2730.0*x[0] ) )
         #elif SCHEME_FD6
-            // O(x^4) with 3 buffer zone
+            // 3 buffer zone gives p=3 order KO with O(x^4) accuracy
             real ko_eps = -ko/dx/16.0/6.0;
             #define KO_FD(x) ko_eps*( \
              ( -(x[-3*nv]  +x[3*nv])  + 12.0*(x[-2*nv]  +x[2*nv])  -39.0*(x[-nv]  +x[nv])  +56.0*x[0] ) + \
              ( -(x[-3*nzv] +x[3*nzv]) + 12.0*(x[-2*nzv] +x[2*nzv]) -39.0*(x[-nzv] +x[nzv]) +56.0*x[0] ) + \
              ( -(x[-3*nyzv]+x[3*nyzv])+ 12.0*(x[-2*nyzv]+x[2*nyzv])-39.0*(x[-nyzv]+x[nyzv])+56.0*x[0] ) )
         #else
+            // 2 buffer zone gives p=3 order KO with O(x^2) accuracy
             real ko_eps = -ko/dx/16.0;
             #define KO_FD(x) ko_eps*( \
                ( x[-2*nv]  +x[2*nv]   - 4.*(x[-nv]  +x[nv])   + 6.*x[0] ) + \
                ( x[-2*nzv] +x[2*nzv]  - 4.*(x[-nzv] +x[nzv])  + 6.*x[0] ) + \
                ( x[-2*nyzv]+x[2*nyzv] - 4.*(x[-nyzv]+x[nyzv]) + 6.*x[0] ) )
-            #endif
         #endif
+    #endif
 
             out->wf[f][ijkv] += ADV_FD(ff) + KO_FD(ff);
         } // end for xyzv.

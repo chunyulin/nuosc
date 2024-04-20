@@ -17,10 +17,8 @@ using std::cout;
 using std::endl;
 using std::vector;
 
+#include "common.h"
 #include "Point.h"
-
-typedef double real;
-typedef vector<real> Vec;
 typedef vector<uint> IVec;
 
 /****

@@ -1,4 +1,5 @@
 #pragma once
+#include "common.h"
 template <typename T>
 class PointT
 {
@@ -55,9 +56,9 @@ class PointT
         T x,y,z;
 };
 
-typedef PointT<double> Point;
+typedef PointT<real> Point;
 
-double det(const Point& A, const Point& B, const Point& C) {
+real det(const Point& A, const Point& B, const Point& C) {
     return A|(B*C);
 }
 

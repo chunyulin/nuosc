@@ -159,8 +159,8 @@ class NuOsc {
 #ifdef SCHEME_WENO7
         Flux *flux;
 #endif
-        real *P1,  *P2,  *P3,  *dN,  *dP;
-        real *P1b, *P2b, *P3b, *dNb, *dPb;
+        real *P1,  *P2,  *P3,  *dP;  // *dN
+        real *P1b, *P2b, *P3b, *dPb; // *dNb
         real *G0,*G0b;
         real n_nue0[2];   // initial number density for nue/nueb
 
@@ -196,12 +196,10 @@ class NuOsc {
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);
 
         ~NuOsc() {
-            //#pragma acc exit data delete(G0,G0b,P1,P2,P3,P1b,P2b,P3b,dP,dN,dPb,dNb)
             delete[] G0;
             delete[] G0b;
-            delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  delete[] dN;
-            delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; delete[] dNb;
-            //#pragma acc exit data delete(v_stat, v_rhs, v_pre, v_cor, v_stat0)
+            delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  //delete[] dN;
+            delete[] P1b; delete[] P2b; delete[] P3b; delete[] dPb; //delete[] dNb;
             delete v_stat;  delete v_rhs; delete v_pre; delete v_cor; //delete v_stat0;
             #ifdef SCHEME_WENO7
             delete flux;

@@ -10,7 +10,7 @@
 #define SCHEME_FD8
 //#define SCHEME_WENO7
 //#define PROFILE 20
-//#define VERBOSE
+#define VERBOSE
 //#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
@@ -18,7 +18,7 @@
 #define BC_PERI
 #define KO_ORD_3
 //#define ADV_TEST
-#define IM_V2D_ICOSAHEDRA
+//#define IM_V2D_ICOSAHEDRA
 //#define NOT_OVERLAP
 //#define GDR_OFF
 
@@ -54,9 +54,16 @@ using std::min;
 using std::cos;
 using std::sin;
 
-const string CKPT="./ckpt";
 typedef double real;
-typedef std::vector<double> Vec;
+//typedef float real;
+#ifdef COSENU_MPI
+#include <mpi.h>
+#define MPI_REAL MPI_DOUBLE
+//#define MPI_REAL MPI_FLOAT
+#endif
+
+const string CKPT="./ckpt";
+typedef std::vector<real> Vec;
 
 #define _SIMD_ simd
 #if defined(INTEL_COMPILER)
@@ -76,10 +83,6 @@ typedef std::vector<double> Vec;
 #include <openacc.h>
 #endif
 #include <omp.h>
-
-#ifdef COSENU_MPI
-#include <mpi.h>
-#endif
 
 #ifdef SYNC_NCCL
 #include "nccl.h"

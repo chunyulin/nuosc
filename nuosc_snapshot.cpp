@@ -39,18 +39,21 @@ void NuOsc::addSnapShotAtV(string tag, std::list<int> var, int dumpstep, std::ve
     if(!outfile) cout << "*** Open fails: " <<  filename << endl;
 
     // grid information
-    outfile << "## L1     : dt nx[0] nx[1] nx[2] nv"
+    outfile << "## L1     : dt nx[0] nx[1] nx[2] nv nphi"
             << "## L2,4,6 : bbox[d,0] bbox[d,1]"
             << "## L3,5,7 : X[d] coordinate"
             << "## L8-    : vgrid coordinate" << endl;
     
-    outfile << dt <<" "<< nx[0] <<" "<<nx[1] <<" "<<  nx[2] << " "<< sv << endl;
+    outfile << dt <<" "<< nx[0] <<" "<<nx[1] <<" "<<  nx[2] << " "<< sv/nphi << " " << nphi << endl;
     for (int d=0;d<DIM;++d) {
        outfile << bbox[d][0] <<" "<< bbox[d][1] << endl;
        for (int i=0;i<nx[d]; ++i) outfile << X[d][i]  << " ";
        outfile << endl;
     }
-    for(auto &v:vidx)  outfile << vx[v] << " " << vy[v] << " " << vz[v] << " " << endl;
+    for(auto &v:vidx)  outfile << vx[v] << " ";  outfile << endl;
+    for(auto &v:vidx)  outfile << vy[v] << " ";  outfile << endl;
+    for(auto &v:vidx)  outfile << vz[v] << " ";  outfile << endl;
+    for(auto &v:vidx)  outfile << vw[v] << " ";  outfile << endl;
 #ifdef PROFILE
     nvtxRangePop();
 #endif
@@ -95,7 +98,7 @@ void NuOsc::checkSnapShot(bool init) {
 
             string fname = fo + "/" + ss.tag + std::to_string(var) + "." + std::to_string(myrank);
 
-            #ifdef NOCOMPRESS
+            #ifdef NO_ZLIB
             std::ofstream outfile( fname, std::ofstream::out | std::ofstream::trunc);
             outfile.write((char *) &iter,     sizeof(uint) );
             outfile.write((char *) &phy_time, sizeof(real) );
@@ -104,7 +107,7 @@ void NuOsc::checkSnapShot(bool init) {
             gzwrite(fp, (char*)&iter    , sizeof(uint));
             gzwrite(fp, (char*)&phy_time, sizeof(real));
             #endif
-            //if (!myrank) printf("	Writing fid:%d of [ %d %d %d %d ] into %s\n", var, nx[0], nx[1], nx[2], sv, filename.c_str());
+            //if (!myrank) printf("	Writing fid:%d of [ %d %d %d %d ] into %s\n", var, nx[0], nx[1], nx[2], sv, fname.c_str());
 
             #pragma omp parallel for collapse(4)
             #pragma acc parallel loop collapse(4)
@@ -115,7 +118,7 @@ void NuOsc::checkSnapShot(bool init) {
                 carr[ v + sv*( k + nx[2]*( j + i*nx[1])) ] = v_stat->wf[var][ idx(i,j,k,vc[v]) ];
             }
 
-            #ifdef NOCOMPRESS
+            #ifdef NO_ZLIB
             outfile.write((char *) carr.data(), nx[0]*nx[1]*nx[2]*sv*sizeof(real) );
             outfile.close();
             #else

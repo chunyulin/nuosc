@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
 
     // === initial value
     real alpha = 0.9;                   // nuebar-nue asymmetric parameter
-    real lnue [] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.6, NF(0.6) };
-    real lnueb[] = {std::numeric_limits<real>::max(), std::numeric_limits<real>::max(), 0.5, NF(0.5) };
+    real lnue [] = {std::numeric_limits<real>::infinity(), std::numeric_limits<real>::infinity(), std::numeric_limits<real>::infinity(), 0 };
+    real lnueb[] = {std::numeric_limits<real>::infinity(), std::numeric_limits<real>::infinity(), std::numeric_limits<real>::infinity(), 0 };
 
     real ipt   = 0;                     // 0: central_z_perturbation; 1:random; 4:noc case
     real eps0  = 0.1;
@@ -117,28 +117,22 @@ int main(int argc, char *argv[]) {
             END_STEP = int ( atof(argv[t+1]) / (cfl*dx) + 0.5 );    t+=1;
             if (!myrank) cout << " ** END_STEP: " << END_STEP << endl;
             // for intial data
-        } else if (strcmp(argv[t], "--lnue") == 0 )  {
-            lnue[2]   = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--lnueb") == 0 )  {
-            lnueb[2]  = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--lnuex") == 0 )  {
-            lnue[0]   = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--lnuebx") == 0 )  {
-            lnueb[0]  = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--sigma") == 0 )  {
-            sigma = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--eps0") == 0 )  {
-            eps0 = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--alpha") == 0 )  {
-            alpha = atof(argv[t+1]);    t+=1;
-        } else if (strcmp(argv[t], "--ipt") == 0 )  {
-            ipt = atoi(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--lnuex")  == 0 )  { lnue[0]  = atof(argv[t+1]); t+=1; lnue[3]  = NF(lnue[0]);  // NF assuming correct only for 1 direction
+        } else if (strcmp(argv[t], "--lnuey")  == 0 )  { lnue[1]  = atof(argv[t+1]); t+=1; lnue[3]  = NF(lnue[1]);
+        } else if (strcmp(argv[t], "--lnue")   == 0 )  { lnue[2]  = atof(argv[t+1]); t+=1; lnue[3]  = NF(lnue[2]);
+        } else if (strcmp(argv[t], "--lnuebx") == 0 )  { lnueb[0] = atof(argv[t+1]); t+=1; lnueb[3] = NF(lnueb[0]);  // NF assuming correct only for 1 direction
+        } else if (strcmp(argv[t], "--lnueby") == 0 )  { lnueb[1] = atof(argv[t+1]); t+=1; lnueb[3] = NF(lnueb[1]);
+        } else if (strcmp(argv[t], "--lnueb")  == 0 )  { lnueb[2] = atof(argv[t+1]); t+=1; lnueb[3] = NF(lnueb[2]);
+        } else if (strcmp(argv[t], "--sigma") == 0 ) {  sigma = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--eps0") == 0 )  {  eps0 = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--alpha") == 0 ) {  alpha = atof(argv[t+1]);    t+=1;
+        } else if (strcmp(argv[t], "--ipt") == 0 )  {   ipt = atoi(argv[t+1]);    t+=1;
         } else if (strcmp(argv[t], "--np") == 0 )  {
             for (int d=0; d<DIM; ++d) { px[d] = atoi(argv[t+1]); t+=1; }
         } else if (strcmp(argv[t], "--restart") == 0 )  {
             restart_from = atoi(argv[t+1]);  t+=1;
             // nagtive restart_from will start a new run for initiate a continuous submission for limit queue time
-            if (restart_from > -1) {
+            if (restart_from >= 0) {
               is_restart = 1;
               if (!myrank) cout << "Will be restart from " << restart_from << endl;
             }
@@ -212,10 +206,7 @@ int main(int argc, char *argv[]) {
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
 #endif
-        //state.checkSkimShots();
-    }
-
-    { // prepare checkpoint
+    // prepare checkpoint
     std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);    // all field
     std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);   // all v
     state.addSnapShotAtV("ckpt", vlist, DUMP_EVERY, vslice );

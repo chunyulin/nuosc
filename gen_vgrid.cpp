@@ -19,7 +19,7 @@ int gen_v2d_GL_zphi(const int nv, const int nphi, Vec& vw, Vec& vx, Vec& vy, Vec
             vx[j*nv+i] = cos(j*dp)*vxy;
             vy[j*nv+i] = sin(j*dp)*vxy;
             vz[j*nv+i] = r[i];
-            vw[j*nv+i] = w[i]/nphi;
+            vw[j*nv+i] = w[i]/nphi;   // unit sphere area element devided by 2*pi 
         }
     return nv*nphi;
 }
@@ -47,12 +47,12 @@ int gen_v2d_rsum_zphi(const int nv, const int nphi, Vec& vw, Vec &vx, Vec& vy, V
     #pragma omp parallel for simd collapse(2)
     for (int j=0;j<nphi; ++j)
         for (int i=0;i<nv;   ++i)   {
-            real tmp = (i+0.5)*dv - 1;
-            real vxy = sqrt(1-tmp*tmp);
+            real tmp = (i+0.5)*dv - 1.0;
+            real vxy = sqrt(1.0-tmp*tmp);
             vx[j*nv+i] = cos(j*dp)*vxy;
             vy[j*nv+i] = sin(j*dp)*vxy;
             vz[j*nv+i] = tmp;
-            vw[j*nv+i] = dv/nphi;
+            vw[j*nv+i] = dv/nphi;   // unit sphere area element devided by 2*pi 
         }
     return nv*nphi;
 }
@@ -67,7 +67,7 @@ int gen_v2d_icosahedron(const int nv_, Vec& vw, Vec& vx, Vec& vy, Vec& vz) {
         vx[i] = icosa.X[i].x;
         vy[i] = icosa.X[i].y;
         vz[i] = icosa.X[i].z;
-        vw[i] = icosa.vw[i];
+        vw[i] = icosa.vw[i]/(2*M_PI);   // unit sphere area element devided by 2*pi 
     }
     return nv;
 }
