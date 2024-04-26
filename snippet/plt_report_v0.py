@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 10})
+
+import glob
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import sys
+import subprocess
+
+#cwd =  os.getcwd().split('/')[-1]
+#print(cwd)
+#p = subprocess.check_output(['ls -d r*'],shell=True)
+#runs = p.split()
+
+if 1 == len(sys.argv):
+  #lines = glob.glob("*.dat")
+  print("Usage: <exec> [folder1] [...]")
+  sys.exit(0)
+else:
+  runs = sys.argv[1:]
+
+print("Processing ", runs)
+
+
+data=dict()
+for run in runs:
+    data[run]=np.loadtxt(f"{run}/analysis.dat", skiprows=1)
+
+
+### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]
+
+da  = [1,2,3,4,5,6,7,8]
+la  = ['max(|P|-1)','Pee','Peeb','avgP','avgPb','|M0|','ee-xx','ELN']
+log = [1,           0,     0,     1,     1,      0,       0,       0  ]
+
+def compare(col, tag, log = 0):
+    plt.figure()
+    for k in data:
+        plt.plot(data[k][:,0],data[k][:,col], label=k)
+    #plt.plot(d2[:,0],(d2[:,col]-d2[0,col]), label=la[2])
+    #plt.plot(d3[:,0],(d3[:,col]-d3[0,col]), label=la[3])
+    #plt.plot(d4[:,0],(d4[:,col]-d4[0,col]), label=la[4])
+    plt.xlabel("Physical time")
+    plt.title("analysis {}".format(tag))
+    if (log): plt.yscale("log")
+    plt.legend()
+    plt.savefig("ana_{}.png".format(tag))
+
+NR,NC = 2,4
+fig, ax = plt.subplots(nrows=NR, ncols=NC, figsize=(NC*5,NR*4), squeeze=False )
+
+for i in range(len(da)):
+    dcol, dlab, islog = da[i], la[i], log[i]
+    axt = ax[int(i/NC), i%NC]
+    for t in data:
+        axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+        axt.set_xlabel("Time --  {}".format(dlab))
+        if (islog): axt.set_yscale("log")
+
+ax[0,0].legend()
+plt.savefig("report.png", dpi=600,  bbox_inches='tight')

@@ -52,11 +52,13 @@ elif [[ $host == "node"[12] ]]; then
   module purge
   module load nvhpc-hpcx
 
+  H5_INC="/usr/include/hdf5/serial"
+  H5_LIB="/usr/lib/aarch64-linux-gnu/hdf5/serial"
   export CXX=mpic++
   export OPT="-mp -O1 -Minfo=mp"
   export LIBS=$OPT
-  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cuda12.3,cc80"
-  export LIBS="-lz -Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
+  export OPT="-I${H5_INC}  -std=c++14 -O4 -acc=gpu -Minfo=acc -gpu=managed,cuda12.3,cc80"
+  export LIBS="-L${H5_LIB} -lhdf5 -Wl,-rpath -Wl,${NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,${NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
 
 else
   echo "==== on ARM"

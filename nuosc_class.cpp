@@ -4,7 +4,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
              const real bbox_[][2], const real dx_, const real CFL_, const real ko_) :
                  phy_time(0.), ko(ko_), dx(dx_), nphi(nphi_) {
 
-    ds_L = dx*dx*dx/(bbox_[0][1]-bbox_[0][0])/(bbox_[1][1]-bbox_[1][0])/(bbox_[2][1]-bbox_[2][0]);
+    invL = 1.0/(bbox_[0][1]-bbox_[0][0])/(bbox_[1][1]-bbox_[1][0])/(bbox_[2][1]-bbox_[2][0]);
     CFL = CFL_;
     dt = dx*CFL;
 
@@ -209,6 +209,15 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
             anafile.open("analysis.dat", std::ofstream::out | std::ofstream::app);
             if(!anafile) cout << "*** Open fails: " << "./analysis.dat" << endl;
             anafile << "### [ phy_time, 1:maxrelP, 2:surv, survb, 4:avgP, avgPb, 6:aM0, 7:Lex, 8:ELNe, 9:mm, mmb, (11: tt,ttb) ]" << endl;
+
+            #ifdef OUTPUT_ANA_SPACEAVG
+            ana_P3_savg.init("p3savg.dat");
+            // Can I write ASCII here and gzFile later into the same file?
+            ana_P3_savg.write((char*)&nv, sizeof(nv));
+            ana_P3_savg.write((char*)&vx[0], nv*sizeof(real));
+            ana_P3_savg.write((char*)&vy[0], nv*sizeof(real));
+            ana_P3_savg.write((char*)&vz[0], nv*sizeof(real));
+            #endif
         }
         constexpr auto max_precision{std::numeric_limits<real>::digits10 + 1}; 
         anafile.precision(max_precision);

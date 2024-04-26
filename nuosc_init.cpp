@@ -1,6 +1,5 @@
 #include "nuosc_class.h"
 #include <zlib.h>
-
 // for init data
 inline real eps_c(real eps0, real z,   real z0,   real sigma)    { return eps0*std::exp(-(z-z0)*(z-z0)/(2.0*sigma*sigma)); }
 inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) { return eps0*rand()/RAND_MAX;}
@@ -89,8 +88,8 @@ nvtxRangePush(__FUNCTION__);
   n_nue0[1] = n01;
   #endif
 
-  n_nue0[0] *= ds_L;   // initial n_nue
-  n_nue0[1] *= ds_L;   // initial n_nueb
+  n_nue0[0] *= dx*dx*dx*invL;   // initial n_nue
+  n_nue0[1] *= dx*dx*dx*invL;   // initial n_nueb
 
   if (myrank==0) printf("      init number density of nu_e / bnu_e : %g %g\n", n_nue0[0], n_nue0[1]);
 
@@ -134,8 +133,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
                 auto kv = idx(i,j,k,v);
 
                 // ELN profile
-                G0 [kv] =         g(vz[v], lnue [3]);
-                G0b[kv] = alpha * g(vz[v], lnueb[3]);
+                G0 [kv] =         g(vx[v], vy[v], vz[v], lnue );
+                G0b[kv] = alpha * g(vx[v], vy[v], vz[v], lnueb);
                 v_stat->wf[ff::ee]  [kv] =  0.5* G0 [kv]*(1.0+p3o);//sqrt(f0*f0 - (v_stat->ex_re[idx(i,j)])*(v_stat->ex_re[idx(i,j)]));
                 v_stat->wf[ff::mm]  [kv] =  0.5* G0 [kv]*(1.0-p3o);
                 v_stat->wf[ff::emr] [kv] =  0.5* G0 [kv]*tmpr;//1e-6;
@@ -259,8 +258,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
 
     } //  end select case (ipt)
 
-    n_nue0[0] *= ds_L;   // initial n_nue
-    n_nue0[1] *= ds_L;   // initial n_nueb
+    n_nue0[0] *= dx*dx*dx*invL;   // initial n_nue
+    n_nue0[1] *= dx*dx*dx*invL;   // initial n_nueb
 
     if (myrank==0) printf("      init number density of nu_e: %g %g\n", n_nue0[0], n_nue0[1]);
 

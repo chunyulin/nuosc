@@ -1,4 +1,5 @@
 #pragma once
+#include "common.h"
 
 #include <cmath>
 #include <vector>
@@ -17,7 +18,6 @@ using std::cout;
 using std::endl;
 using std::vector;
 
-#include "common.h"
 #include "Point.h"
 typedef vector<uint> IVec;
 

@@ -22,6 +22,7 @@
 //#define NOT_OVERLAP
 //#define GDR_OFF
 
+#define OUTPUT_ANA_SPACEAVG
 //==== End of global flags
 
 #include <chrono>
@@ -54,12 +55,15 @@ using std::min;
 using std::cos;
 using std::sin;
 
-typedef double real;
-//typedef float real;
 #ifdef COSENU_MPI
 #include <mpi.h>
-#define MPI_REAL MPI_DOUBLE
-//#define MPI_REAL MPI_FLOAT
+#endif
+#ifndef USE_SINGLE_PRECISION
+ typedef double real;
+ #define MPI_REAL MPI_DOUBLE
+#else
+ typedef float real;
+ #define MPI_REAL MPI_DOUBLE
 #endif
 
 const string CKPT="./ckpt";

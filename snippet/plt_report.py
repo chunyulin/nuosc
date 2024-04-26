@@ -33,9 +33,9 @@ for run in runs:
 
 ### [ phy_time,   1:maxrelP,    2:surv, survb,    4:avgP, avgPb,      6:aM0    7:Lex   8:ELNe]
 
-da  = [1,2,3,4,5,6,7,8]
-la  = ['max(|P|-1)','Pee','Peeb','avgP','avgPb','|M0|','ee-xx','ELN']
-log = [1,           0,     0,     1,     1,      0,       0,       0  ]
+da  = [1,2,3,4,5,6,7,8,9,10]
+la  = ['max(|P|-1)','Psur','Psurb','avgP','avgPb','|M0|','ee-xx','ELN', 'Ptrans']
+log = [1,           0,     0,     1,     1,      0,       0,       0,  1  ]
 
 def compare(col, tag, log = 0):
     plt.figure()
@@ -53,16 +53,81 @@ def compare(col, tag, log = 0):
 NR,NC = 2,4
 fig, ax = plt.subplots(nrows=NR, ncols=NC, figsize=(NC*5,NR*4), squeeze=False )
 
-for i in range(len(da)):
-    dcol = da[i]
-    dlab = la[i]
-    islog = log[i]
-    axt = ax[int(i/NC), i%NC]
+pc = -1
+######
+i=0;
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=1
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=2
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=3
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
 
-    for t in data:
-        axt.plot(data[t][:,0],data[t][:,dcol], label=t)
-        axt.set_xlabel("Time --  {}".format(dlab))
-        if (islog): axt.set_yscale("log")
+i=4
+axt.set_prop_cycle(None)
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], linestyle='dashed')
+
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+
+######
+i=5
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=6
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+col, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=7
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+######
+i=8
+pc=pc+1; axt = ax[int(pc/NC), pc%NC]
+dcol, dlab, islog = da[i], la[i], log[i]
+for t in data:
+    axt.plot(data[t][:,0],data[t][:,dcol], label=t)
+axt.set_xlabel("Time --  {}".format(dlab))
+if (islog): axt.set_yscale("log")
+
+
+
 ax[0,0].legend()
-
 plt.savefig("report.png", dpi=600,  bbox_inches='tight')

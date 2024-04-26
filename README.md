@@ -1,12 +1,33 @@
 # NuOSC
 
 ## Note:
+- Add spatial avg monitoring (WriteBinary), to be improved by HDF.
+
 ### 240420
 - Fix icosahedra integral weight by 2\pi -- reducible to 1d.
 - Use std::round instead of type-casting in determining nx[] to avoid unexpected result.
 - Fix unit test for sphere integral: test_v2dint.cpp
 - Reorganize file structure of unittest and script.
 - Switchable between real = double | float.
+
+## Status
+
+- Current 3D status: 2/3 Flavor, FD8/WENO, OpenMP/OpenACC
+    - FD8 is 20% faster than WENO, with the same phyical result, but with O(10^2) deviation of |P|.
+    - FD4/FD8 also pass code comparisom case.
+    - Compressed (GZIP) checkpointing.
+- Long 3D box in X/Y/Z direction reduces to 1D box.
+    - Density matrix and |M0| of 3D-Z-BOX are FP64 bit-reproducible to 1D.
+    - Vz-phi grid is as good/fast as Icosahedra grid for X-box case. (vz-phi grid is perfectly fit for Z-box case).
+    - Note about numerical normalization vs analytical normalization for bit-preservation.
+- Some facts/observations:
+    - Time for A100 ~10ns per step-grid, which is ~30s per simulation time for 800x8x8x643 grid with dt=0.05 (2-flavo
+    - FP32 run is 2x faster than FP64 with similar physical outcome with expected O(-7) conservation.
+    - A naive implementation of complex number treatment on the flavor field is slower.
+    - Low-storage RK3 scheme supported (need 3x copy instead of 4x).
+- TODO:
+    - HDF5 checkpointing.
+    - GPU-offloading of size large than device memory.
 
 
 ## Baseline test on T4:

@@ -2,9 +2,10 @@
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
+#include <zlib.h>
 
+// WriteLocal for MPI local output
 class WriteLocal : public std::ofstream {
-
   public:
     template<typename T> friend WriteLocal& operator<<(WriteLocal&, T);
     WriteLocal() { };
@@ -28,6 +29,7 @@ inline WriteLocal& operator<<(WriteLocal& log, T op) {
     return log;
 }
 
+// Wrapper for ASCII output 
 class WriteText : public std::ofstream {
   public:
     template<typename T> friend WriteText& operator<<(WriteText&, T);
@@ -37,7 +39,6 @@ class WriteText : public std::ofstream {
     }
 
 };
-
 template<typename T>
 inline WriteText& operator<<(WriteText& log, T op) {
     auto& base_log = static_cast<std::ofstream&>(log);
@@ -45,4 +46,25 @@ inline WriteText& operator<<(WriteText& log, T op) {
     base_log.flush();
     return log;
 }
+
+
+// Wrapper for binary output
+class WriteBinary {
+  gzFile fp;
+  public:
+    WriteBinary()  { };
+    void init(std::string fname) {
+      fp = gzopen(fname.c_str(),"wb");
+    }
+    ~WriteBinary() { gzclose(fp); };
+
+    void write(char* data, size_t len) {
+      gzwrite(fp, data, len);
+    }
+    void flush() {
+      //gzflush(fp, Z_SYNC_FLUSH);
+      gzflush(fp, Z_FULL_FLUSH);
+    }
+};
+
 

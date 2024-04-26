@@ -397,6 +397,31 @@ void NuOsc::step_rk4() {
 #endif
 }
 
+#if 0 // need to implement vectorize() in step-2
+void NuOsc::step_srk3() {
+#ifdef NVTX
+    nvtxRangePush(__FUNCTION__);
+#endif
+    //Step-1
+    calRHS(v_rhs, v_stat);   // L(u0)
+    vectorize(v_pre, v_stat, dt, v_rhs);  // u1 = u0 + dt*L(u0)
+    //Step-2
+    calRHS(v_rhs, v_pre);   // L(u1)
+    vectorize(v_pre, 3.0/4.0, v_stat, 1.0/4.0, v_pre, dt, v_rhs);   // u2
+    //Step-3
+    calRHS(v_rhs, v_pre);   // L(u2)
+    vectorize(v_stat, 1.0/3.0, v_stat, 2.0/3.0, v_pre, dt, v_rhs);
+
+    if(renorm) renormalize(v_stat);
+
+    phy_time += dt;
+    iter++;
+#ifdef NVTX
+    nvtxRangePop();
+#endif
+}
+#endif
+
 #ifdef SCHEME_WENO7
 void NuOsc::get_flux(Flux * RESTRICT out_flux, const real *in_field, const int stride, const int xdelta = 0, const int ydelta = 0, const int zdelta = 0)
 {

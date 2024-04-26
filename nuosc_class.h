@@ -119,7 +119,7 @@ class NuOsc {
         int iter = 0;
         real phy_time;
         real dt, dx;       // dx, dy, dz
-        real ds_L;         // = dx*dy*dz/(z1-z0)/(y1-y0)/(x1-x0)
+        real invL;         // = 1.0/(z1-z0)/(y1-y0)/(x1-x0)
 
         int  px[DIM];       // processor geometry: px, py, pz
         int  nx[DIM];       // local shape: nx, ny, nz
@@ -185,6 +185,9 @@ class NuOsc {
 #ifdef PROFILE
         WriteLocal profile;
 #endif
+        #ifdef OUTPUT_ANA_SPACEAVG
+        WriteBinary ana_P3_savg;
+        #endif
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
 
@@ -236,7 +239,6 @@ class NuOsc {
         int  get_nv() const {  return nv;  }
         int  get_nphi()  const  {  return nphi;   }
 
-
         void fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[], real lnueb[]);
         void restoreInitValue(int restart_from, real alpha, real lnue[], real lnueb[]);
         void fillInitGaussian(real eps0, real sigma);
@@ -244,7 +246,9 @@ class NuOsc {
         void fillInitTriangle(real eps0, real sigma);
         void updatePeriodicBoundary (FieldVar * in);
         void updateInjetOpenBoundary(FieldVar * in);
+
         void step_rk4();
+        void step_srk3();
         void calRHS(FieldVar* out, FieldVar * in);
         //void calRHS_core(FieldVar* out, const FieldVar * in, const int bb[2*DIM]);
         void calRHS_with_bdry(FieldVar* out, const FieldVar * in);
@@ -263,6 +267,8 @@ class NuOsc {
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(FieldVar* v0);
+
+        void spacialAvg();
 
         void fft_TBA();
 #ifdef PROFILE   /* Remove this for Nsight */

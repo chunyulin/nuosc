@@ -119,10 +119,10 @@ void NuOsc::analysis() {
 #if NFLAVOR == 3
         rv[12] /= rv[4];  rv[13] /= rv[5];
 #endif
-        real aM0   = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * ds_L;
+        real aM0   = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * dx*dx*dx*invL;
         real ELNe  = std::abs(n_nue0[0]*(1.0-rv[0]) - n_nue0[1]*(1.0-rv[1])) / (n_nue0[0]+n_nue0[1]);
         //real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
-        real Lex = rv[8] * ds_L;
+        real Lex = rv[8] * dx*dx*dx*invL;
 
         printf("T= %12f ", phy_time);
 #ifdef ADV_TEST
@@ -141,13 +141,55 @@ void NuOsc::analysis() {
             << endl << std::flush;
 
         assert(rv[9] <10 && "MaxdP blowup!\n");
+    }
+
+    #ifdef OUTPUT_ANA_SPACEAVG
+    spacialAvg();
+    #endif
+
+#ifdef PROFILE
+    nvtxRangePop();
+#endif
+}
+
+#ifdef OUTPUT_ANA_SPACEAVG
+void NuOsc::spacialAvg() {
+#ifdef PROFILE
+    nvtxRangePush(__FUNCTION__);
+#endif
+    real *work = v_rhs->wf[0];
+    for (int v=0;v<nv; ++v) {
+      real sum  = 0;
+      #pragma acc parallel loop reduction(+:sum) collapse(3)
+      #pragma omp parallel for _SIMD_ reduction(+:sum) collapse(3)
+      for (int i=0;i<nx[0]; ++i)
+      for (int j=0;j<nx[1]; ++j)
+      for (int k=0;k<nx[2]; ++k) {
+        auto ijkv = idx(i,j,k,v);
+        //sum += P3[ijkv];
+        sum += v_stat->wf[ff::ee] [ijkv] / G0[ijkv];
+      }
+      work[v+1] = sum*dx*dx*dx*invL;
+    }
+#ifdef COSENU_MPI
+    if (!myrank) {
+       MPI_Reduce(MPI_IN_PLACE, &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+    } else {
+       MPI_Reduce( &work[1],    &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+    }
+#endif
+
+    if (!myrank) {
+        work[0] = phy_time;
+        ana_P3_savg.write((char*)&work[0], (nv+1)*sizeof(real));
+        ana_P3_savg.flush();
 
     }
 #ifdef PROFILE
     nvtxRangePop();
 #endif
 }
-
+#endif
 
 void NuOsc::renormalize(FieldVar* RESTRICT v0) {
 
