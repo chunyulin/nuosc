@@ -1,14 +1,16 @@
 #pragma once
 
 //#define COSENU2D
-//#define WENO7
-#define FD8
+#define WENO7
+//#define FD8
 
 //#define IM_V2D_POLAR_GL_Z
 
 //#define IM_SIMPSON
 //#define IM_TRAPEZOIDAL
 //#define IM_GL
+
+#include "logger.h"
 
 #ifdef NVTX
 #include <nvToolsExt.h>
@@ -225,6 +227,7 @@ class NuOsc {
 
         std::ofstream anafile;
         std::list<SnapShot> snapshots;
+        WriteBinary ana_P3_savg;
 
 #ifdef COSENU2D
         inline unsigned long idx(const int i, const int j, const int v) const { return   ( (i+gx)*(nz+2*gz) + j+gz)*nv + v; }    //  i:x j:z
@@ -382,6 +385,10 @@ class NuOsc {
             constexpr auto max_precision{std::numeric_limits<real>::digits10 + 1};
             anafile.precision(max_precision);
 
+            ana_P3_savg.init("p3savg.dat");
+            // Can I write ASCII here and gzFile later into the same file?
+            ana_P3_savg.write((char*)&nv, sizeof(nv));
+            ana_P3_savg.write((char*)&vz[0], nv*sizeof(real));
         }
 
         ~NuOsc() {
@@ -429,6 +436,8 @@ class NuOsc {
         void analysis();
         void eval_conserved(const FieldVar* v0);
         void renormalize(const FieldVar* v0);
+        void spacialAvg();
+
 #ifdef WENO7
         void get_flux(Flux *, const real *, const int);
 #endif

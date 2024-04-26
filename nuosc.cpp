@@ -124,13 +124,13 @@ int main(int argc, char *argv[]) {
 
     // ======  Setup 1D output  ========================
     if (DUMP_EVERY <= END_STEP) {
-        std::list<real*> vlist( { state.P3 } );
+        std::list<real*> vlist( { state.P1, state.P2, state.P3 } );
         std::vector<int> vslice;
         for (int v=0;v<nv_in;++v) {
             //vslice.push_back( int((nv_in-1)/2)*nv_in + v );
             vslice.push_back( v );
         }
-        state.addSnapShotAtV(vlist, "P3_%06d.bin", DUMP_EVERY, vslice );
+        state.addSnapShotAtV(vlist, "P%06d.bin", DUMP_EVERY, vslice );
         //state.addSnapShotAtXV(vlist, "P3_%06d.bin", DUMP_EVERY, std::vector<int>{0,nx/2,nx-1}, vslice );
 
 #ifdef ADV_TEST

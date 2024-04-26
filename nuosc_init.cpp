@@ -121,9 +121,10 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 
     if (ipt==4) {
 
-        int amax=nz/2/10;
+        int amax=nz/20;
+        eps0 = 1.e-7;
 
-	printf("   Init data: [%s] eps= %g  alpha= %f  sigma= %g %g  width= %g kmax=%d\n", "NOC paper", eps0, alpha, lnue, lnueb, sigma, amax);
+	printf("   Init data: [%s] eps= %g  alpha= %f lnu= %g %g  kmax=%d\n", "NOC paper", eps0, alpha, lnue, lnueb, amax);
 
         std::vector<real> phi(nz/10+1);
         const real pi2oL = 2.0*M_PI/(z0-z1);
@@ -138,8 +139,8 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue,
 	    #pragma omp parallel for reduction(+:tmpr,tmpi)
     	    for(int k=-amax;k<amax;++k) {
         	if(k!=0){
-            	    tmpr += 1.e-7/std::abs(k)*std::cos(pi2oL*k*Z[j] + phi[k+amax]);
-        	    tmpi += 1.e-7/std::abs(k)*std::sin(pi2oL*k*Z[j] + phi[k+amax]);
+            	    tmpr += eps0/std::abs(k)*std::cos(pi2oL*k*Z[j] + phi[k+amax]);
+        	    tmpi += eps0/std::abs(k)*std::sin(pi2oL*k*Z[j] + phi[k+amax]);
                 }
             }
     	    real tmp2=std::sqrt(1.0-tmpr*tmpr-tmpi*tmpi);

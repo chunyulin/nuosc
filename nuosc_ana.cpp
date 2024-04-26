@@ -110,12 +110,37 @@ void NuOsc::analysis() {
                         << avgP << " " << avgPb << " " 
                         << aM0 << " " << Lex  << " " << ELNe << " " <<  mm << " " << mmb << endl;
 
+    spacialAvg();
+
     assert(maxdP <10 );
 #ifdef NVTX
     nvtxRangePop();
 #endif
 }
 
+void NuOsc::spacialAvg() {
+    real *work = v_rhs->ee;
+    for (int v=1;v<nv+1; ++v) {
+      real sum  = 0;
+      #pragma acc parallel loop reduction(+:sum)
+      #pragma omp parallel for _SIMD_ reduction(+:sum)
+      for (int k=0;k<nz; ++k) {
+        auto ijkv = idx(0,k,v);
+        sum += v_stat->ee[ijkv] / G0[ijkv];
+      }
+      work[v] = sum * dz / ((z1-z0));
+    }
+#ifdef COSENU_MPI
+    if (!myrank) {
+       MPI_Reduce(MPI_IN_PLACE, &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+    } else {
+       MPI_Reduce( &work[1],    &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+    }
+#endif
+        work[0] = phy_time;
+        ana_P3_savg.write((char*)&work[0], (nv+1)*sizeof(real));
+        ana_P3_savg.flush();
+}
 
 void NuOsc::output_detail(const char* filename) {
     std::ofstream outfile;
