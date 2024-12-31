@@ -74,10 +74,10 @@ nvtxRangePush("Sync");
     NCCLCHECK( ncclGroupStart() );
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
-        NCCLCHECK( ncclSend(&pb[0][    0], npb, ncclDouble, nb[d][0], _ncclcomm, stream[2*d]) );
-        NCCLCHECK( ncclRecv(&pb[0][2*npb], npb, ncclDouble, nb[d][1], _ncclcomm, stream[2*d]) );
-        NCCLCHECK( ncclSend(&pb[0][  npb], npb, ncclDouble, nb[d][1], _ncclcomm, stream[2*d+1]) );
-        NCCLCHECK( ncclRecv(&pb[0][3*npb], npb, ncclDouble, nb[d][0], _ncclcomm, stream[2*d+1]) );
+        NCCLCHECK( ncclSend(&pb[0][    0], npb, ncclDouble, nb[d][0], _ncclcomm, 0));  //stream[2*d]) );
+        NCCLCHECK( ncclRecv(&pb[0][2*npb], npb, ncclDouble, nb[d][1], _ncclcomm, 0));  // stream[2*d]) );
+        NCCLCHECK( ncclSend(&pb[0][  npb], npb, ncclDouble, nb[d][1], _ncclcomm, 0));  // stream[2*d+1]) );
+        NCCLCHECK( ncclRecv(&pb[0][3*npb], npb, ncclDouble, nb[d][0], _ncclcomm, 0));  // stream[2*d+1]) );
     }
     NCCLCHECK( ncclGroupEnd() );
     #elif defined(SYNC_COPY)

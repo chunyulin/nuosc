@@ -17,8 +17,9 @@ ${TARGET}: ${OBJS}
 test3d:
 	#export CUDA_VISIBLE_DEVICES=0
 	export OMP_NUM_THREADS=8; \
-	mpirun -np 1 --bind-to none ./nuosc --np 1 1 1 --pmo 0 --mu 1 --ko 1e-3 --ipt 0 --xmax .2 .2 10 --dx 0.1 --nv 8 --nphi 2 --cfl 0.5 \
-            --alpha 0.9 --eps0 1e-6 --sigma 5 --ANA_EVERY_T 1 --DUMP_EVERY_T 2 --END_STEP_T 2
+	mpirun -np 8 -map-by ppr:4:numa:PE=12 --report-bindings \
+	       ./nuosc --np 2 2 2 --pmo 0 --mu 1 --ko 1e-3 --ipt 2 --xmax 8 8 8 --dx 0.1 --nv 16 --nphi 16 --alpha 0.9 --eps0 1e-1 \
+	               --sigma 1 --lnue 0.6 --lnueb 0.53 --ANA_EVERY 1 --END_STEP 5
 
 test3d_square:
 	./nuosc --ipt 10 --nv 4 --dx 0.1 --xmax 0.5 0.5 0.5 --mu 0 --eps0 1 --sigma .1 --cfl 0.5 --ko 4 --END_STEP 10 --ANA_EVERY 1

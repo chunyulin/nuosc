@@ -31,16 +31,6 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     MPI_Comm_rank(scomm, &srank);
     if (!myrank) printf("[%.4f] Cartesian MPI commincator done.\n", utils::msecs_since());
 
-    #ifdef SYNC_NCCL
-    ncclUniqueId id;
-    if (myrank == 0) ncclGetUniqueId(&id);
-    MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, CartCOMM);
-    NCCLCHECK( ncclGroupStart() );
-    ncclCommInitRank(&_ncclcomm, ranks, id, myrank);     // should this be put after acc_set_device() ?
-    NCCLCHECK( ncclGroupEnd() );
-    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
-    #endif
-
     #else
     for (int d=0;d<DIM;++d) px[d] = 1;
     #endif
@@ -58,16 +48,28 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
         for(int i=0;i<nx[d]; ++i) X[d][i] = bbox[d][0] + (i+0.5)*dx;
     }
 
-    #ifdef _OPENACC
+#ifdef _OPENACC
     auto dev_type = acc_get_device_type();
     ngpus = acc_get_num_devices( dev_type );
-    acc_set_device_num( srank%ngpus, dev_type );
+    acc_set_device_num( srank%ngpus, dev_type );  // illegal address incurred if being put outside ncclGroup!!
     #ifdef GDR_OFF
     if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = OFF)\n", ngpus );
     #else
     if (!myrank) printf("\nOpenACC Enabled with %d GPU per node. (GDR = ON)\n", ngpus );
     #endif
-    #endif   // End if _OPENACC
+    #ifdef SYNC_NCCL
+    ncclUniqueId ncclId;
+    if (myrank == 0) NCCLCHECK(ncclGetUniqueId(&ncclId));
+    MPI_Bcast(&ncclId, sizeof(ncclId), MPI_BYTE, 0, CartCOMM);
+    MPI_Barrier(MPI_COMM_WORLD); // Ensure Bcast is complete for HCOLL
+
+    NCCLCHECK( ncclGroupStart() );
+    ncclCommInitRank(&_ncclcomm, ranks, ncclId, myrank);
+    NCCLCHECK( ncclGroupEnd() );
+
+    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
+    #endif
+#endif   // End if _OPENACC
 
     #if defined(SYNC_COPY)
     if (!myrank) printf("SYNC_COPY for test.\n");

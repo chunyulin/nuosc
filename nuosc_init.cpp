@@ -5,6 +5,7 @@ inline real eps_c(real eps0, real z,   real z0,   real sigma)    { return eps0*s
 inline real eps_r(real eps0, real z=0, real z0=0, real sigma=0 ) { return eps0*rand()/RAND_MAX;}
 inline real eps_p(real eps0, real z,   real z0,   real sigma)    { return eps0*(1.0+cos(2*M_PI*(z-z0)/(2.0*sigma*sigma)))*0.5; }
 
+//#define ELN_NUMERICAL_NORMALIZATION
 real g(real vx, real vy, real vz, real s[], real v0 = 1.0) {
     #ifdef ELN_NUMERICAL_NORMALIZATION   // default disable
     return std::exp( - (vx-v0)*(vx-v0)/(2.0*s[0]*s[0]) - (vy-v0)*(vy-v0)/(2.0*s[1]*s[1]) - (vz-v0)*(vz-v0)/(2.0*s[2]*s[2]) );
@@ -149,9 +150,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
             }
         }
 
-    } else if (ipt<4) {  // init data homogeneous in DIM=ipt.
-
-        if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", ipt==0? "Point-like pertur":"Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
+    } else {  // init data homogeneous in DIM=ipt.
 
         Vec ng(nv), ngb(nv);
 
@@ -179,11 +178,16 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
 #endif
 
         real (*spatialeps)(real,real,real,real);
-        if      (ipt<4) { spatialeps = &eps_c; }      // center Z perturbation
-        else if (ipt==5) { spatialeps = &eps_r; }      // random
-        else if (ipt==6) { spatialeps = &eps_p; }      // periodic Z perturbation
-        //else if (ipt==3) { spatialeps = 0;  }       // constant
-        else             { assert(0); }                         // Not implemented
+        if      (ipt<4) {          // center Z perturbation
+            if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", "Point-like pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
+            spatialeps = &eps_c; 
+        } else if (ipt==5) {       // random
+            if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", "Random pertur", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
+            spatialeps = &eps_r; 
+        } else if (ipt==6) {       // periodic Z perturbation
+            if (myrank==0) printf("   Init data: [%s] alpha= %f eps= %g sigma= %g lnu:[ %g %g %g ]  lnub:[ %g %g %g ]\n", "Periodic Z", alpha, eps0, sigma, lnue[0],lnue[1],lnue[2], lnueb[0],lnueb[1],lnueb[2] );
+            spatialeps = &eps_p;
+        } else             { assert(0); }   // Not implemented
 
         #pragma omp parallel for reduction(+:n00,n01) collapse(3)
         for (int i=0;i<nx[0]; ++i)

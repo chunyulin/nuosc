@@ -12,6 +12,21 @@ if [[ $host == "ilgn01" ]]; then
   export LIBS="-qopenmp -O3 -fp-model=precise -xHost"
    # -L/pkg/x86/apps/oneapi/itac/2021.9.0/slib -lVT"
 
+
+elif [[ $host == "lgn01" ]]; then
+  echo "==== on H100"
+  ml purge
+  ml openmpi/5.0.6
+  #ml nvhpc-hpcx-cuda12/24.7
+  export CXX=mpicxx
+
+  export OPT="-mp -O3 -Minfo=mp"
+  export LIBS="-lz ${OPT}"
+
+  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cc90"
+  export LIBS="-lz -Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -L${NVHPC_ROOT}/comm_libs/nccl/lib \
+  -L${NVHPC_ROOT}/cuda/lib64 -lnccl -lcudart ${OPT}"
+
 elif [[ $host == "quantum."* ]]; then
   echo "==== on Quantum"
   ml purge

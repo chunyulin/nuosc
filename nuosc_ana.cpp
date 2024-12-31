@@ -20,7 +20,6 @@ void NuOsc::eval_conserved(const FieldVar* RESTRICT v0) {
         //dN [ijkv] = (dN [ijkv] - G0[ijkv])/dN [ijkv];   // relative difference of (ee+xx)
         //dNb[ijkv] = (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]);
         //dNb[ijkv] = (dNb [ijkv] - G0b[ijkv])/dNb [ijkv] ;
-        
         //dN [ijkv] = ( (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm]  [ijkv]) - G0[ijkv])  / (v0->wf[ff::ee][ijkv] + v0->wf[ff::mm]  [ijkv]) ;   // relative difference of (ee+xx)
         //dNb[ijkv] = ( (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]) - G0b[ijkv]) / (v0->wf[ff::bee][ijkv] + v0->wf[ff::bmm][ijkv]) ;
 
@@ -37,27 +36,34 @@ void NuOsc::analysis() {
     nvtxRangePush("Analysis");
 #endif
 
+    const int N_REDUCTION=14;
     eval_conserved(v_stat);
 
     // packed reduction variable for MPI send. TODO: check if these work for OpenACC 
-    real rv[14] = {0};
+    std::array<real, N_REDUCTION> rv;
+    rv.fill(0.0);
 
-    real t_surv  = rv[0], t_survb = rv[1];
-    real t_avgP  = rv[2], t_avgPb = rv[3];
-    real t_nor  =  rv[4], t_norb =  rv[5];
-    real t_aM01 =  rv[6], t_aM02 =  rv[7], t_aM03 =  rv[8];
-    real t_maxdP = rv[9];
+    real t_maxdP = rv[0];
+    real t_surv  = rv[1], t_survb = rv[2];
+    real t_avgP  = rv[3], t_avgPb = rv[4];
+    real t_nor  =  rv[5], t_norb =  rv[6];
+    real t_aM01 =  rv[7], t_aM02 =  rv[8], t_aM03 =  rv[9];
     real t_mm = rv[10], t_mmb = rv[11];
 #if NFLAVOR == 3
     real t_tt = rv[12], t_ttb = rv[13];
     #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
-    #pragma acc parallel loop     reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop       reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #else
-    #pragma acc parallel loop     reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop       reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #endif
     FORALL(i,j,k,v)  {
         int ijkv = idx(i,j,k,v);
+
+        //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
+        t_maxdP = std::max( t_maxdP, std::max(dP[ijkv], dPb[ijkv]));
+        //maxdN = std::max( std::max(maxdN,dN[ijkv]), dNb[ijkv]);
+
         t_surv  += vw[v]* v_stat->wf[ff::ee] [ijkv];
 #ifdef ADV_TEST
         t_survb += vw[v]* v_stat->wf[ff::ee][ijkv]* v_stat->wf[ff::ee][ijkv]; // L2 norm
@@ -66,9 +72,6 @@ void NuOsc::analysis() {
 #endif
         t_mm  += vw[v]* v_stat->wf[ff::mm] [ijkv];
         t_mmb += vw[v]* v_stat->wf[ff::bmm][ijkv];
-        //if (dP>maxdP || dPb>maxdP) {maxi=i;maxj=j;}
-        t_maxdP = std::max( t_maxdP, std::max(dP[ijkv], dPb[ijkv]));
-        //maxdN = std::max( std::max(maxdN,dN[ijkv]), dNb[ijkv]);
 
         t_avgP  += vw[v] * G0 [ijkv] * std::abs( 1.0 - std::sqrt(P1 [ijkv]*P1 [ijkv]+P2 [ijkv]*P2 [ijkv]+P3 [ijkv]*P3 [ijkv]) );
         t_avgPb += vw[v] * G0b[ijkv] * std::abs( 1.0 - std::sqrt(P1b[ijkv]*P1b[ijkv]+P2b[ijkv]*P2b[ijkv]+P3b[ijkv]*P3b[ijkv]) );
@@ -87,11 +90,11 @@ void NuOsc::analysis() {
         t_norb += vw[v]* G0b[ijkv];
     }
 
-    rv[0] = t_surv, rv[1] = t_survb;
-    rv[2] = t_avgP, rv[3] = t_avgPb;
-    rv[4] = t_nor,  rv[5] =  t_norb;
-    rv[6] = t_aM01, rv[7] =  t_aM02, rv[8] = t_aM03;
-    rv[9] = t_maxdP;
+    rv[0] = t_maxdP;
+    rv[1] = t_surv, rv[2] = t_survb;
+    rv[3] = t_avgP, rv[4] = t_avgPb;
+    rv[5] = t_nor,  rv[6] =  t_norb;
+    rv[7] = t_aM01, rv[8] =  t_aM02, rv[9] = t_aM03;
     rv[10] = t_mm, rv[11] = t_mmb;
 #if NFLAVOR == 3
     rv[12] = t_tt, rv[13] = t_ttb;
@@ -104,43 +107,43 @@ void NuOsc::analysis() {
 
 #ifdef COSENU_MPI
     if (!myrank) {
-       MPI_Reduce(MPI_IN_PLACE, &rv[0], 9, MPI_REAL, MPI_SUM, 0, CartCOMM);
-       MPI_Reduce(MPI_IN_PLACE, &rv[9], 1, MPI_REAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[0], 1,             MPI_REAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[1], N_REDUCTION-1, MPI_REAL, MPI_SUM, 0, CartCOMM);
     } else {
-       MPI_Reduce(&rv[0],       &rv[0], 9, MPI_REAL, MPI_SUM, 0, CartCOMM);
-       MPI_Reduce(&rv[9],       &rv[9], 1, MPI_REAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(&rv[0],       &rv[0], 1,             MPI_REAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(&rv[1],       &rv[1], N_REDUCTION-1, MPI_REAL, MPI_SUM, 0, CartCOMM);
     }
 #endif
 
     if (!myrank) {
-        rv[0]  /= rv[4];  rv[1]  /= rv[5];
-        rv[2]  /= rv[4];  rv[3]  /= rv[5];
-        rv[10] /= rv[4];  rv[11] /= rv[5];
+        rv[1]  /= rv[5];  rv[2]  /= rv[6];
+        rv[3]  /= rv[5];  rv[4]  /= rv[6];
+        rv[10] /= rv[5];  rv[11] /= rv[6];
 #if NFLAVOR == 3
-        rv[12] /= rv[4];  rv[13] /= rv[5];
+        rv[12] /= rv[5];  rv[13] /= rv[6];
 #endif
-        real aM0   = std::sqrt(rv[6]*rv[6]+rv[7]*rv[7]+rv[8]*rv[8]) * dx*dx*dx*invL;
-        real ELNe  = std::abs(n_nue0[0]*(1.0-rv[0]) - n_nue0[1]*(1.0-rv[1])) / (n_nue0[0]+n_nue0[1]);
+        real aM0   = std::sqrt(rv[7]*rv[7]+rv[8]*rv[8]+rv[9]*rv[9]) * dx*dx*dx*invL;
+        real ELNe  = std::abs(n_nue0[0]*(1.0-rv[1]) - n_nue0[1]*(1.0-rv[2])) / (n_nue0[0]+n_nue0[1]);
         //real ELNe2 = std::abs(1.0*(1.0-surv) - 0.9*(1-survb)) / (1.9);
-        real Lex = rv[8] * dx*dx*dx*invL;
+        real Lex = rv[9] * dx*dx*dx*invL;
 
         printf("T= %12f ", phy_time);
 #ifdef ADV_TEST
-        printf(" I1= %5.4e I2= %5.4e\n", rv[0]/rv[4], rv[1]/rv[4]);
+        printf(" I1= %5.4e I2= %5.4e\n", rv[1]/rv[5], rv[2]/rv[5]);
 #else
-        printf(" |dP|m= %5.4e avP= %5.4e mm= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  ee= %5.4e %5.4e\n",rv[9],rv[2], rv[10],rv[11], aM0, ELNe, Lex, rv[0],rv[1]);
+        printf(" |dP|m= %5.4e avP= %5.4e mm= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  ee= %5.4e %5.4e\n",rv[0],rv[3], rv[10],rv[11], aM0, ELNe, Lex, rv[1],rv[2]);
         std::cout << std::flush;
 #endif
-        anafile << phy_time << std::setprecision(13) << " " << rv[9] << " " 
-            << rv[0] << " " << rv[1] << " " 
-            << rv[2] << " " << rv[3] << " " 
+        anafile << phy_time << std::setprecision(13) << " " << rv[0] << " " 
+            << rv[1] << " " << rv[2] << " " 
+            << rv[3] << " " << rv[4] << " " 
             << aM0 << " " << Lex  << " " << ELNe << " " << rv[10] << " " << rv[11] << " "
 #if NFLAVOR == 3
             << rv[12] << " " << rv[13]
 #endif
             << endl << std::flush;
 
-        assert(rv[9] <10 && "MaxdP blowup!\n");
+        assert(rv[0] <10 && "MaxdP blowup!\n");
     }
 
     #ifdef OUTPUT_ANA_SPACEAVG

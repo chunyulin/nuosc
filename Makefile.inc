@@ -1,6 +1,6 @@
 
 MPI_ROOT?=
-GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
+###GSL_ROOT?=/opt/ohpc/Taiwania3/libs/gsl/2.6
 
 #CXX=g++
 #CXX=armclang++
