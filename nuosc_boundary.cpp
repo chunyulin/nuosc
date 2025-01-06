@@ -86,88 +86,55 @@ void NuOsc::pack_buffer(const FieldVar* RESTRICT in) {
 #ifdef PROFILE
     nvtxRangePush("Packing");
 #endif
-    { // X lower side
+    { // X lower/upper side    // could be slower if splitting into upper/lower loops
         real *pbuf = &(pb[0][0]);
-        #pragma acc parallel loop collapse(4) independent async
         #pragma omp parallel for _SIMD_ collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<gx[0]; ++i)
         for (int j=0;j<nx[1]; ++j)
         for (int k=0;k<nx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r1 = idx(i,j,k,v);
-            auto tid8 = PBIX(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1];
-        }
-    }
-    {  // X upper side
-        real *pbuf = &(pb[0][NPBX]);
-        #pragma acc parallel loop collapse(4) independent async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<gx[0]; ++i)
-        for (int j=0;j<nx[1]; ++j)
-        for (int k=0;k<nx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l1 = idx(nx[0]-i-1,j,k,v);
             auto tid8 = PBIX(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][l1];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1]; // Lower
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[NPBX+tid8+f] = in->wf[f][l1]; // Upper
         }
     }
-    { // Y lower side
+    { // Y lower/upper side
         real *pbuf = &(pb[1][0]);
-        #pragma acc parallel loop collapse(4) independent async
         #pragma omp parallel for _SIMD_ collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<nx[0]; ++i)
         for (int j=0;j<gx[1]; ++j)
         for (int k=0;k<nx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r1 = idx(i,j,k,v);
-            auto tid8 = PBIY(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1];
-        }
-    }
-    {  // Y upper side
-        real *pbuf = &(pb[1][NPBY]);
-        #pragma acc parallel loop collapse(4) independent async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<nx[0]; ++i)
-        for (int j=0;j<gx[1]; ++j)
-        for (int k=0;k<nx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l1 = idx(i,nx[1]-j-1,k,v);
             auto tid8 = PBIY(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][l1];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[NPBY+tid8+f] = in->wf[f][l1];
         }
     }
-    { // Pack Z lower
-        real *pbuf = &(pb[2][0]);    // THINK: OpenACC error w/o this!!
-        #pragma acc parallel loop collapse(4) independent async
+    { // Z lower/upper side
+        real *pbuf = &(pb[2][0]);
         #pragma omp parallel for _SIMD_ collapse(4)
+        #pragma acc parallel loop collapse(4) async
         for (int i=0;i<nx[0]; ++i)
         for (int j=0;j<nx[1]; ++j)
         for (int k=0;k<gx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r1 = idx(i,j,k,v);
-            auto tid8 = PBIZ(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1];
-        }
-    }
-    { // Pack Z upper
-        real *pbuf = &(pb[2][NPBZ]);
-        #pragma acc parallel loop collapse(4) independent async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<nx[0]; ++i)
-        for (int j=0;j<nx[1]; ++j)
-        for (int k=0;k<gx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l1 = idx(i,j,nx[2]-k-1,v);
             auto tid8 = PBIZ(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][l1];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[tid8+f] = in->wf[f][r1];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f)  pbuf[NPBZ+tid8+f] = in->wf[f][l1];
         }
     }
     #pragma acc wait
@@ -182,89 +149,56 @@ void NuOsc::unpack_buffer(FieldVar* RESTRICT out) {
 #endif
     { // recovery X upper halo from the neighbor lower side
         real *pbuf = &(pb[0][2*NPBX]);    // THINK: OpenACC error w/o this (ie., offset inside pragma)!!
-        #pragma acc parallel loop collapse(4) async
+        #pragma acc parallel loop collapse(4)
         #pragma omp parallel for _SIMD_ collapse(4)
         for (int i=0;i<gx[0]; ++i)
         for (int j=0;j<nx[1]; ++j)
         for (int k=0;k<nx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r0 = idx(nx[0]+i,j,k,v);
-            auto tid8 = PBIX(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];
-        }
-    }
-    { // recovery X lower halo from the neighbor upper side
-        real *pbuf = &(pb[0][3*NPBX]);
-        #pragma acc parallel loop collapse(4) async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<gx[0]; ++i)
-        for (int j=0;j<nx[1]; ++j)
-        for (int k=0;k<nx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l0 = idx(-i-1,j,k,v);
             auto tid8 = PBIX(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];    // Lower
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f+NPBX]; // Upper
         }
     }
     { // recovery Y upper halo from the neighbor lower side
         real *pbuf = &(pb[1][2*NPBY]);
-        #pragma acc parallel loop collapse(4) async
+        #pragma acc parallel loop collapse(4)
         #pragma omp parallel for _SIMD_ collapse(4)
         for (int i=0;i<nx[0]; ++i)
         for (int j=0;j<gx[1]; ++j)
         for (int k=0;k<nx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r0 = idx(i,nx[1]+j,k,v);
-            auto tid8 = PBIY(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];
-        }
-    }
-    { // recovery Y lower halo from the neighbor upper side
-        real *pbuf = &(pb[1][3*NPBY]);
-        #pragma acc parallel loop collapse(4) async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<nx[0]; ++i)
-        for (int j=0;j<gx[1]; ++j)
-        for (int k=0;k<nx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l0 = idx(i,-j-1,k,v);
             auto tid8 = PBIY(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f+NPBY];
         }
     }
     { // Z lower side
         real *pbuf = &(pb[2][2*NPBZ]);
-        #pragma acc parallel loop collapse(4) async
+        #pragma acc parallel loop collapse(4)
         #pragma omp parallel for _SIMD_ collapse(4)
         for (int i=0;i<nx[0]; ++i)
         for (int j=0;j<nx[1]; ++j)
         for (int k=0;k<gx[2]; ++k)
         for (int v=0;v<nv;    ++v) {
             auto r0 = idx(i,j,nx[2]+k,v);
-            auto tid8 = PBIZ(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];
-        }
-    }
-    { // Z upper side
-        real *pbuf = &(pb[2][3*NPBZ]);
-        #pragma acc parallel loop collapse(4) async
-        #pragma omp parallel for _SIMD_ collapse(4)
-        for (int i=0;i<nx[0]; ++i)
-        for (int j=0;j<nx[1]; ++j)
-        for (int k=0;k<gx[2]; ++k)
-        for (int v=0;v<nv;    ++v) {
             auto l0 = idx(i,j,-k-1,v);
             auto tid8 = PBIZ(i,j,k,v);
-            #pragma unroll
-            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][r0] = pbuf[tid8+f];
+            #pragma acc loop
+            for(int f=0;f<nvar;++f) out->wf[f][l0] = pbuf[tid8+f+NPBZ];
         }
     }
-    #pragma acc wait
+    //#pragma acc wait
 #ifdef PROFILE
     nvtxRangePop();
 #endif

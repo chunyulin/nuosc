@@ -39,23 +39,24 @@ void NuOsc::analysis() {
     const int N_REDUCTION=14;
     eval_conserved(v_stat);
 
-    // packed reduction variable for MPI send. TODO: check if these work for OpenACC 
-    std::array<real, N_REDUCTION> rv;
-    rv.fill(0.0);
+    // packed reduction variable for MPI send. // Caution: NCCL/managed memory seems not to work with stack array!
+    //std::array<real, N_REDUCTION> rv; rv.fill(0.0);
+    real* rv = new real[N_REDUCTION]();
+    for(int i=0;i<N_REDUCTION;++i) rv[i]=0;
 
-    real t_maxdP = rv[0];
-    real t_surv  = rv[1], t_survb = rv[2];
-    real t_avgP  = rv[3], t_avgPb = rv[4];
-    real t_nor  =  rv[5], t_norb =  rv[6];
-    real t_aM01 =  rv[7], t_aM02 =  rv[8], t_aM03 =  rv[9];
-    real t_mm = rv[10], t_mmb = rv[11];
+    real& t_maxdP = rv[0];
+    real& t_surv  = rv[1], &t_survb = rv[2];
+    real& t_avgP  = rv[3], &t_avgPb = rv[4];
+    real& t_nor  =  rv[5], &t_norb =  rv[6];
+    real& t_aM01 =  rv[7], &t_aM02 =  rv[8], &t_aM03 =  rv[9];
+    real& t_mm = rv[10], &t_mmb = rv[11];
 #if NFLAVOR == 3
     real t_tt = rv[12], t_ttb = rv[13];
     #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma acc parallel loop       reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb,t_tt,t_ttb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #else
-    #pragma acc parallel loop       reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
     #pragma omp parallel for _SIMD_ reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
+    #pragma acc parallel loop       reduction(+:t_avgP,t_avgPb,t_aM01,t_aM02,t_aM03,t_nor,t_norb,t_surv,t_survb,t_mm,t_mmb) reduction(max:t_maxdP) collapse(COLLAPSE_LOOP)
 #endif
     FORALL(i,j,k,v)  {
         int ijkv = idx(i,j,k,v);
@@ -90,29 +91,36 @@ void NuOsc::analysis() {
         t_norb += vw[v]* G0b[ijkv];
     }
 
-    rv[0] = t_maxdP;
-    rv[1] = t_surv, rv[2] = t_survb;
-    rv[3] = t_avgP, rv[4] = t_avgPb;
-    rv[5] = t_nor,  rv[6] =  t_norb;
-    rv[7] = t_aM01, rv[8] =  t_aM02, rv[9] = t_aM03;
-    rv[10] = t_mm, rv[11] = t_mmb;
-#if NFLAVOR == 3
-    rv[12] = t_tt, rv[13] = t_ttb;
-#endif
+    //rv[0] = t_maxdP;
+    //rv[1] = t_surv, rv[2] = t_survb;
+    //rv[3] = t_avgP, rv[4] = t_avgPb;
+    //rv[5] = t_nor,  rv[6] =  t_norb;
+    //rv[7] = t_aM01, rv[8] =  t_aM02, rv[9] = t_aM03;
+    //rv[10] = t_mm, rv[11] = t_mmb;
+    //#if NFLAVOR == 3
+    //    rv[12] = t_tt, rv[13] = t_ttb;
+    //#endif
 
-    //analocal << phy_time << std::setprecision(13) << " " << rv[9] << " " 
-    //        << rv[0] << " " << rv[1] << " " 
-    //        << rv[2] << " " << rv[3] << " " 
-    //        << rv[10] << " " << rv[11] <<  endl;
+    //cout << phy_time << std::setprecision(13) << " " << rv[0] << " "
+    //        << rv[1] << " " << rv[2] << " " << rv[3] << " " << rv[4] << " " 
+    //        << rv[5] << " " << rv[6] <<  endl;
 
 #ifdef COSENU_MPI
+    #ifdef SYNC_NCCL
+    NCCLCHECK(ncclGroupStart() );
+    NCCLCHECK(ncclReduce(&rv[0], &rv[0], 1,             NCCL_MYREAL, ncclMax, 0, _ncclcomm, stream[0]));
+    NCCLCHECK(ncclReduce(&rv[1], &rv[1], N_REDUCTION-1, NCCL_MYREAL, ncclSum, 0, _ncclcomm, stream[1]));
+    NCCLCHECK(ncclGroupEnd() );
+    if (!myrank) cudaDeviceSynchronize();
+    #else
     if (!myrank) {
-       MPI_Reduce(MPI_IN_PLACE, &rv[0], 1,             MPI_REAL, MPI_MAX, 0, CartCOMM);
-       MPI_Reduce(MPI_IN_PLACE, &rv[1], N_REDUCTION-1, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[0], 1,             MPI_MYREAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &rv[1], N_REDUCTION-1, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
     } else {
-       MPI_Reduce(&rv[0],       &rv[0], 1,             MPI_REAL, MPI_MAX, 0, CartCOMM);
-       MPI_Reduce(&rv[1],       &rv[1], N_REDUCTION-1, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce(&rv[0],       &rv[0], 1,             MPI_MYREAL, MPI_MAX, 0, CartCOMM);
+       MPI_Reduce(&rv[1],       &rv[1], N_REDUCTION-1, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
     }
+    #endif
 #endif
 
     if (!myrank) {
@@ -131,13 +139,13 @@ void NuOsc::analysis() {
 #ifdef ADV_TEST
         printf(" I1= %5.4e I2= %5.4e\n", rv[1]/rv[5], rv[2]/rv[5]);
 #else
-        printf(" |dP|m= %5.4e avP= %5.4e mm= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  ee= %5.4e %5.4e\n",rv[0],rv[3], rv[10],rv[11], aM0, ELNe, Lex, rv[1],rv[2]);
+        printf(" |dP|m= %5.4e avP= %5.4e mm= %5.4e %5.4e |M0|= %5.4e ELNe= %g Lex= %g  ee= %5.4e %5.4e\n", rv[0],rv[3], rv[10],rv[11], aM0, ELNe, Lex, rv[1],rv[2]);
         std::cout << std::flush;
 #endif
-        anafile << phy_time << std::setprecision(13) << " " << rv[0] << " " 
-            << rv[1] << " " << rv[2] << " " 
-            << rv[3] << " " << rv[4] << " " 
-            << aM0 << " " << Lex  << " " << ELNe << " " << rv[10] << " " << rv[11] << " "
+        anafile << phy_time << std::setprecision(13) << " " << rv[0] << " "
+                << rv[1] << " " << rv[2] << " "
+                << rv[3] << " " << rv[4] << " "
+                << aM0 << " " << Lex  << " " << ELNe << " " << rv[10] << " " << rv[11] << " "
 #if NFLAVOR == 3
             << rv[12] << " " << rv[13]
 #endif
@@ -149,6 +157,8 @@ void NuOsc::analysis() {
     #ifdef OUTPUT_ANA_SPACEAVG
     spacialAvg();
     #endif
+
+    delete[] rv;
 
 #ifdef PROFILE
     nvtxRangePop();
@@ -176,9 +186,9 @@ void NuOsc::spacialAvg() {
     }
 #ifdef COSENU_MPI
     if (!myrank) {
-       MPI_Reduce(MPI_IN_PLACE, &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce(MPI_IN_PLACE, &work[1], nv, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
     } else {
-       MPI_Reduce( &work[1],    &work[1], nv, MPI_REAL, MPI_SUM, 0, CartCOMM);
+       MPI_Reduce( &work[1],    &work[1], nv, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
     }
 #endif
 

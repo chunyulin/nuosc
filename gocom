@@ -4,14 +4,12 @@ if [[ $host == "ilgn01" ]]; then
   echo "=== on T4 ==="
   ml purge
   ml sys/intelmpi
-
   export CXX=mpiicpx
   export OPT="-qopt-report=max -qopenmp -O3 -xsapphirerapids -qopt-zmm-usage=high -Wno-unknown-pragmas"
   export OPT="-parallel-source-info=2  -g -qopt-zmm-usage=high -xsapphirerapids -O3 -qopenmp -Wno-unknown-pragmas"
   export OPT="-g -O3 -fp-model=precise -qopenmp -xHost -qopt-zmm-usage=high -Wno-unknown-pragmas"
   export LIBS="-qopenmp -O3 -fp-model=precise -xHost"
    # -L/pkg/x86/apps/oneapi/itac/2021.9.0/slib -lVT"
-
 
 elif [[ $host == "lgn01" ]]; then
   echo "==== on H100"
@@ -20,23 +18,23 @@ elif [[ $host == "lgn01" ]]; then
   #ml nvhpc-hpcx-cuda12/24.7
   export CXX=mpicxx
 
+  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cc90 -cuda"
+  export LIBS="${OPT} -lz -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl"
+
   export OPT="-mp -O3 -Minfo=mp"
   export LIBS="-lz ${OPT}"
 
-  export OPT="-O4 -acc=gpu -Minfo=acc -gpu=managed,cc90"
-  export LIBS="-lz -Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -L${NVHPC_ROOT}/comm_libs/nccl/lib \
-  -L${NVHPC_ROOT}/cuda/lib64 -lnccl -lcudart ${OPT}"
 
-elif [[ $host == "quantum."* ]]; then
+elif [[ $host == "quantum."* || $host == "DGX"* ]]; then
   echo "==== on Quantum"
   ml purge
-  ml nvhpc-hpcx
-
+  ml nvhpc-hpcx-cuda12/24.5
   export CXX=mpic++
-  export OPT="-O3 -acc=gpu -Minfo=accel -gpu=managed,cc70"
   export OPT="-O4 -mp -Minfo=mp"
-  export LIBS=${OPT}
-  ##"-Wl,-rpath -Wl,{NVHPC_ROOT}/comm_libs/nccl/lib -Wl,-rpath -Wl,{NVHPC_ROOT}/cuda/lib64 -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -L${NVHPC_ROOT}/cuda/lib64 -lcudart ${OPT}"
+  export LIBS="${OPT} -lz"
+
+  export OPT="-O4 -std=c++11 -acc -gpu=cc70,managed,cuda12.4 -Minfo=accel"
+  export LIBS="${OPT} -lz -L${NVHPC_ROOT}/comm_libs/nccl/lib -lnccl -cuda"
 
 elif [[ $host == *"twcc.ai" ]]; then
   echo "==== on TWCC"

@@ -61,20 +61,29 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     ncclUniqueId ncclId;
     if (myrank == 0) NCCLCHECK(ncclGetUniqueId(&ncclId));
     MPI_Bcast(&ncclId, sizeof(ncclId), MPI_BYTE, 0, CartCOMM);
-    MPI_Barrier(MPI_COMM_WORLD); // Ensure Bcast is complete for HCOLL
+    MPI_Barrier(CartCOMM); // Ensure Bcast is complete for HCOLL
 
-    NCCLCHECK( ncclGroupStart() );
+    //NCCLCHECK( ncclGroupStart() );   // we don't need group calls here as each rank(thread) handles only one GPU.
     ncclCommInitRank(&_ncclcomm, ranks, ncclId, myrank);
-    NCCLCHECK( ncclGroupEnd() );
+    //NCCLCHECK( ncclGroupEnd() );
 
-    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
+    for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
     #endif
 #endif   // End if _OPENACC
 
     #if defined(SYNC_COPY)
-    if (!myrank) printf("SYNC_COPY for test.\n");
+    if (!myrank) printf("Sync via memcpy() only for testing (un-)packing. For single rank only.\n");
     #elif defined(SYNC_NCCL)
     if (!myrank) printf("Sync by NCCL.\n");
+    #if 0
+    if (!myrank)
+     for (int i = 0; i < ssize; i++)
+     for (int j = i+1; j < ssize; j++) {
+      int access;  cudaDeviceCanAccessPeer(&access, i, j);
+      printf("Device=%d %s Access Peer Device=%d\n", i, access ? "CAN" : "CANNOT", j);
+     }
+    #endif
+
     #elif defined(SYNC_MPI_ONESIDE_COPY)
     if (!myrank) printf("MPI One-side copy.\n");
     #elif defined(SYNC_MPI_SENDRECV)
@@ -82,6 +91,7 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     #else
     if (!myrank) printf("MPI non-blocking send / recv.\n");
     #endif
+
 
     // Determine nv, which could be complicated for say ICOSA grid.
     #if defined(IM_V2D_POLAR_GL_Z)
@@ -106,21 +116,22 @@ NuOsc::NuOsc(int px_[], int nv_, const int nphi_, const int gx_[],
     ulong nXYZV = nvar*nv;
     for (int d=0;d<DIM;++d) nXYZV *= nx[d];
 
+    pb = new real*[DIM];
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZV/nx[d]*gx[d];   // total size of halo
         #ifdef COSENU_MPI
-        MPI_Type_contiguous(npb, MPI_REAL, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
-        #ifdef SYNC_MPI_ONESIDE_COPY
+        MPI_Type_contiguous(npb, MPI_MYREAL, &t_pb[d]);  MPI_Type_commit(&t_pb[d]);
+         #ifdef SYNC_MPI_ONESIDE_COPY
         // prepare (un-)pack buffer and MPI RMA window for sync. (duplicate 4 times for left/right and old/new)
         int ierr = 0;
         ierr = MPI_Win_allocate(4*npb*sizeof(real), npb*sizeof(real), MPI_INFO_NULL, CartCOMM, &pb[d], &w_pb[d]);
         if (ierr!=0) { cout << "MPI_Win_allocate error!" << endl; exit(0); }
+         #else
+        pb[d] = new real[4*npb];
+         #endif
         #else
         pb[d] = new real[4*npb];
         #endif
-      #else
-        pb[d] = new real[4*npb];
-      #endif
     }
 
     #ifdef VERBOSE

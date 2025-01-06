@@ -206,11 +206,11 @@ int main(int argc, char *argv[]) {
         //state.addSkimShot(rlist, "Rho%06d.bin", DUMP_EVERY, 10240, 21 );
 
 #endif
-    // prepare checkpoint
-    std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);    // all field
-    std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);   // all v
-    state.addSnapShotAtV("ckpt", vlist, DUMP_EVERY, vslice );
-    if (!is_restart) state.checkSnapShot(true);
+       // prepare checkpoint
+       std::list<int>   vlist;  for (int f=0; f<state.nvar; ++f) vlist.push_back(f);    // all field
+       std::vector<int> vslice; for (int v=0;v<state.nv;++v)     vslice.push_back(v);   // all v
+       state.addSnapShotAtV("ckpt", vlist, DUMP_EVERY, vslice );
+       if (!is_restart) state.checkSnapShot(true);
     }
 
     if (!myrank) std::cout << std::flush;
@@ -225,7 +225,6 @@ int main(int argc, char *argv[]) {
         state.step_rk4();
 
         if ( t%ANAL_EVERY==0)  {
-            //state.fft();
             state.analysis();
         }
 

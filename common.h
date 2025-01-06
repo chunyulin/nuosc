@@ -6,23 +6,24 @@
 #error Only DIM=3 is supported
 #endif
 
+#define BC_PERI
+#define KO_ORD_3
 #define COSENU_MPI
 #define SCHEME_FD8
 //#define SCHEME_WENO7
-//#define PROFILE 20
-#define VERBOSE
 //#define SYNC_NCCL
 //#define SYNC_COPY
 //#define SYNC_MPI_SENDRECV
 //#define SYNC_MPI_ONESIDE_COPY
-#define BC_PERI
-#define KO_ORD_3
+//#define PROFILE 20
 //#define ADV_TEST
 //#define IM_V2D_ICOSAHEDRA
 //#define NOT_OVERLAP
 //#define GDR_OFF
+#define VERBOSE
 
-#define OUTPUT_ANA_SPACEAVG
+//#define OUTPUT_ANA_SPACEAVG
+//#define USE_SINGLE_PRECISION
 //==== End of global flags
 
 #include <chrono>
@@ -60,10 +61,12 @@ using std::sin;
 #endif
 #ifndef USE_SINGLE_PRECISION
  typedef double real;
- #define MPI_REAL MPI_DOUBLE
+ #define MPI_MYREAL MPI_DOUBLE
+ #define NCCL_MYREAL ncclDouble
 #else
  typedef float real;
- #define MPI_REAL MPI_DOUBLE
+ #define MPI_MYREAL MPI_FLOAT
+ #define NCCL_MYREAL ncclFloat
 #endif
 
 const string CKPT="./ckpt";

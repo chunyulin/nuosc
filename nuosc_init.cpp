@@ -83,7 +83,7 @@ nvtxRangePush(__FUNCTION__);
 
   real n0[] = {n00, n01};
   #ifdef COSENU_MPI
-  MPI_Reduce(n0, n_nue0, 2, MPI_REAL, MPI_SUM, 0, CartCOMM);
+  MPI_Reduce(n0, n_nue0, 2, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
   #else
   n_nue0[0] = n00;
   n_nue0[1] = n01;
@@ -190,10 +190,12 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
         } else             { assert(0); }   // Not implemented
 
         #pragma omp parallel for reduction(+:n00,n01) collapse(3)
+        #pragma acc parallel loop reduction(+:n00,n01) collapse(3)
         for (int i=0;i<nx[0]; ++i)
         for (int j=0;j<nx[1]; ++j)
         for (int k=0;k<nx[2]; ++k)
         #pragma omp _SIMD_
+        #pragma acc for
         for (int v=0;v<nv; ++v) {
             auto ijkv = idx(i,j,k,v);
 
@@ -231,7 +233,7 @@ void NuOsc::fillInitValue(int ipt, real alpha, real eps0, real sigma, real lnue[
 
 #ifdef COSENU_MPI
         real n0[] = {n00, n01};
-        MPI_Reduce(n0, n_nue0, 2, MPI_REAL, MPI_SUM, 0, CartCOMM);
+        MPI_Reduce(n0, n_nue0, 2, MPI_MYREAL, MPI_SUM, 0, CartCOMM);
 #else
         n_nue0[0] = n00;
         n_nue0[1] = n01;

@@ -18,7 +18,7 @@ inline real NF(real s, real v0=1.0) { return s*sqrt(0.5*M_PI)*( std::erf((1.0+v0
 
 #define COLLAPSE_LOOP 4
 #define PARFORALL(i,j,k,v) \
-    _Pragma("acc parallel loop independent collapse(4)") \
+    _Pragma("acc parallel loop collapse(4)") \
     _Pragma("omp parallel for collapse(3)") \
     for (int i=0;i<nx[0]; ++i) \
     for (int j=0;j<nx[1]; ++j) \
@@ -146,7 +146,7 @@ class NuOsc {
 
         MPI_Request reqs[DIM*4];
 #endif
-        real *pb[DIM];     // TODO: can we use the storage of FieldVar directly w/o copying to this buffers ?
+        real**pb;  // OpenACC cannot use stack array?!?
 #ifdef SYNC_NCCL
         ncclComm_t _ncclcomm;
         cudaStream_t stream[2*DIM];
@@ -199,6 +199,10 @@ class NuOsc {
               const real bbox[][2], const real dx_, const real CFL_, const real  ko_);
 
         ~NuOsc() {
+            #ifdef SYNC_NCCL
+            for (int i=0;i<2*DIM;++i)  cudaStreamDestroy(stream[i]);
+            #endif
+
             delete[] G0;
             delete[] G0b;
             delete[] P1;  delete[] P2;  delete[] P3;  delete[] dP;  //delete[] dN;
@@ -220,6 +224,7 @@ class NuOsc {
             }
             #if ! ( defined(COSENU_MPI) && defined(SYNC_MPI_ONESIDE_COPY) )
             for (int d=0;d<DIM;++d) delete[] pb[d];
+            delete[] pb;
             #endif
         }
 

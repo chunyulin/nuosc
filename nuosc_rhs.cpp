@@ -9,14 +9,14 @@ nvtxRangePush("calRHS");
 #ifdef COSENU_MPI
     pack_buffer(in);
     sync_launch();
-    #ifdef NOT_OVERLAP
+    #ifndef NOT_OVERLAP
+    calRHS_wo_bdry(out, in);
     waitall();
     unpack_buffer(in);
-    calRHS_wo_bdry(out, in);
     #else
-    calRHS_wo_bdry(out, in);
     waitall();
     unpack_buffer(in);
+    calRHS_wo_bdry(out, in);
     #endif
 
     #ifndef ADVEC_OFF

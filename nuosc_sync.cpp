@@ -9,13 +9,12 @@ void NuOsc::waitall() {
     for (int d=0;d<DIM;++d) nXYZ *= nx[d];
 
     #if defined(SYNC_NCCL)
-    //for (int i=0;i<2*DIM;++i)  cudaStreamCreate(&stream[i]);
     cudaDeviceSynchronize();
     #elif defined(SYNC_MPI_ONESIDE_COPY)
     for (int d=0;d<DIM;++d)    MPI_Win_fence(0, w_pb[d]);
     #elif defined(SYNC_MPI_SENDRECV)
     #elif defined(SYNC_COPY)
-    #else // default for nonblocking
+    #else
     MPI_Waitall(4*DIM, reqs, MPI_STATUSES_IGNORE);
     #endif
 
@@ -74,10 +73,10 @@ nvtxRangePush("Sync");
     NCCLCHECK( ncclGroupStart() );
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
-        NCCLCHECK( ncclSend(&pb[0][    0], npb, ncclDouble, nb[d][0], _ncclcomm, 0));  //stream[2*d]) );
-        NCCLCHECK( ncclRecv(&pb[0][2*npb], npb, ncclDouble, nb[d][1], _ncclcomm, 0));  // stream[2*d]) );
-        NCCLCHECK( ncclSend(&pb[0][  npb], npb, ncclDouble, nb[d][1], _ncclcomm, 0));  // stream[2*d+1]) );
-        NCCLCHECK( ncclRecv(&pb[0][3*npb], npb, ncclDouble, nb[d][0], _ncclcomm, 0));  // stream[2*d+1]) );
+        NCCLCHECK( ncclSend(&pb[d][    0], npb, NCCL_MYREAL, nb[d][0], _ncclcomm, stream[2*d]) );
+        NCCLCHECK( ncclSend(&pb[d][  npb], npb, NCCL_MYREAL, nb[d][1], _ncclcomm, stream[2*d+1]) );
+        NCCLCHECK( ncclRecv(&pb[d][2*npb], npb, NCCL_MYREAL, nb[d][1], _ncclcomm, stream[2*d]) );
+        NCCLCHECK( ncclRecv(&pb[d][3*npb], npb, NCCL_MYREAL, nb[d][0], _ncclcomm, stream[2*d+1]) );
     }
     NCCLCHECK( ncclGroupEnd() );
     #elif defined(SYNC_COPY)
@@ -87,7 +86,7 @@ nvtxRangePush("Sync");
         memcpy(&pb[d][2*npb], &pb[d][0], 2*npb*sizeof(real));
     }
     #else
-    //#pragma omp parallel for num_threads(DIM)
+    // #pragma omp parallel for num_threads(DIM)      // Why casue segfault?!
     for (int d=0;d<DIM;++d) {
         const ulong npb = nXYZ/nx[d]*gx[d];   // total size of halo
         MPI_Isend(&pb[d][    0], 1, t_pb[d], nb[d][0],   d*2, CartCOMM, &reqs[d*4]);
